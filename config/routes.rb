@@ -3,6 +3,8 @@ Rails.application.routes.draw do
 
   namespace :api do
     resources :candles, only: :index
+    resources :indicators, only: :index
+    get 'indicators/:type', to: 'indicators#show', as: :indicator
   end
 
   # root "dashboard#index"
