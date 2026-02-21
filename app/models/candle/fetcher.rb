@@ -79,11 +79,25 @@ class Candle::Fetcher
       }
     end
 
-    Candle.import(records).rows.flatten.count
+    count = Candle.import(records).rows.flatten.count
+    broadcast_last_candle(records) if count.positive?
+    count
   end
 
   def without_last_minute_ms
     (Time.zone.now - 60).to_i * 1000
+  end
+
+  def broadcast_last_candle(records)
+    last = records.max_by { |r| r[:ts] }
+    ActionCable.server.broadcast("candles:#{symbol}:#{interval}", {
+      time: last[:ts].to_i,
+      open: last[:open].to_f,
+      high: last[:high].to_f,
+      low: last[:low].to_f,
+      close: last[:close].to_f,
+      volume: last[:volume].to_f
+    })
   end
 
   def retry_pause

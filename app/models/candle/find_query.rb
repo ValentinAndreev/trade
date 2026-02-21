@@ -9,16 +9,24 @@ class Candle::FindQuery
     '1d' => 'cagg_candles_1d'
   }.freeze
 
-  TIMEFRAME_UNITS = { 'm' => 'minutes', 'h' => 'hours', 'd' => 'days', 'w' => 'weeks' }.freeze
+  TIMEFRAMES = {
+    'm' => { unit: 'minutes', duration: 1.minute },
+    'h' => { unit: 'hours',   duration: 1.hour },
+    'd' => { unit: 'days',    duration: 1.day },
+    'w' => { unit: 'weeks',   duration: 1.week }
+  }.freeze
 
-  private attr_reader :symbol, :exchange, :timeframe, :start_time, :end_time
+  DEFAULT_LIMIT = 1500
 
-  def initialize(symbol:, timeframe: '1m', exchange: 'bitfinex', start_time: nil, end_time: nil)
+  private attr_reader :symbol, :exchange, :timeframe, :start_time, :end_time, :limit
+
+  def initialize(symbol:, timeframe: '1m', exchange: 'bitfinex', start_time: nil, end_time: nil, limit: nil)
     @symbol = symbol
     @exchange = exchange
     @timeframe = timeframe
-    @start_time = parse_time(start_time) || Candle.min_ts(symbol: symbol, exchange: exchange)
+    @limit = limit&.to_i
     @end_time = parse_time(end_time) || Candle.max_ts(symbol: symbol, exchange: exchange)
+    @start_time = parse_time(start_time) || calculate_start_time
   end
 
   def call
@@ -65,7 +73,8 @@ class Candle::FindQuery
   end
 
   def calculate_on_the_fly
-    interval = parse_timeframe_to_interval(timeframe)
+    amount, tf = parse_timeframe
+    interval = "#{amount} #{TIMEFRAMES[tf][:unit]}"
     params = [ interval, symbol, exchange, start_time.iso8601, end_time.iso8601 ]
     connection.exec_query(<<-SQL.squish, 'FindCandles', params).to_a
       SELECT
@@ -101,11 +110,19 @@ class Candle::FindQuery
     end
   end
 
-  def parse_timeframe_to_interval(tf)
-    match = tf.match(/(\d+)([mhdw])/)
-    raise ArgumentError, "Invalid timeframe format: #{tf}" unless match
+  def calculate_start_time
+    return Candle.min_ts(symbol: symbol, exchange: exchange) unless end_time
 
-    "#{match[1]} #{TIMEFRAME_UNITS[match[2]]}"
+    count = limit || DEFAULT_LIMIT
+    amount, tf = parse_timeframe
+    end_time - (count * amount * TIMEFRAMES[tf][:duration])
+  end
+
+  def parse_timeframe
+    match = timeframe.match(/(\d+)([mhdw])/)
+    raise ArgumentError, "Invalid timeframe format: #{timeframe}" unless match
+
+    [ match[1].to_i, match[2] ]
   end
 
   def parse_time(value)

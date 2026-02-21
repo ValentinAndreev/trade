@@ -1,0 +1,9 @@
+<div class="h-screen w-full bg-[#1a1a2e]">
+  <div
+    data-controller="chart"
+    data-chart-symbol-value="<%= @symbol %>"
+    data-chart-timeframe-value="<%= @timeframe %>"
+    data-chart-url-value="<%= api_candles_path(symbol: @symbol, timeframe: @timeframe, limit: 1500) %>"
+    class="h-full w-full"
+  ></div>
+</div>

@@ -7,5 +7,6 @@ Rails.application.routes.draw do
     get 'indicators/:type', to: 'indicators#show', as: :indicator
   end
 
-  # root "dashboard#index"
+  resources :charts, only: :show
+  root 'charts#show'
 end

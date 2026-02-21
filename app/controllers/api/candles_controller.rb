@@ -13,7 +13,8 @@ class Api::CandlesController < Api::ApplicationController
       exchange: params.fetch(:exchange, 'bitfinex'),
       timeframe: params.fetch(:timeframe, '1m'),
       start_time: params[:start_time],
-      end_time: params[:end_time]
+      end_time: params[:end_time],
+      limit: params[:limit]
     ).call
   end
 end
