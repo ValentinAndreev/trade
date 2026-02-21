@@ -8,7 +8,7 @@ class Utils::BitfinexClient
   class ApiError < StandardError; end
   class RateLimitError < ApiError; end
 
-  INTERVALS = %w[1m 5m 15m 30m 1h 3h 6h 12h 1D 1W 14D 1M].freeze
+  INTERVALS = %w[1m].freeze
   MAX_LIMIT = 10_000
 
   def candles_history(symbol:, interval:, start_time: nil, end_time: nil, limit: MAX_LIMIT, sort: 1)

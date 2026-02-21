@@ -1,6 +1,6 @@
 class BitfinexConfig < ApplicationConfig
   attr_config :api_url,
-    symbols: %w[tBTCUSD tETHUSD tSOLUSD tXRPUSD],
+    symbols: %w[tBTCUSD],
     rate_limit_pause: 2,
     batch_size: 5000,
     default_interval: '1m'
