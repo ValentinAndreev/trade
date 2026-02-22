@@ -11,8 +11,8 @@ class Utils::BitfinexClient
   INTERVALS = %w[1m].freeze
   MAX_LIMIT = 10_000
 
-  def candles_history(symbol:, interval:, start_time: nil, end_time: nil, limit: MAX_LIMIT, sort: 1)
-    params = { limit: limit, sort: sort }
+  def candles_history(symbol:, interval:, start_time: nil, end_time: nil, limit: MAX_LIMIT)
+    params = { limit: limit }
     params[:start] = start_time if start_time
     params[:end] = end_time if end_time
 

@@ -30,6 +30,7 @@ class Candle::Fetcher
       break if saved_count.zero?
 
       Rails.cache.delete("candle/max_ts/#{symbol}/#{EXCHANGE}")
+      Rails.cache.delete("candle/min_ts/#{symbol}/#{EXCHANGE}") if load_all_data
       sleep(BitfinexConfig.rate_limit_pause)
     end
   end
@@ -39,11 +40,10 @@ class Candle::Fetcher
   def end_time_ms
     return without_last_minute_ms unless load_all_data
 
-    candle_ts = Candle.max_ts(symbol: symbol, exchange: EXCHANGE)
+    candle_ts = Candle.min_ts(symbol: symbol, exchange: EXCHANGE)
     return without_last_minute_ms unless candle_ts
 
-    calculated = (candle_ts.to_i * 1000) + (MAX_LIMIT * 60 * 1000)
-    [ calculated, without_last_minute_ms ].min
+    (candle_ts.to_i - 60) * 1000
   end
 
   def perform_request(end_time, attempt: 0)
@@ -79,25 +79,31 @@ class Candle::Fetcher
       }
     end
 
-    count = Candle.import(records).rows.flatten.count
-    broadcast_last_candle(records) if count.positive?
-    count
+    imported_timestamps = Candle.import(records).rows.flatten
+    broadcast_new_candles(records, imported_timestamps) if imported_timestamps.any?
+    imported_timestamps.count
   end
 
   def without_last_minute_ms
     (Time.zone.now - 60).to_i * 1000
   end
 
-  def broadcast_last_candle(records)
-    last = records.max_by { |r| r[:ts] }
-    ActionCable.server.broadcast("candles:#{symbol}:#{interval}", {
-      time: last[:ts].to_i,
-      open: last[:open].to_f,
-      high: last[:high].to_f,
-      low: last[:low].to_f,
-      close: last[:close].to_f,
-      volume: last[:volume].to_f
-    })
+  def broadcast_new_candles(records, imported_timestamps)
+    new_records = records.select { |r| imported_timestamps.include?(r[:ts]) }
+                         .sort_by { |r| r[:ts] }
+
+    candles = new_records.map do |r|
+      {
+        time: r[:ts].to_i,
+        open: r[:open].to_f,
+        high: r[:high].to_f,
+        low: r[:low].to_f,
+        close: r[:close].to_f,
+        volume: r[:volume].to_f
+      }
+    end
+
+    ActionCable.server.broadcast("candles:#{symbol}:#{interval}", candles)
   end
 
   def retry_pause

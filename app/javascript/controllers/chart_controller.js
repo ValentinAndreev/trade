@@ -57,7 +57,7 @@ export default class extends Controller {
       const response = await fetch(this.urlValue)
       const data = await response.json()
       this.series.setData(data)
-      this.chart.timeScale().scrollToRealTime()
+      this.chart.timeScale().fitContent()
     } catch (error) {
       console.error("Failed to load candle data:", error)
     }
@@ -73,8 +73,8 @@ export default class extends Controller {
         timeframe: this.timeframeValue
       },
       {
-        received(data) {
-          controller.series.update(data)
+        received(candles) {
+          candles.forEach(candle => controller.series.update(candle))
         }
       }
     )
