@@ -37,13 +37,16 @@ class Candle::Fetcher
 
   private
 
+  HISTORY_START = Time.utc(2016, 1, 1).to_i * 1000
+
   def end_time_ms
     return without_last_minute_ms unless load_all_data
 
     candle_ts = Candle.min_ts(symbol: symbol, exchange: EXCHANGE)
     return without_last_minute_ms unless candle_ts
 
-    (candle_ts.to_i - 60) * 1000
+    end_ms = (candle_ts.to_i - 60) * 1000
+    end_ms > HISTORY_START ? end_ms : nil
   end
 
   def perform_request(end_time, attempt: 0)
