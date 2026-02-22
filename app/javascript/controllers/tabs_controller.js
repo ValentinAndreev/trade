@@ -82,6 +82,20 @@ export default class extends Controller {
     this.saveTabs()
   }
 
+  toggleVolume(e) {
+    const panel = e.currentTarget.closest("[data-panel-id]")
+    const chartEl = panel.querySelector("[data-controller='chart']")
+    if (!chartEl) return
+
+    const chartCtrl = this.application.getControllerForElementAndIdentifier(chartEl, "chart")
+    if (!chartCtrl) return
+
+    chartCtrl.toggleVolume()
+    const btn = e.currentTarget
+    btn.classList.toggle("text-gray-300", chartCtrl.volumeVisible)
+    btn.classList.toggle("text-gray-500", !chartCtrl.volumeVisible)
+  }
+
   toggleCustomInput(e) {
     const wrapper = e.currentTarget.closest("[data-combo]")
     const select = wrapper.querySelector("select")
@@ -217,6 +231,11 @@ export default class extends Controller {
             data-action="click->tabs#applySettings"
             class="px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded cursor-pointer"
           >Apply</button>
+          <button
+            data-action="click->tabs#toggleVolume"
+            data-vol-btn
+            class="px-3 py-1 text-xs text-gray-300 bg-[#2a2a3e] hover:bg-[#3a3a4e] border border-[#3a3a4e] rounded cursor-pointer"
+          >Vol</button>
         </div>
         <div class="flex-1 min-h-0">
           <div
