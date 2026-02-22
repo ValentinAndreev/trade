@@ -5,10 +5,17 @@ class Candle::Fetcher
   MAX_ATTEMPTS = 5
   SYMBOL_PREFIX = 't'
   EXCHANGE = 'bitfinex'
+  CONTINUOUS_AGGREGATE_BUCKETS = {
+    'cagg_candles_5m' => 5.minutes,
+    'cagg_candles_15m' => 15.minutes,
+    'cagg_candles_1h' => 1.hour,
+    'cagg_candles_4h' => 4.hours,
+    'cagg_candles_1d' => 1.day
+  }.freeze
 
   class FetchError < StandardError; end
 
-  private attr_reader :client, :symbol, :interval, :load_all_data
+  private attr_reader :client, :symbol, :interval, :load_all_data, :connection
 
   # @param symbol [String] Trading pair without prefix (e.g., 'BTCUSD')
   # @param interval [String] Candle interval (default: '1m')
@@ -18,6 +25,7 @@ class Candle::Fetcher
     @symbol = symbol
     @interval = interval
     @load_all_data = load_all_data
+    @connection = ActiveRecord::Base.connection
   end
 
   def call
@@ -26,8 +34,9 @@ class Candle::Fetcher
       break unless current_end_time
 
       data = perform_request(current_end_time)
-      saved_count = save_candles(data)
+      saved_count, imported_timestamps = save_candles(data)
       break if saved_count.zero?
+      refresh_continuous_aggregates(imported_timestamps) if load_all_data
 
       Rails.cache.delete("candle/max_ts/#{symbol}/#{EXCHANGE}")
       Rails.cache.delete("candle/min_ts/#{symbol}/#{EXCHANGE}") if load_all_data
@@ -65,7 +74,7 @@ class Candle::Fetcher
   end
 
   def save_candles(data)
-    return 0 if data.blank?
+    return [ 0, [] ] if data.blank?
 
     # Bitfinex format: [MTS, OPEN, CLOSE, HIGH, LOW, VOLUME]
     records = data.map do |(mts, open, close, high, low, volume)|
@@ -84,7 +93,7 @@ class Candle::Fetcher
 
     imported_timestamps = Candle.import(records).rows.flatten
     broadcast_new_candles(records, imported_timestamps) if imported_timestamps.any?
-    imported_timestamps.count
+    [ imported_timestamps.count, imported_timestamps ]
   end
 
   def without_last_minute_ms
@@ -111,5 +120,25 @@ class Candle::Fetcher
 
   def retry_pause
     Rails.env.test? ? 0.1 : 20
+  end
+
+  def refresh_continuous_aggregates(imported_timestamps)
+    return if imported_timestamps.blank?
+
+    min_ts = imported_timestamps.min
+    max_ts = imported_timestamps.max
+
+    CONTINUOUS_AGGREGATE_BUCKETS.each do |view_name, bucket_size|
+      from = connection.quote((min_ts - bucket_size).utc)
+      to = connection.quote((max_ts + bucket_size).utc)
+
+      connection.execute(<<~SQL.squish)
+        CALL refresh_continuous_aggregate(
+          '#{view_name}',
+          #{from}::timestamptz,
+          #{to}::timestamptz
+        );
+      SQL
+    end
   end
 end

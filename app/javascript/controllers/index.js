@@ -7,3 +7,6 @@ import { application } from "./application"
 import ChartController from "./chart_controller"
 application.register("chart", ChartController)
 
+import TabsController from "./tabs_controller"
+application.register("tabs", TabsController)
+

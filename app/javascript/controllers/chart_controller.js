@@ -31,6 +31,9 @@ export default class extends Controller {
     this.subscription?.unsubscribe()
     this.consumer?.disconnect()
     this.resizeObserver?.disconnect()
+    if (this.scrollHandler && this.chart) {
+      this.chart.timeScale().unsubscribeVisibleLogicalRangeChange(this.scrollHandler)
+    }
     this.chart?.remove()
   }
 
@@ -78,12 +81,20 @@ export default class extends Controller {
   }
 
   subscribeToScroll() {
-    this.chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    this.scrollHandler = (range) => {
       if (!range) return
+      console.log("[chart] visibleLogicalRange:", JSON.stringify(range), "oldestTime:", this.oldestTime, "allHistoryLoaded:", this.allHistoryLoaded, "isLoading:", this.isLoadingHistory)
       if (range.from < 50) {
         this.loadMoreHistory()
       }
-    })
+    }
+    this.chart.timeScale().subscribeVisibleLogicalRangeChange(this.scrollHandler)
+
+    // Immediate check — callback may not fire on subscription
+    const range = this.chart.timeScale().getVisibleLogicalRange()
+    if (range && range.from < 50) {
+      this.loadMoreHistory()
+    }
   }
 
   async loadMoreHistory() {
@@ -135,7 +146,7 @@ export default class extends Controller {
         received(candles) {
           candles.forEach(candle => {
             controller.updateCandleCache(candle)
-            controller.series.update(candle)
+            try { controller.series.update(candle) } catch (e) { console.log("[chart] cable update skipped:", e.message) }
           })
         }
       }
@@ -175,7 +186,7 @@ export default class extends Controller {
         volume
       }
       this.updateCandleCache(candle)
-      this.series.update(candle)
+      try { this.series.update(candle) } catch (e) { console.log("[chart] bfx update skipped:", e.message) }
     }
 
     ws.onclose = () => {

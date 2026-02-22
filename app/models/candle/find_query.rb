@@ -18,7 +18,7 @@ class Candle::FindQuery
 
   DEFAULT_LIMIT = 1500
 
-  private attr_reader :symbol, :exchange, :timeframe, :start_time, :end_time, :limit
+  private attr_reader :symbol, :exchange, :timeframe, :start_time, :end_time, :limit, :connection
 
   def initialize(symbol:, timeframe: '1m', exchange: 'bitfinex', start_time: nil, end_time: nil, limit: nil)
     @symbol = symbol
@@ -27,6 +27,7 @@ class Candle::FindQuery
     @limit = limit&.to_i
     @end_time = parse_time(end_time) || Candle.max_ts(symbol: symbol, exchange: exchange)
     @start_time = parse_time(start_time) || calculate_start_time
+    @connection = ActiveRecord::Base.connection
   end
 
   def call
@@ -129,6 +130,4 @@ class Candle::FindQuery
     return nil if value.blank?
     value.is_a?(String) ? Time.zone.parse(value) : value.to_time.utc
   end
-
-  def connection = ActiveRecord::Base.connection
 end
