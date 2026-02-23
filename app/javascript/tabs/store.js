@@ -1,3 +1,5 @@
+import { OVERLAY_COLORS } from "../chart/theme"
+
 const STORAGE_KEY = "chart-tabs"
 const DEFAULT_TABS = [{
   id: "tab-1",
@@ -5,7 +7,15 @@ const DEFAULT_TABS = [{
   panels: [{
     id: "p-1",
     timeframe: "1m",
-    overlays: [{ id: "o-1", symbol: "BTCUSD", mode: "price", chartType: "Candlestick" }],
+    overlays: [{
+      id: "o-1",
+      symbol: "BTCUSD",
+      mode: "price",
+      chartType: "Candlestick",
+      visible: true,
+      colorScheme: 0,
+      opacity: 1,
+    }],
   }],
 }]
 
@@ -27,11 +37,11 @@ export default class TabStore {
     const panelId = `p-${this._nextPanelId++}`
     const tab = {
       id: `tab-${this._nextTabId++}`,
-      name: "New",
+      name: this._newTabName(),
       panels: [{
         id: panelId,
         timeframe: "1m",
-        overlays: [{ id: overlayId, symbol: null, mode: "price", chartType: "Candlestick" }],
+        overlays: [this._newOverlay(overlayId, null, 0)],
       }],
     }
     this.tabs.push(tab)
@@ -96,7 +106,7 @@ export default class TabStore {
     const panel = {
       id: `p-${this._nextPanelId++}`,
       timeframe: "1m",
-      overlays: [{ id: overlayId, symbol: null, mode: "price", chartType: "Candlestick" }],
+      overlays: [this._newOverlay(overlayId, null, 0)],
     }
     tab.panels.push(panel)
     this.selectedPanelId = panel.id
@@ -115,7 +125,7 @@ export default class TabStore {
         const fresh = {
           id: `p-${this._nextPanelId++}`,
           timeframe: "1m",
-          overlays: [{ id: overlayId, symbol: null, mode: "price", chartType: "Candlestick" }],
+          overlays: [this._newOverlay(overlayId, null, 0)],
         }
         tab.panels.push(fresh)
         this.selectedPanelId = fresh.id
@@ -158,7 +168,8 @@ export default class TabStore {
   addOverlay(panelId) {
     const panel = this._findPanel(panelId)
     if (!panel) return null
-    const overlay = { id: `o-${this._nextOverlayId++}`, symbol: null, mode: "price", chartType: "Candlestick" }
+    const colorScheme = panel.overlays.length % OVERLAY_COLORS.length
+    const overlay = this._newOverlay(`o-${this._nextOverlayId++}`, null, colorScheme)
     panel.overlays.push(overlay)
     this.selectedOverlayId = overlay.id
     this._save()
@@ -172,7 +183,7 @@ export default class TabStore {
     if (idx === -1) return false
     panel.overlays.splice(idx, 1)
     if (panel.overlays.length === 0) {
-      const fresh = { id: `o-${this._nextOverlayId++}`, symbol: null, mode: "price", chartType: "Candlestick" }
+      const fresh = this._newOverlay(`o-${this._nextOverlayId++}`, null, 0)
       panel.overlays.push(fresh)
       this.selectedOverlayId = fresh.id
     } else if (this.selectedOverlayId === overlayId) {
@@ -212,8 +223,42 @@ export default class TabStore {
     return true
   }
 
+  setOverlayVisible(overlayId, visible) {
+    const overlay = this._findOverlay(overlayId)
+    if (!overlay) return false
+    const normalized = visible !== false
+    if (overlay.visible === normalized) return false
+    overlay.visible = normalized
+    this._save()
+    return true
+  }
+
+  setOverlayColorScheme(overlayId, colorScheme) {
+    const overlay = this._findOverlay(overlayId)
+    if (!overlay) return false
+    const normalized = this._normalizeColorScheme(colorScheme)
+    if (overlay.colorScheme === normalized) return false
+    overlay.colorScheme = normalized
+    this._save()
+    return true
+  }
+
+  setOverlayOpacity(overlayId, opacity) {
+    const overlay = this._findOverlay(overlayId)
+    if (!overlay) return false
+    const normalized = this._normalizeOpacity(opacity)
+    if (overlay.opacity === normalized) return false
+    overlay.opacity = normalized
+    this._save()
+    return true
+  }
+
   get selectedOverlay() {
     return this._findOverlay(this.selectedOverlayId)
+  }
+
+  overlayById(overlayId) {
+    return this._findOverlay(overlayId)
   }
 
   _findOverlay(overlayId) {
@@ -232,6 +277,48 @@ export default class TabStore {
       if (panel) return panel
     }
     return null
+  }
+
+  _newOverlay(id, symbol = null, colorScheme = 0) {
+    return {
+      id,
+      symbol,
+      mode: "price",
+      chartType: "Candlestick",
+      visible: true,
+      colorScheme: this._normalizeColorScheme(colorScheme),
+      opacity: 1,
+    }
+  }
+
+  _newTabName() {
+    return `New${this._nextNewTabNumber()}`
+  }
+
+  _nextNewTabNumber() {
+    let max = 0
+    for (const tab of this.tabs) {
+      if (!tab.name) continue
+      const match = tab.name.match(/^New(\d+)$/)
+      if (!match) continue
+      const num = parseInt(match[1], 10)
+      if (!Number.isNaN(num) && num > max) max = num
+    }
+    return max + 1
+  }
+
+  _normalizeColorScheme(colorScheme) {
+    const num = parseInt(colorScheme, 10)
+    if (Number.isNaN(num) || num < 0) return 0
+    return num % OVERLAY_COLORS.length
+  }
+
+  _normalizeOpacity(opacity) {
+    const value = parseFloat(opacity)
+    if (Number.isNaN(value)) return 1
+    if (value < 0) return 0
+    if (value > 1) return 1
+    return Math.round(value * 100) / 100
   }
 
   // --- Persistence ---
@@ -282,6 +369,9 @@ export default class TabStore {
             symbol: t.symbol ?? null,
             mode: t.mode || "price",
             chartType: "Candlestick",
+            visible: true,
+            colorScheme: 0,
+            opacity: 1,
           }],
         }],
       }
@@ -301,10 +391,13 @@ export default class TabStore {
       return {
         ...p,
         timeframe: p.timeframe || "1m",
-        overlays: p.overlays.map(o => ({
+        overlays: p.overlays.map((o, idx) => ({
           ...o,
           mode: o.mode || "price",
           chartType: o.chartType || "Candlestick",
+          visible: o.visible !== false,
+          colorScheme: this._normalizeColorScheme(o.colorScheme ?? idx),
+          opacity: this._normalizeOpacity(o.opacity),
         })),
       }
     }
@@ -318,6 +411,9 @@ export default class TabStore {
         symbol: p.symbol ?? null,
         mode: p.mode || "price",
         chartType: "Candlestick",
+        visible: true,
+        colorScheme: 0,
+        opacity: 1,
       }],
     }
   }

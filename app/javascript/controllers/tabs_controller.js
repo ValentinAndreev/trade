@@ -43,7 +43,7 @@ export default class extends Controller {
     const input = document.createElement("input")
     input.type = "text"
     input.value = labelEl.textContent
-    input.className = "w-24 px-1 py-0 text-sm text-white bg-[#2a2a3e] border border-blue-400 rounded outline-none"
+    input.className = "w-36 px-2 py-1 text-base text-white bg-[#2a2a3e] border border-blue-400 rounded outline-none"
 
     const commit = () => {
       const name = input.value.trim()
@@ -110,10 +110,34 @@ export default class extends Controller {
   }
 
   selectOverlay(e) {
+    if (e.target.closest("[data-toggle-overlay-visibility]")) return
     if (e.target.closest("[data-remove-overlay]")) return
     const overlayId = e.currentTarget.dataset.overlayId
     if (!overlayId) return
     if (this.store.selectOverlay(overlayId)) this.render()
+  }
+
+  toggleOverlayVisibility(e) {
+    e.stopPropagation()
+    const overlayId =
+      e.currentTarget.dataset.overlayId ||
+      e.currentTarget.closest("[data-overlay-id]")?.dataset.overlayId ||
+      this.store.selectedOverlayId
+    if (!overlayId) return
+
+    const overlay = this.store.overlayById(overlayId)
+    if (!overlay) return
+
+    const visible = overlay.visible === false
+    const changed = this.store.setOverlayVisible(overlayId, visible)
+    if (!changed) return
+
+    const panel = this.store.selectedPanel
+    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+    if (chartCtrl?.setOverlayVisibility) {
+      chartCtrl.setOverlayVisibility(overlayId, visible)
+    }
+    this.render()
   }
 
   // --- Settings (sidebar) ---
@@ -137,6 +161,12 @@ export default class extends Controller {
     }
 
     if (timeframeChanged || symbolChanged) this.render()
+  }
+
+  applySettingsOnEnter(e) {
+    if (e.key !== "Enter") return
+    e.preventDefault()
+    this.applySettings()
   }
 
   setMode(e) {
@@ -164,20 +194,67 @@ export default class extends Controller {
     }
   }
 
+  switchColorScheme(e) {
+    const overlay = this.store.selectedOverlay
+    if (!overlay) return
+
+    const rawValue = e.currentTarget.dataset.colorScheme ?? e.currentTarget.value
+    const colorScheme = parseInt(rawValue, 10)
+    if (!Number.isFinite(colorScheme)) return
+
+    const details = e.currentTarget.closest("details")
+    if (details) details.open = false
+
+    if (this.store.setOverlayColorScheme(overlay.id, colorScheme)) {
+      const panel = this.store.selectedPanel
+      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+      if (chartCtrl?.setOverlayColorScheme) chartCtrl.setOverlayColorScheme(overlay.id, colorScheme)
+      this.render()
+    }
+  }
+
+  adjustOverlayOpacity(e) {
+    const overlay = this.store.selectedOverlay
+    if (!overlay) return
+
+    const percent = parseInt(e.currentTarget.value, 10)
+    if (!Number.isFinite(percent)) return
+    const opacity = Math.max(0, Math.min(100, percent)) / 100
+
+    const changed = this.store.setOverlayOpacity(overlay.id, opacity)
+
+    const panel = this.store.selectedPanel
+    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+    if (chartCtrl?.setOverlayOpacity) chartCtrl.setOverlayOpacity(overlay.id, opacity)
+
+    const valueEl = this.sidebarTarget.querySelector("[data-opacity-value]")
+    if (valueEl) valueEl.textContent = `${Math.round(opacity * 100)}%`
+
+    if (changed && e.type === "change") this.render()
+  }
+
   toggleCustomInput(e) {
     const wrapper = e.currentTarget.closest("[data-combo]")
     const select = wrapper.querySelector("select")
     const input = wrapper.querySelector("input")
+    const button = e.currentTarget
+
+    const updateToggleButton = (manualMode) => {
+      button.textContent = manualMode ? "Manual" : "List"
+      button.title = manualMode ? "Current mode: manual input" : "Current mode: list selection"
+    }
 
     if (select.classList.contains("hidden")) {
       select.classList.remove("hidden")
       input.classList.add("hidden")
       select.value = input.value || select.options[0]?.value
+      updateToggleButton(false)
     } else {
       select.classList.add("hidden")
       input.classList.remove("hidden")
       input.value = select.value
       input.focus()
+      updateToggleButton(true)
     }
   }
 
@@ -235,6 +312,46 @@ export default class extends Controller {
     return this.application.getControllerForElementAndIdentifier(chartEl, "chart")
   }
 
+  _syncSelectedOverlayScale() {
+    const selectedPanelId = this.store.selectedPanelId
+    const selectedOverlayId = this.store.selectedOverlayId
+
+    this.panelsTarget.querySelectorAll("[data-panel-id]").forEach(panelEl => {
+      const chartEl = panelEl.querySelector("[data-controller='chart']")
+      if (!chartEl) return
+
+      const chartCtrl = this.application.getControllerForElementAndIdentifier(chartEl, "chart")
+      if (!chartCtrl?.setSelectedOverlayScale) return
+
+      const panel = this._panelById(panelEl.dataset.panelId)
+      if (panel && chartCtrl.setOverlayVisibility) {
+        panel.overlays.forEach(overlay => {
+          chartCtrl.setOverlayVisibility(overlay.id, overlay.visible !== false)
+          if (chartCtrl.setOverlayColorScheme) {
+            chartCtrl.setOverlayColorScheme(overlay.id, overlay.colorScheme)
+          }
+          if (chartCtrl.setOverlayOpacity) {
+            chartCtrl.setOverlayOpacity(overlay.id, overlay.opacity)
+          }
+        })
+      }
+
+      if (panelEl.dataset.panelId === selectedPanelId) {
+        chartCtrl.setSelectedOverlayScale(selectedOverlayId)
+      } else {
+        chartCtrl.setSelectedOverlayScale(null)
+      }
+    })
+  }
+
+  _panelById(panelId) {
+    for (const tab of this.store.tabs) {
+      const panel = tab.panels.find(p => p.id === panelId)
+      if (panel) return panel
+    }
+    return null
+  }
+
   // --- Render ---
 
   render() {
@@ -247,5 +364,7 @@ export default class extends Controller {
       this.config.timeframes,
       (tab) => this.store.tabLabel(tab),
     )
+    this._syncSelectedOverlayScale()
+    requestAnimationFrame(() => this._syncSelectedOverlayScale())
   }
 }

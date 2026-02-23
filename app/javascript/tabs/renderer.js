@@ -1,3 +1,5 @@
+import { OVERLAY_COLORS } from "../chart/theme"
+
 export default class TabRenderer {
   constructor(tabBarEl, panelsEl, sidebarEl, { controllerName }) {
     this.tabBarEl = tabBarEl
@@ -22,7 +24,7 @@ export default class TabRenderer {
         <button
           data-tab-id="${tab.id}"
           data-action="click->${this.controllerName}#switchTab"
-          class="flex items-center gap-1 px-3 py-1.5 text-sm cursor-pointer whitespace-nowrap
+          class="flex items-center gap-2 px-4 py-2 text-base font-medium cursor-pointer whitespace-nowrap
                  ${active
                    ? "text-white border-b-2 border-blue-400"
                    : "text-gray-400 hover:text-gray-200 border-b-2 border-transparent"}"
@@ -30,12 +32,13 @@ export default class TabRenderer {
           <span
             data-tab-label
             data-action="dblclick->${this.controllerName}#startRename"
-            title="Double-click to rename"
+            title="Double-click to rename tab"
           >${label}</span>
           ${tabs.length > 1 ? `
             <span
               data-action="click->${this.controllerName}#removeTab"
-              class="ml-1 text-gray-500 hover:text-red-400 text-xs leading-none"
+              title="Remove tab"
+              class="ml-1 inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none"
             >&times;</span>
           ` : ""}
         </button>
@@ -45,7 +48,8 @@ export default class TabRenderer {
     const addBtn = `
       <button
         data-action="click->${this.controllerName}#addTab"
-        class="px-2 py-1.5 text-gray-500 hover:text-white text-lg leading-none cursor-pointer"
+        class="px-3 py-2 text-gray-400 hover:text-white text-2xl leading-none cursor-pointer"
+        title="Add new tab"
       >+</button>
     `
 
@@ -169,6 +173,35 @@ export default class TabRenderer {
     })))
   }
 
+  _panelLegendHTML(panel) {
+    const timeframe = panel.timeframe || "1m"
+    const lines = panel.overlays
+      .filter(o => o.symbol)
+      .map(o => {
+        const modeLabel = o.mode === "volume" ? "Volume" : "Price"
+        const symbol = this._escapeHTML(o.symbol)
+        return `<div class="truncate">${symbol} ${modeLabel} ${timeframe}</div>`
+      })
+      .join("")
+
+    if (!lines) return ""
+
+    return `
+      <div class="absolute top-2 left-3 z-10 max-w-[72%] pointer-events-none flex flex-col gap-0.5 text-base font-medium text-gray-500 drop-shadow-[0_1px_1px_rgba(0,0,0,0.55)]">
+        ${lines}
+      </div>
+    `
+  }
+
+  _escapeHTML(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll("\"", "&quot;")
+      .replaceAll("'", "&#39;")
+  }
+
   _panelHTML(panel, selectedPanelId) {
     const selected = panel.id === selectedPanelId
     const borderClass = selected ? "border-blue-500/50" : "border-[#2a2a3e]"
@@ -179,7 +212,7 @@ export default class TabRenderer {
         <button
           data-close-panel="${panel.id}"
           data-action="click->${this.controllerName}#removePanel"
-          class="w-5 h-5 flex items-center justify-center text-gray-500 hover:text-red-400 bg-[#1a1a2e]/80 hover:bg-[#2a2a3e] rounded text-xs cursor-pointer"
+          class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-300 bg-[#1a1a2e]/85 hover:bg-[#2a2a3e] rounded text-base cursor-pointer"
           title="Remove panel"
         >&times;</button>
       </div>
@@ -191,17 +224,19 @@ export default class TabRenderer {
              data-action="click->${this.controllerName}#selectPanel"
              class="relative flex-1 min-h-0 border ${borderClass} flex items-center justify-center cursor-pointer">
           ${closeBtn}
-          <span class="text-gray-500 text-sm">Select a symbol</span>
+          <span class="text-gray-500 text-base">Select a symbol</span>
         </div>
       `
     }
 
     const overlaysJson = this._overlaysJson(panel)
+    const panelLegend = this._panelLegendHTML(panel)
     return `
       <div data-panel-id="${panel.id}"
            data-action="click->${this.controllerName}#selectPanel"
            class="relative flex-1 min-h-0 border ${borderClass} cursor-pointer">
         ${closeBtn}
+        ${panelLegend}
         <div
           data-controller="chart"
           data-chart-timeframe-value="${panel.timeframe}"
@@ -231,6 +266,9 @@ export default class TabRenderer {
     const currentSymbol = selectedOverlay?.symbol || ""
     const mode = selectedOverlay?.mode || "price"
     const chartType = selectedOverlay?.chartType || "Candlestick"
+    const colorScheme = selectedOverlay?.colorScheme ?? 0
+    const opacity = typeof selectedOverlay?.opacity === "number" ? selectedOverlay.opacity : 1
+    const opacityPercent = Math.round(Math.max(0, Math.min(1, opacity)) * 100)
 
     const priceActive = mode === "price"
     const activeBtnClass = "text-white bg-blue-600"
@@ -244,38 +282,58 @@ export default class TabRenderer {
       : this._chartTypeOpts([
           ["Histogram", "Bars"], ["Line", "Line"], ["Area", "Area"],
         ], chartType)
+    const colorSchemeDropdown = this._colorSchemeDropdown(colorScheme)
 
     // Overlay list
     const overlayList = panel.overlays.map(o => {
       const isSelected = o.id === (selectedOverlay?.id)
       const label = o.symbol || "Empty"
+      const modeLabel = o.mode === "volume" ? "Volume" : "Price"
+      const visibilityClass = o.visible === false ? "bg-gray-600" : "bg-emerald-400"
+      const visibilityTitle = o.visible === false ? "Hidden" : "Visible"
       return `
-        <div class="flex items-center gap-1 px-2 py-1 rounded cursor-pointer text-xs
+        <div class="flex items-center gap-2 px-2.5 py-1.5 rounded cursor-pointer text-sm
                     ${isSelected ? "bg-blue-600/30 text-white" : "text-gray-400 hover:bg-[#2a2a3e]"}"
              data-overlay-id="${o.id}"
              data-action="click->${this.controllerName}#selectOverlay">
-          <span class="flex-1 truncate">${label}</span>
+          <div class="flex-1 min-w-0 flex items-center gap-1.5">
+            <span class="truncate">${label}</span>
+            <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded border text-xs leading-none
+                         ${isSelected ? "text-blue-200 border-blue-300/40 bg-blue-500/10" : "text-gray-400 border-gray-500/40 bg-[#2a2a3e]"}">${modeLabel}</span>
+          </div>
+          <button
+            type="button"
+            data-action="click->${this.controllerName}#toggleOverlayVisibility"
+            data-overlay-id="${o.id}"
+            data-toggle-overlay-visibility
+            class="inline-flex w-6 h-6 items-center justify-center rounded shrink-0 hover:bg-[#2a2a3e] cursor-pointer"
+            title="Toggle visibility"
+            aria-label="Toggle visibility"
+          >
+            <span class="w-2.5 h-2.5 rounded-full ${visibilityClass}" title="${visibilityTitle}" aria-hidden="true"></span>
+          </button>
           ${panel.overlays.length > 1 ? `
             <span data-action="click->${this.controllerName}#removeOverlay"
                   data-remove-overlay="${o.id}"
-                  class="text-gray-500 hover:text-red-400 text-xs leading-none">&times;</span>
+                  title="Remove chart"
+                  class="inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
           ` : ""}
         </div>
       `
     }).join("")
 
     this.sidebarEl.innerHTML = `
-      <div class="flex flex-col gap-3 text-sm">
+      <div class="flex flex-col gap-4 text-base">
         <div class="flex items-center justify-between">
-          <span class="text-xs text-gray-500 uppercase tracking-wide">Panel Settings</span>
+          <span class="text-sm text-gray-500 uppercase tracking-wide">Panel Settings</span>
           <button
             data-action="click->${this.controllerName}#addPanel"
-            class="text-xs text-gray-500 hover:text-white cursor-pointer"
-            title="Add panel"
+            class="text-sm text-gray-400 hover:text-white cursor-pointer"
+            title="Add panel below"
           >+ Panel</button>
         </div>
 
-        <label class="flex flex-col gap-1 text-xs text-gray-400">
+        <label class="flex flex-col gap-1 text-sm text-gray-400">
           Timeframe
           ${this._comboHTML("timeframe", timeframes, currentTimeframe, "w-full")}
         </label>
@@ -283,50 +341,66 @@ export default class TabRenderer {
         <hr class="border-[#3a3a4e]">
 
         <div class="flex items-center justify-between">
-          <span class="text-xs text-gray-500 uppercase tracking-wide">Charts</span>
+          <span class="text-sm text-gray-500 uppercase tracking-wide">Charts</span>
           <button
             data-action="click->${this.controllerName}#addOverlay"
-            class="text-xs text-gray-500 hover:text-white cursor-pointer"
-            title="Add chart overlay"
-          >+</button>
+            class="text-sm text-gray-400 hover:text-white cursor-pointer"
+            title="Add chart"
+          >+ Chart</button>
         </div>
 
         <div class="flex flex-col gap-0.5">${overlayList}</div>
 
         <hr class="border-[#3a3a4e]">
 
-        <div class="text-xs text-gray-500 uppercase tracking-wide">Selected Chart</div>
+        <div class="text-sm text-gray-500 uppercase tracking-wide">Selected Chart</div>
 
-        <label class="flex flex-col gap-1 text-xs text-gray-400">
+        <label class="flex flex-col gap-1 text-sm text-gray-400">
           Symbol
           ${this._comboHTML("symbol", symbols, currentSymbol, "w-full")}
         </label>
 
-        <button
-          data-action="click->${this.controllerName}#applySettings"
-          class="px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded cursor-pointer"
-        >Apply</button>
+        <div class="flex flex-col gap-1 text-sm text-gray-400">
+          <span>Color scheme</span>
+          ${colorSchemeDropdown}
+        </div>
+
+        <label class="flex flex-col gap-1 text-sm text-gray-400">
+          <span class="flex items-center justify-between">
+            <span>Opacity</span>
+            <span data-opacity-value class="text-gray-400">${opacityPercent}%</span>
+          </span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="${opacityPercent}"
+            data-action="input->${this.controllerName}#adjustOverlayOpacity change->${this.controllerName}#adjustOverlayOpacity"
+            class="w-full accent-blue-500 cursor-pointer"
+          >
+        </label>
 
         ${selectedOverlay?.symbol ? `
           <div class="flex gap-1">
             <button
               data-action="click->${this.controllerName}#setMode"
               data-mode="price"
-              class="flex-1 px-2 py-1.5 text-xs rounded cursor-pointer ${priceActive ? activeBtnClass : inactiveBtnClass}"
+              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${priceActive ? activeBtnClass : inactiveBtnClass}"
             >Price</button>
             <button
               data-action="click->${this.controllerName}#setMode"
               data-mode="volume"
-              class="flex-1 px-2 py-1.5 text-xs rounded cursor-pointer ${priceActive ? inactiveBtnClass : activeBtnClass}"
+              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${priceActive ? inactiveBtnClass : activeBtnClass}"
             >Volume</button>
           </div>
 
-          <label class="flex flex-col gap-1 text-xs text-gray-400">
+          <label class="flex flex-col gap-1 text-sm text-gray-400">
             Chart type
             <select
               data-field="chartType"
               data-action="change->${this.controllerName}#switchChartType"
-              class="px-2 py-1.5 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+              class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
             >${chartTypeOptions}</select>
           </label>
         ` : ""}
@@ -340,29 +414,92 @@ export default class TabRenderer {
     ).join("")
   }
 
+  _colorSchemeDropdown(selected) {
+    const selectedScheme = OVERLAY_COLORS[selected] || OVERLAY_COLORS[0]
+
+    const items = OVERLAY_COLORS.map((scheme, idx) => {
+      const active = idx === selected
+      return `
+        <button
+          type="button"
+          data-color-scheme="${idx}"
+          data-action="click->${this.controllerName}#switchColorScheme"
+          class="w-full flex items-center justify-between px-2 py-2 rounded text-sm cursor-pointer
+                 ${active ? "bg-blue-600/20 text-white" : "text-gray-300 hover:bg-[#2a2a3e]"}"
+        >
+          <span class="inline-flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-sm border border-black/20" style="background:${scheme.up}"></span>
+            <span class="text-xs uppercase tracking-wide">Up</span>
+          </span>
+          <span class="inline-flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-sm border border-black/20" style="background:${scheme.down}"></span>
+            <span class="text-xs uppercase tracking-wide">Down</span>
+          </span>
+        </button>
+      `
+    }).join("")
+
+    return `
+      <details class="relative">
+        <summary class="list-none flex items-center justify-between gap-2 px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded cursor-pointer select-none">
+          <span class="inline-flex items-center gap-2">
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-sm border border-black/20" style="background:${selectedScheme.up}"></span>
+              <span class="text-xs uppercase tracking-wide text-gray-300">Up</span>
+            </span>
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-sm border border-black/20" style="background:${selectedScheme.down}"></span>
+              <span class="text-xs uppercase tracking-wide text-gray-300">Down</span>
+            </span>
+          </span>
+          <span class="text-xs text-gray-400">▼</span>
+        </summary>
+        <div class="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-[#1a1a2e] border border-[#3a3a4e] rounded p-1">
+          ${items}
+        </div>
+      </details>
+    `
+  }
+
   // --- Combo (select + custom input) ---
 
   _comboHTML(field, list, current, width) {
     const values = current && !list.includes(current) ? [current, ...list] : list
     const opts = values.map(v => `<option value="${v}"${v === current ? " selected" : ""}>${v}</option>`).join("")
     const inList = !current || list.includes(current)
+    const isTimeframe = field === "timeframe"
+    const selectTitle = isTimeframe
+      ? "Choose timeframe from list"
+      : "Choose symbol from list"
+    const inputTitle = isTimeframe
+      ? "Enter timeframe manually, for example: 1m, 5m, 1h, 1D"
+      : "Enter symbol manually, for example: BTCUSD"
+    const inputPlaceholder = isTimeframe ? "1m, 5m, 1h..." : "BTCUSD"
+    const toggleTitle = isTimeframe
+      ? (inList ? "Current mode: list selection" : "Current mode: manual input")
+      : (inList ? "Current mode: list selection" : "Current mode: manual input")
+    const toggleLabel = inList ? "List" : "Manual"
     return `
-      <span data-combo class="flex items-center gap-0.5">
+      <span data-combo class="flex items-center gap-1">
         <select
           data-field="${field}"
           data-action="change->${this.controllerName}#applySettings"
-          class="${inList ? "" : "hidden "}${width} px-2 py-1.5 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+          title="${selectTitle}"
+          class="${inList ? "" : "hidden "}${width} px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
         >${opts}</select>
         <input
           data-field="${field}"
+          data-action="keydown->${this.controllerName}#applySettingsOnEnter"
           value="${current}"
-          class="${inList ? "hidden " : ""}${width} px-2 py-1.5 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+          title="${inputTitle}"
+          placeholder="${inputPlaceholder}"
+          class="${inList ? "hidden " : ""}${width} px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
         >
         <button
           data-action="click->${this.controllerName}#toggleCustomInput"
-          class="px-1 py-1 text-xs text-gray-500 hover:text-white cursor-pointer shrink-0"
-          title="Toggle custom input"
-        >&#9998;</button>
+          class="min-w-[72px] px-3 py-2 text-sm font-medium text-blue-200 bg-[#23233d] border border-[#4a4a66] hover:bg-[#2f2f4d] hover:text-white rounded cursor-pointer shrink-0"
+          title="${toggleTitle}"
+        >${toggleLabel}</button>
       </span>`
   }
 }
