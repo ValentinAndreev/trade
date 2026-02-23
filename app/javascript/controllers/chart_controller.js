@@ -1,7 +1,9 @@
 import { Controller } from "@hotwired/stimulus"
 import { createChart } from "lightweight-charts"
 
-import { CHART_THEME, PRICE_SERIES_TYPES, VOLUME_SERIES_TYPES } from "../chart/theme"
+import {
+  CHART_THEME, PRICE_SERIES_TYPES, VOLUME_SERIES_TYPES, OVERLAY_COLORS,
+} from "../chart/theme"
 import { toVolumePoint, toVolumeData } from "../chart/volume"
 import DataLoader from "../chart/data_loader"
 import BitfinexFeed from "../chart/bitfinex_feed"
@@ -10,42 +12,90 @@ import Scrollbar from "../chart/scrollbar"
 
 export default class extends Controller {
   static values = {
-    symbol: { type: String, default: "" },
     timeframe: { type: String, default: "1m" },
-    url: String,
+    overlays: { type: String, default: "[]" },
   }
 
   connect() {
-    if (!this.symbolValue) return
+    this.overlayMap = new Map() // id -> { series, loader, bfxFeed, cableFeed, mode, chartType, colorIndex }
+    this._colorIndex = 0
 
-    this.mode = "price"
-    this.priceType = "Candlestick"
-    this.volumeType = "Histogram"
-    this.loader = new DataLoader(this.urlValue)
+    const configs = this._parseOverlays()
+    if (configs.length === 0 || configs.every(c => !c.symbol)) return
 
-    this.initChart()
+    this._initChart()
 
-    this.loadData().then(() => {
-      this.subscribeToScroll()
-      this.bfxFeed.connect()
+    configs.forEach(config => {
+      if (config.symbol) this._addOverlayInternal(config)
     })
-    this.cableFeed.connect()
+
+    this._startFeeds()
   }
 
   disconnect() {
-    this.bfxFeed?.disconnect()
-    this.cableFeed?.disconnect()
+    for (const [, ov] of this.overlayMap) {
+      ov.bfxFeed?.disconnect()
+      ov.cableFeed?.disconnect()
+    }
     if (this.scrollHandler) {
       this.chart?.timeScale().unsubscribeVisibleLogicalRangeChange(this.scrollHandler)
     }
     this.scrollbar?.destroy()
     this.chart?.remove()
     this.chartWrapperEl?.remove()
+    this.overlayMap.clear()
   }
 
-  // --- Chart ---
+  // --- Public API for tabs_controller ---
 
-  initChart() {
+  addOverlay(config) {
+    if (!this.chart) {
+      this._initChart()
+    }
+    this._addOverlayInternal(config)
+    const ov = this.overlayMap.get(config.id)
+    if (ov) {
+      this._loadOverlayData(ov, config.id).then(() => {
+        ov.bfxFeed.connect()
+      })
+      ov.cableFeed.connect()
+    }
+  }
+
+  removeOverlay(id) {
+    const ov = this.overlayMap.get(id)
+    if (!ov) return
+    ov.bfxFeed?.disconnect()
+    ov.cableFeed?.disconnect()
+    this.chart.removeSeries(ov.series)
+    this.overlayMap.delete(id)
+  }
+
+  showMode(id, mode) {
+    const ov = this.overlayMap.get(id)
+    if (!ov || ov.mode === mode) return
+    ov.mode = mode
+    this._recreateSeries(id)
+  }
+
+  switchChartType(id, chartType) {
+    const ov = this.overlayMap.get(id)
+    if (!ov || ov.chartType === chartType) return
+    ov.chartType = chartType
+    this._recreateSeries(id)
+  }
+
+  // --- Internal ---
+
+  _parseOverlays() {
+    try {
+      return JSON.parse(this.overlaysValue)
+    } catch {
+      return []
+    }
+  }
+
+  _initChart() {
     Object.assign(this.element.style, {
       display: "flex",
       flexDirection: "column",
@@ -62,151 +112,190 @@ export default class extends Controller {
       timeScale: { timeVisible: true, secondsVisible: false },
     })
 
-    this.createSeries()
-
     this.scrollbar = new Scrollbar(this.element, {
       getVisibleRange: () => this.chart.timeScale().getVisibleLogicalRange(),
       setVisibleRange: (range) => this.chart.timeScale().setVisibleLogicalRange(range),
-      getTotalBars: () => this.loader.candles.length,
+      getTotalBars: () => this._maxBarsCount(),
     })
-
-    const onCandle = (candle) => this.handleCandle(candle)
-    this.bfxFeed = new BitfinexFeed(this.symbolValue, this.timeframeValue, onCandle)
-    this.cableFeed = new CableFeed(this.symbolValue, this.timeframeValue, onCandle)
   }
 
-  // --- Series creation ---
+  _addOverlayInternal(config) {
+    const colorIndex = this._colorIndex++
+    const colors = OVERLAY_COLORS[colorIndex % OVERLAY_COLORS.length]
+    const mode = config.mode || "price"
+    const chartType = config.chartType || (mode === "volume" ? "Histogram" : "Candlestick")
+    const priceScaleId = this.overlayMap.size === 0 ? "right" : `overlay-${config.id}`
 
-  createSeries() {
-    if (this.mode === "volume") {
-      const def = VOLUME_SERIES_TYPES[this.volumeType]
-      this.series = this.chart.addSeries(def.type, def.options)
-    } else {
-      const def = PRICE_SERIES_TYPES[this.priceType]
-      this.series = this.chart.addSeries(def.type, def.options)
+    const series = this._createSeries(mode, chartType, colors, priceScaleId)
+
+    const url = `/api/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${encodeURIComponent(this.timeframeValue)}&limit=1500`
+    const loader = new DataLoader(url)
+
+    const onCandle = (candle) => this._handleCandle(config.id, candle)
+    const bfxFeed = new BitfinexFeed(config.symbol, this.timeframeValue, onCandle)
+    const cableFeed = new CableFeed(config.symbol, this.timeframeValue, onCandle)
+
+    this.overlayMap.set(config.id, {
+      series, loader, bfxFeed, cableFeed,
+      mode, chartType, colorIndex, colors, priceScaleId,
+      symbol: config.symbol,
+    })
+  }
+
+  _createSeries(mode, chartType, colors, priceScaleId) {
+    if (mode === "volume") {
+      const def = VOLUME_SERIES_TYPES[chartType] || VOLUME_SERIES_TYPES.Histogram
+      return this.chart.addSeries(def.type, {
+        ...def.options,
+        priceScaleId,
+        ...(chartType === "Histogram" ? {} : { color: colors.line }),
+      })
+    }
+
+    const def = PRICE_SERIES_TYPES[chartType] || PRICE_SERIES_TYPES.Candlestick
+    const colorOverrides = this._priceColorOverrides(chartType, colors)
+    return this.chart.addSeries(def.type, {
+      ...def.options,
+      ...colorOverrides,
+      priceScaleId,
+    })
+  }
+
+  _priceColorOverrides(chartType, colors) {
+    switch (chartType) {
+      case "Candlestick":
+        return {
+          upColor: colors.up, downColor: colors.down,
+          wickUpColor: colors.up, wickDownColor: colors.down,
+        }
+      case "Bar":
+        return { upColor: colors.up, downColor: colors.down }
+      case "Line":
+        return { color: colors.line }
+      case "Area":
+        return {
+          lineColor: colors.line,
+          topColor: colors.line + "66",
+          bottomColor: colors.line + "0d",
+        }
+      case "Baseline":
+        return {
+          topLineColor: colors.up, bottomLineColor: colors.down,
+          topFillColor1: colors.up + "33", topFillColor2: colors.up + "05",
+          bottomFillColor1: colors.down + "05", bottomFillColor2: colors.down + "33",
+        }
+      default:
+        return {}
+    }
+  }
+
+  _recreateSeries(id) {
+    const ov = this.overlayMap.get(id)
+    if (!ov) return
+    this.chart.removeSeries(ov.series)
+    ov.series = this._createSeries(ov.mode, ov.chartType, ov.colors, ov.priceScaleId)
+    if (ov.loader.candles.length > 0) {
+      ov.series.setData(this._toSeriesData(ov, ov.loader.candles))
     }
   }
 
   // --- Data formatting ---
 
-  toSeriesData(candles) {
-    if (this.mode === "volume") {
-      return this._toVolumeSeriesData(candles)
+  _toSeriesData(ov, candles) {
+    if (ov.mode === "volume") {
+      if (ov.chartType === "Histogram") return toVolumeData(candles)
+      return candles.map(c => ({ time: c.time, value: c.volume || 0 }))
     }
-    return this._toPriceData(candles)
-  }
-
-  toUpdatePoint(candle) {
-    if (this.mode === "volume") {
-      return this._toVolumeUpdatePoint(candle)
-    }
-    return this._toPriceUpdatePoint(candle)
-  }
-
-  _toPriceData(candles) {
-    if (this.priceType === "Candlestick" || this.priceType === "Bar") {
-      return candles
-    }
+    if (ov.chartType === "Candlestick" || ov.chartType === "Bar") return candles
     return candles.map(c => ({ time: c.time, value: c.close }))
   }
 
-  _toPriceUpdatePoint(candle) {
-    if (this.priceType === "Candlestick" || this.priceType === "Bar") {
-      return candle
+  _toUpdatePoint(ov, candle) {
+    if (ov.mode === "volume") {
+      if (ov.chartType === "Histogram") return toVolumePoint(candle)
+      return { time: candle.time, value: candle.volume || 0 }
     }
+    if (ov.chartType === "Candlestick" || ov.chartType === "Bar") return candle
     return { time: candle.time, value: candle.close }
-  }
-
-  _toVolumeSeriesData(candles) {
-    if (this.volumeType === "Histogram") {
-      return toVolumeData(candles)
-    }
-    return candles.map(c => ({ time: c.time, value: c.volume || 0 }))
-  }
-
-  _toVolumeUpdatePoint(candle) {
-    if (this.volumeType === "Histogram") {
-      return toVolumePoint(candle)
-    }
-    return { time: candle.time, value: candle.volume || 0 }
-  }
-
-  // --- Mode switching ---
-
-  showMode(mode) {
-    if (mode === this.mode) return
-    this.mode = mode
-    this.chart.removeSeries(this.series)
-    this.createSeries()
-    if (this.loader.candles.length > 0) {
-      this.series.setData(this.toSeriesData(this.loader.candles))
-    }
-  }
-
-  // --- Switch series type ---
-
-  switchPriceType(type) {
-    if (type === this.priceType || !PRICE_SERIES_TYPES[type]) return
-    this.priceType = type
-    if (this.mode === "price") {
-      this.chart.removeSeries(this.series)
-      this.createSeries()
-      if (this.loader.candles.length > 0) {
-        this.series.setData(this.toSeriesData(this.loader.candles))
-      }
-    }
-  }
-
-  switchVolumeType(type) {
-    if (type === this.volumeType || !VOLUME_SERIES_TYPES[type]) return
-    this.volumeType = type
-    if (this.mode === "volume") {
-      this.chart.removeSeries(this.series)
-      this.createSeries()
-      if (this.loader.candles.length > 0) {
-        this.series.setData(this.toSeriesData(this.loader.candles))
-      }
-    }
   }
 
   // --- Realtime ---
 
-  handleCandle(candle) {
-    this.loader.updateCandle(candle)
-    try { this.series.update(this.toUpdatePoint(candle)) } catch (e) { console.log("[chart] update skipped:", e.message) }
-  }
-
-  // --- Data ---
-
-  async loadData() {
+  _handleCandle(overlayId, candle) {
+    const ov = this.overlayMap.get(overlayId)
+    if (!ov) return
+    ov.loader.updateCandle(candle)
     try {
-      const candles = await this.loader.loadInitial()
-      this.series.setData(this.toSeriesData(candles))
-      this.chart.timeScale().fitContent()
-      requestAnimationFrame(() => this.scrollbar.update())
-    } catch (error) {
-      console.error("Failed to load candle data:", error)
+      ov.series.update(this._toUpdatePoint(ov, candle))
+    } catch (e) {
+      console.log("[chart] update skipped:", e.message)
     }
   }
 
-  subscribeToScroll() {
+  // --- Data loading ---
+
+  _startFeeds() {
+    const loadPromises = []
+    for (const [id, ov] of this.overlayMap) {
+      loadPromises.push(this._loadOverlayData(ov, id))
+    }
+
+    Promise.all(loadPromises).then(() => {
+      this.chart.timeScale().fitContent()
+      requestAnimationFrame(() => this.scrollbar?.update())
+      this._subscribeToScroll()
+      for (const [, ov] of this.overlayMap) {
+        ov.bfxFeed.connect()
+      }
+    })
+
+    for (const [, ov] of this.overlayMap) {
+      ov.cableFeed.connect()
+    }
+  }
+
+  async _loadOverlayData(ov, id) {
+    try {
+      const candles = await ov.loader.loadInitial()
+      ov.series.setData(this._toSeriesData(ov, candles))
+    } catch (error) {
+      console.error(`Failed to load data for overlay ${id}:`, error)
+    }
+  }
+
+  _subscribeToScroll() {
     this.scrollHandler = (range) => {
       if (!range) return
-      this.scrollbar.update()
-      if (range.from < 50) this.loadMoreHistory()
+      this.scrollbar?.update()
+      if (range.from < 50) this._loadMoreHistory()
     }
     this.chart.timeScale().subscribeVisibleLogicalRangeChange(this.scrollHandler)
 
     const range = this.chart.timeScale().getVisibleLogicalRange()
-    if (range && range.from < 50) this.loadMoreHistory()
+    if (range && range.from < 50) this._loadMoreHistory()
   }
 
-  async loadMoreHistory() {
+  async _loadMoreHistory() {
     const scrollPos = this.chart.timeScale().scrollPosition()
-    const filtered = await this.loader.loadMoreHistory()
-    if (!filtered) return
+    let maxAdded = 0
 
-    this.series.setData(this.toSeriesData(this.loader.candles))
-    this.chart.timeScale().scrollToPosition(scrollPos + filtered.length, false)
+    for (const [, ov] of this.overlayMap) {
+      const filtered = await ov.loader.loadMoreHistory()
+      if (!filtered) continue
+      ov.series.setData(this._toSeriesData(ov, ov.loader.candles))
+      if (filtered.length > maxAdded) maxAdded = filtered.length
+    }
+
+    if (maxAdded > 0) {
+      this.chart.timeScale().scrollToPosition(scrollPos + maxAdded, false)
+    }
+  }
+
+  _maxBarsCount() {
+    let max = 0
+    for (const [, ov] of this.overlayMap) {
+      if (ov.loader.candles.length > max) max = ov.loader.candles.length
+    }
+    return max
   }
 }

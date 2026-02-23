@@ -2,30 +2,42 @@ const STORAGE_KEY = "chart-tabs"
 const DEFAULT_TABS = [{
   id: "tab-1",
   name: null,
-  panels: [{ id: "p-1", symbol: "BTCUSD", timeframe: "1m", mode: "price" }],
+  panels: [{
+    id: "p-1",
+    timeframe: "1m",
+    overlays: [{ id: "o-1", symbol: "BTCUSD", mode: "price", chartType: "Candlestick" }],
+  }],
 }]
 
 export default class TabStore {
   constructor() {
     this.tabs = this._load()
     this._nextTabId = Math.max(...this.tabs.map(t => parseInt(t.id.split("-")[1]))) + 1
-    this._nextPanelId = this._calcNextPanelId()
+    this._nextPanelId = this._calcNextId("p")
+    this._nextOverlayId = this._calcNextId("o")
     this.activeTabId = this.tabs[0].id
     this.selectedPanelId = this.tabs[0].panels[0].id
+    this.selectedOverlayId = this.tabs[0].panels[0].overlays[0]?.id || null
   }
 
   // --- Tabs ---
 
   addTab() {
+    const overlayId = `o-${this._nextOverlayId++}`
     const panelId = `p-${this._nextPanelId++}`
     const tab = {
       id: `tab-${this._nextTabId++}`,
       name: "New",
-      panels: [{ id: panelId, symbol: null, timeframe: "1m", mode: "price" }],
+      panels: [{
+        id: panelId,
+        timeframe: "1m",
+        overlays: [{ id: overlayId, symbol: null, mode: "price", chartType: "Candlestick" }],
+      }],
     }
     this.tabs.push(tab)
     this.activeTabId = tab.id
     this.selectedPanelId = panelId
+    this.selectedOverlayId = overlayId
     this._save()
     return tab
   }
@@ -39,6 +51,7 @@ export default class TabStore {
       const newTab = this.tabs[Math.min(idx, this.tabs.length - 1)]
       this.activeTabId = newTab.id
       this.selectedPanelId = newTab.panels[0].id
+      this.selectedOverlayId = newTab.panels[0].overlays[0]?.id || null
     }
     this._save()
     return true
@@ -50,6 +63,7 @@ export default class TabStore {
     const tab = this.activeTab
     if (tab && !tab.panels.find(p => p.id === this.selectedPanelId)) {
       this.selectedPanelId = tab.panels[0].id
+      this.selectedOverlayId = tab.panels[0].overlays[0]?.id || null
     }
     return true
   }
@@ -65,7 +79,8 @@ export default class TabStore {
   tabLabel(tab) {
     if (tab.name) return tab.name
     const first = tab.panels[0]
-    return first?.symbol ? `${first.symbol} ${first.timeframe}` : "New"
+    const firstOverlay = first?.overlays[0]
+    return firstOverlay?.symbol ? `${firstOverlay.symbol} ${first.timeframe}` : "New"
   }
 
   get activeTab() {
@@ -77,9 +92,15 @@ export default class TabStore {
   addPanel(tabId) {
     const tab = this.tabs.find(t => t.id === tabId)
     if (!tab) return null
-    const panel = { id: `p-${this._nextPanelId++}`, symbol: null, timeframe: "1m", mode: "price" }
+    const overlayId = `o-${this._nextOverlayId++}`
+    const panel = {
+      id: `p-${this._nextPanelId++}`,
+      timeframe: "1m",
+      overlays: [{ id: overlayId, symbol: null, mode: "price", chartType: "Candlestick" }],
+    }
     tab.panels.push(panel)
     this.selectedPanelId = panel.id
+    this.selectedOverlayId = overlayId
     this._save()
     return panel
   }
@@ -90,11 +111,19 @@ export default class TabStore {
       if (idx === -1) continue
       tab.panels.splice(idx, 1)
       if (tab.panels.length === 0) {
-        const fresh = { id: `p-${this._nextPanelId++}`, symbol: null, timeframe: "1m", mode: "price" }
+        const overlayId = `o-${this._nextOverlayId++}`
+        const fresh = {
+          id: `p-${this._nextPanelId++}`,
+          timeframe: "1m",
+          overlays: [{ id: overlayId, symbol: null, mode: "price", chartType: "Candlestick" }],
+        }
         tab.panels.push(fresh)
         this.selectedPanelId = fresh.id
+        this.selectedOverlayId = overlayId
       } else if (this.selectedPanelId === panelId) {
-        this.selectedPanelId = tab.panels[Math.min(idx, tab.panels.length - 1)].id
+        const newPanel = tab.panels[Math.min(idx, tab.panels.length - 1)]
+        this.selectedPanelId = newPanel.id
+        this.selectedOverlayId = newPanel.overlays[0]?.id || null
       }
       this._save()
       return true
@@ -105,29 +134,96 @@ export default class TabStore {
   selectPanel(panelId) {
     if (panelId === this.selectedPanelId) return false
     this.selectedPanelId = panelId
+    const panel = this.selectedPanel
+    if (panel && !panel.overlays.find(o => o.id === this.selectedOverlayId)) {
+      this.selectedOverlayId = panel.overlays[0]?.id || null
+    }
     return true
   }
 
-  updatePanelSettings(panelId, symbol, timeframe) {
+  updatePanelTimeframe(panelId, timeframe) {
     const panel = this._findPanel(panelId)
-    if (!panel) return false
-    if (symbol === panel.symbol && timeframe === panel.timeframe) return false
-    panel.symbol = symbol
+    if (!panel || panel.timeframe === timeframe) return false
     panel.timeframe = timeframe
-    this._save()
-    return true
-  }
-
-  setPanelMode(panelId, mode) {
-    const panel = this._findPanel(panelId)
-    if (!panel || panel.mode === mode) return false
-    panel.mode = mode
     this._save()
     return true
   }
 
   get selectedPanel() {
     return this._findPanel(this.selectedPanelId)
+  }
+
+  // --- Overlays ---
+
+  addOverlay(panelId) {
+    const panel = this._findPanel(panelId)
+    if (!panel) return null
+    const overlay = { id: `o-${this._nextOverlayId++}`, symbol: null, mode: "price", chartType: "Candlestick" }
+    panel.overlays.push(overlay)
+    this.selectedOverlayId = overlay.id
+    this._save()
+    return overlay
+  }
+
+  removeOverlay(panelId, overlayId) {
+    const panel = this._findPanel(panelId)
+    if (!panel) return false
+    const idx = panel.overlays.findIndex(o => o.id === overlayId)
+    if (idx === -1) return false
+    panel.overlays.splice(idx, 1)
+    if (panel.overlays.length === 0) {
+      const fresh = { id: `o-${this._nextOverlayId++}`, symbol: null, mode: "price", chartType: "Candlestick" }
+      panel.overlays.push(fresh)
+      this.selectedOverlayId = fresh.id
+    } else if (this.selectedOverlayId === overlayId) {
+      this.selectedOverlayId = panel.overlays[Math.min(idx, panel.overlays.length - 1)].id
+    }
+    this._save()
+    return true
+  }
+
+  selectOverlay(overlayId) {
+    if (overlayId === this.selectedOverlayId) return false
+    this.selectedOverlayId = overlayId
+    return true
+  }
+
+  updateOverlaySymbol(overlayId, symbol) {
+    const overlay = this._findOverlay(overlayId)
+    if (!overlay || overlay.symbol === symbol) return false
+    overlay.symbol = symbol
+    this._save()
+    return true
+  }
+
+  setOverlayMode(overlayId, mode) {
+    const overlay = this._findOverlay(overlayId)
+    if (!overlay || overlay.mode === mode) return false
+    overlay.mode = mode
+    this._save()
+    return true
+  }
+
+  setOverlayChartType(overlayId, chartType) {
+    const overlay = this._findOverlay(overlayId)
+    if (!overlay || overlay.chartType === chartType) return false
+    overlay.chartType = chartType
+    this._save()
+    return true
+  }
+
+  get selectedOverlay() {
+    return this._findOverlay(this.selectedOverlayId)
+  }
+
+  _findOverlay(overlayId) {
+    for (const tab of this.tabs) {
+      for (const panel of tab.panels) {
+        const overlay = panel.overlays.find(o => o.id === overlayId)
+        if (overlay) return overlay
+      }
+    }
+    return null
   }
 
   _findPanel(panelId) {
@@ -140,12 +236,20 @@ export default class TabStore {
 
   // --- Persistence ---
 
-  _calcNextPanelId() {
+  _calcNextId(prefix) {
     let max = 0
     for (const tab of this.tabs) {
       for (const p of tab.panels) {
-        const n = parseInt(p.id.split("-")[1])
-        if (n > max) max = n
+        if (prefix === "p") {
+          const n = parseInt(p.id.split("-")[1])
+          if (n > max) max = n
+        }
+        if (prefix === "o" && p.overlays) {
+          for (const o of p.overlays) {
+            const n = parseInt(o.id.split("-")[1])
+            if (n > max) max = n
+          }
+        }
       }
     }
     return max + 1
@@ -165,28 +269,56 @@ export default class TabStore {
   }
 
   _migrateTab(t) {
-    // Old format: { id, symbol, timeframe, mode, name }
+    // Very old format: { id, symbol, timeframe, mode, name } (no panels)
     if (!t.panels) {
       return {
         id: t.id,
         name: t.name ?? null,
         panels: [{
           id: `p-${t.id.split("-")[1]}`,
-          symbol: t.symbol ?? null,
           timeframe: t.timeframe || "1m",
-          mode: t.mode || "price",
+          overlays: [{
+            id: `o-${t.id.split("-")[1]}`,
+            symbol: t.symbol ?? null,
+            mode: t.mode || "price",
+            chartType: "Candlestick",
+          }],
         }],
       }
     }
-    // New format
+
+    // Migrate panels
     return {
       ...t,
       name: t.name ?? null,
-      panels: t.panels.map(p => ({
+      panels: t.panels.map(p => this._migratePanel(p)),
+    }
+  }
+
+  _migratePanel(p) {
+    // Already has overlays — just ensure defaults
+    if (p.overlays) {
+      return {
         ...p,
+        timeframe: p.timeframe || "1m",
+        overlays: p.overlays.map(o => ({
+          ...o,
+          mode: o.mode || "price",
+          chartType: o.chartType || "Candlestick",
+        })),
+      }
+    }
+
+    // Old panel format: { id, symbol, timeframe, mode } — convert to overlay model
+    return {
+      id: p.id,
+      timeframe: p.timeframe || "1m",
+      overlays: [{
+        id: `o-${p.id.split("-")[1]}`,
         symbol: p.symbol ?? null,
         mode: p.mode || "price",
-      })),
+        chartType: "Candlestick",
+      }],
     }
   }
 

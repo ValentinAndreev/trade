@@ -6,10 +6,10 @@ export default class TabRenderer {
     this.controllerName = controllerName
   }
 
-  render(tabs, activeTabId, selectedPanelId, symbols, timeframes, labelFn) {
+  render(tabs, activeTabId, selectedPanelId, selectedOverlayId, symbols, timeframes, labelFn) {
     this._renderTabBar(tabs, activeTabId, labelFn)
     this._renderPanels(tabs, activeTabId, selectedPanelId)
-    this._renderSidebar(selectedPanelId, tabs, symbols, timeframes)
+    this._renderSidebar(selectedPanelId, selectedOverlayId, tabs, symbols, timeframes)
   }
 
   // --- Tab Bar ---
@@ -100,20 +100,23 @@ export default class TabRenderer {
       }
     }
 
-    // Update or create panels (in-place replacement to avoid reflow on siblings)
+    // Update or create panels
     panels.forEach(panel => {
       const el = existing.get(panel.id)
+      const overlaysJson = this._overlaysJson(panel)
+      const hasSymbols = panel.overlays.some(o => o.symbol)
+
       if (el) {
         const chartEl = el.querySelector("[data-controller='chart']")
         const hasChart = !!chartEl
-        const needsChart = !!panel.symbol
+        const needsChart = hasSymbols
+
         const settingsChanged = hasChart && needsChart && (
-          chartEl.dataset.chartSymbolValue !== panel.symbol ||
-          chartEl.dataset.chartTimeframeValue !== panel.timeframe
+          chartEl.dataset.chartTimeframeValue !== panel.timeframe ||
+          chartEl.dataset.chartOverlaysValue !== overlaysJson
         )
 
         if (settingsChanged || hasChart !== needsChart) {
-          // Replace in-place: insert new before old, then remove old
           const placeholder = document.createElement("template")
           placeholder.innerHTML = this._panelHTML(panel, selectedPanelId)
           const newEl = placeholder.content.firstElementChild
@@ -130,7 +133,7 @@ export default class TabRenderer {
       wrapper.insertAdjacentHTML("beforeend", this._panelHTML(panel, selectedPanelId))
     })
 
-    // Sync dividers between panels (only rebuild if structure changed)
+    // Sync dividers between panels
     const panelEls = [...wrapper.querySelectorAll(":scope > [data-panel-id]")]
     const expectedPairs = []
     for (let i = 0; i < panelEls.length - 1; i++) {
@@ -160,9 +163,16 @@ export default class TabRenderer {
     panel.classList.toggle("border-[#2a2a3e]", !selected)
   }
 
+  _overlaysJson(panel) {
+    return JSON.stringify(panel.overlays.filter(o => o.symbol).map(o => ({
+      id: o.id, symbol: o.symbol, mode: o.mode, chartType: o.chartType,
+    })))
+  }
+
   _panelHTML(panel, selectedPanelId) {
     const selected = panel.id === selectedPanelId
     const borderClass = selected ? "border-blue-500/50" : "border-[#2a2a3e]"
+    const hasSymbols = panel.overlays.some(o => o.symbol)
 
     const closeBtn = `
       <div class="absolute top-1 right-1 z-10">
@@ -175,7 +185,7 @@ export default class TabRenderer {
       </div>
     `
 
-    if (!panel.symbol) {
+    if (!hasSymbols) {
       return `
         <div data-panel-id="${panel.id}"
              data-action="click->${this.controllerName}#selectPanel"
@@ -186,7 +196,7 @@ export default class TabRenderer {
       `
     }
 
-    const url = `/api/candles?symbol=${encodeURIComponent(panel.symbol)}&timeframe=${encodeURIComponent(panel.timeframe)}&limit=1500`
+    const overlaysJson = this._overlaysJson(panel)
     return `
       <div data-panel-id="${panel.id}"
            data-action="click->${this.controllerName}#selectPanel"
@@ -194,9 +204,8 @@ export default class TabRenderer {
         ${closeBtn}
         <div
           data-controller="chart"
-          data-chart-symbol-value="${panel.symbol}"
           data-chart-timeframe-value="${panel.timeframe}"
-          data-chart-url-value="${url}"
+          data-chart-overlays-value='${overlaysJson.replace(/'/g, "&#39;")}'
           class="h-full w-full"
         ></div>
       </div>
@@ -205,7 +214,7 @@ export default class TabRenderer {
 
   // --- Sidebar ---
 
-  _renderSidebar(selectedPanelId, tabs, symbols, timeframes) {
+  _renderSidebar(selectedPanelId, selectedOverlayId, tabs, symbols, timeframes) {
     let panel = null
     for (const tab of tabs) {
       panel = tab.panels.find(p => p.id === selectedPanelId)
@@ -217,36 +226,80 @@ export default class TabRenderer {
       return
     }
 
-    const currentSymbol = panel.symbol || ""
     const currentTimeframe = panel.timeframe || "1m"
-    const mode = panel.mode || "price"
+    const selectedOverlay = panel.overlays.find(o => o.id === selectedOverlayId) || panel.overlays[0]
+    const currentSymbol = selectedOverlay?.symbol || ""
+    const mode = selectedOverlay?.mode || "price"
+    const chartType = selectedOverlay?.chartType || "Candlestick"
 
     const priceActive = mode === "price"
     const activeBtnClass = "text-white bg-blue-600"
     const inactiveBtnClass = "text-gray-400 bg-[#2a2a3e] hover:bg-[#3a3a4e]"
 
     const chartTypeOptions = priceActive
-      ? `<option value="Candlestick">Candles</option>
-         <option value="Bar">Bars</option>
-         <option value="Line">Line</option>
-         <option value="Area">Area</option>
-         <option value="Baseline">Baseline</option>`
-      : `<option value="Histogram">Bars</option>
-         <option value="Line">Line</option>
-         <option value="Area">Area</option>`
+      ? this._chartTypeOpts([
+          ["Candlestick", "Candles"], ["Bar", "Bars"], ["Line", "Line"],
+          ["Area", "Area"], ["Baseline", "Baseline"],
+        ], chartType)
+      : this._chartTypeOpts([
+          ["Histogram", "Bars"], ["Line", "Line"], ["Area", "Area"],
+        ], chartType)
+
+    // Overlay list
+    const overlayList = panel.overlays.map(o => {
+      const isSelected = o.id === (selectedOverlay?.id)
+      const label = o.symbol || "Empty"
+      return `
+        <div class="flex items-center gap-1 px-2 py-1 rounded cursor-pointer text-xs
+                    ${isSelected ? "bg-blue-600/30 text-white" : "text-gray-400 hover:bg-[#2a2a3e]"}"
+             data-overlay-id="${o.id}"
+             data-action="click->${this.controllerName}#selectOverlay">
+          <span class="flex-1 truncate">${label}</span>
+          ${panel.overlays.length > 1 ? `
+            <span data-action="click->${this.controllerName}#removeOverlay"
+                  data-remove-overlay="${o.id}"
+                  class="text-gray-500 hover:text-red-400 text-xs leading-none">&times;</span>
+          ` : ""}
+        </div>
+      `
+    }).join("")
 
     this.sidebarEl.innerHTML = `
       <div class="flex flex-col gap-3 text-sm">
-        <div class="text-xs text-gray-500 uppercase tracking-wide">Panel Settings</div>
-
-        <label class="flex flex-col gap-1 text-xs text-gray-400">
-          Symbol
-          ${this._comboHTML("symbol", symbols, currentSymbol, "w-full")}
-        </label>
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-gray-500 uppercase tracking-wide">Panel Settings</span>
+          <button
+            data-action="click->${this.controllerName}#addPanel"
+            class="text-xs text-gray-500 hover:text-white cursor-pointer"
+            title="Add panel"
+          >+ Panel</button>
+        </div>
 
         <label class="flex flex-col gap-1 text-xs text-gray-400">
           Timeframe
           ${this._comboHTML("timeframe", timeframes, currentTimeframe, "w-full")}
+        </label>
+
+        <hr class="border-[#3a3a4e]">
+
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-gray-500 uppercase tracking-wide">Charts</span>
+          <button
+            data-action="click->${this.controllerName}#addOverlay"
+            class="text-xs text-gray-500 hover:text-white cursor-pointer"
+            title="Add chart overlay"
+          >+</button>
+        </div>
+
+        <div class="flex flex-col gap-0.5">${overlayList}</div>
+
+        <hr class="border-[#3a3a4e]">
+
+        <div class="text-xs text-gray-500 uppercase tracking-wide">Selected Chart</div>
+
+        <label class="flex flex-col gap-1 text-xs text-gray-400">
+          Symbol
+          ${this._comboHTML("symbol", symbols, currentSymbol, "w-full")}
         </label>
 
         <button
@@ -254,9 +307,7 @@ export default class TabRenderer {
           class="px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded cursor-pointer"
         >Apply</button>
 
-        ${panel.symbol ? `
-          <hr class="border-[#3a3a4e]">
-
+        ${selectedOverlay?.symbol ? `
           <div class="flex gap-1">
             <button
               data-action="click->${this.controllerName}#setMode"
@@ -279,15 +330,14 @@ export default class TabRenderer {
             >${chartTypeOptions}</select>
           </label>
         ` : ""}
-
-        <hr class="border-[#3a3a4e]">
-
-        <button
-          data-action="click->${this.controllerName}#addPanel"
-          class="px-3 py-1.5 text-xs text-gray-400 hover:text-white bg-[#2a2a3e] hover:bg-[#3a3a4e] border border-[#3a3a4e] rounded cursor-pointer"
-        >+ Add new panel</button>
       </div>
     `
+  }
+
+  _chartTypeOpts(pairs, selected) {
+    return pairs.map(([val, label]) =>
+      `<option value="${val}"${val === selected ? " selected" : ""}>${label}</option>`
+    ).join("")
   }
 
   // --- Combo (select + custom input) ---

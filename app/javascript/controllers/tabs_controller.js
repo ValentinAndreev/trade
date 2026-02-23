@@ -86,44 +86,81 @@ export default class extends Controller {
     if (this.store.selectPanel(panelId)) this.render()
   }
 
-  // --- Panel settings (sidebar) ---
+  // --- Overlay actions ---
+
+  addOverlay(e) {
+    e.stopPropagation()
+    const panel = this.store.selectedPanel
+    if (!panel) return
+    this.store.addOverlay(panel.id)
+    this.render()
+  }
+
+  removeOverlay(e) {
+    e.stopPropagation()
+    const overlayId = e.currentTarget.dataset.removeOverlay
+    const panel = this.store.selectedPanel
+    if (!panel || !overlayId) return
+
+    // Remove from chart controller first
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.removeOverlay(overlayId)
+
+    if (this.store.removeOverlay(panel.id, overlayId)) this.render()
+  }
+
+  selectOverlay(e) {
+    if (e.target.closest("[data-remove-overlay]")) return
+    const overlayId = e.currentTarget.dataset.overlayId
+    if (!overlayId) return
+    if (this.store.selectOverlay(overlayId)) this.render()
+  }
+
+  // --- Settings (sidebar) ---
 
   applySettings() {
     const panel = this.store.selectedPanel
+    const overlay = this.store.selectedOverlay
     if (!panel) return
-    const symbolEl = this.sidebarTarget.querySelector("[data-field='symbol']:not(.hidden)")
-    const timeframeEl = this.sidebarTarget.querySelector("[data-field='timeframe']:not(.hidden)")
-    const symbol = symbolEl?.value?.trim().toUpperCase()
-    const timeframe = timeframeEl?.value?.trim().toLowerCase()
 
-    if (!symbol || !timeframe) return
-    if (this.store.updatePanelSettings(panel.id, symbol, timeframe)) this.render()
+    const timeframeEl = this.sidebarTarget.querySelector("[data-field='timeframe']:not(.hidden)")
+    const symbolEl = this.sidebarTarget.querySelector("[data-field='symbol']:not(.hidden)")
+    const timeframe = timeframeEl?.value?.trim().toLowerCase()
+    const symbol = symbolEl?.value?.trim().toUpperCase()
+
+    if (!timeframe) return
+
+    const timeframeChanged = this.store.updatePanelTimeframe(panel.id, timeframe)
+    let symbolChanged = false
+    if (overlay && symbol) {
+      symbolChanged = this.store.updateOverlaySymbol(overlay.id, symbol)
+    }
+
+    if (timeframeChanged || symbolChanged) this.render()
   }
 
   setMode(e) {
     const mode = e.currentTarget.dataset.mode
-    const panel = this.store.selectedPanel
-    if (!panel || !mode) return
+    const overlay = this.store.selectedOverlay
+    if (!overlay || !mode) return
 
-    if (this.store.setPanelMode(panel.id, mode)) {
-      const chartCtrl = this._chartCtrlForPanel(panel.id)
-      if (chartCtrl) chartCtrl.showMode(mode)
+    if (this.store.setOverlayMode(overlay.id, mode)) {
+      const panel = this.store.selectedPanel
+      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+      if (chartCtrl) chartCtrl.showMode(overlay.id, mode)
       this.render()
     }
   }
 
   switchChartType(e) {
     const type = e.currentTarget.value
-    const panel = this.store.selectedPanel
-    if (!panel) return
+    const overlay = this.store.selectedOverlay
+    if (!overlay) return
 
-    const chartCtrl = this._chartCtrlForPanel(panel.id)
-    if (!chartCtrl) return
-
-    if (panel.mode === "volume") {
-      chartCtrl.switchVolumeType(type)
-    } else {
-      chartCtrl.switchPriceType(type)
+    if (this.store.setOverlayChartType(overlay.id, type)) {
+      const panel = this.store.selectedPanel
+      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+      if (chartCtrl) chartCtrl.switchChartType(overlay.id, type)
     }
   }
 
@@ -154,7 +191,6 @@ export default class extends Controller {
     const belowEl = wrapper.querySelector(`[data-panel-id="${divider.dataset.below}"]`)
     if (!aboveEl || !belowEl) return
 
-    // Snapshot all panel heights to fixed px so nothing shifts
     const allPanels = [...wrapper.querySelectorAll(":scope > [data-panel-id]")]
     const heights = allPanels.map(p => p.offsetHeight)
     allPanels.forEach((p, i) => { p.style.flex = `0 0 ${heights[i]}px` })
@@ -181,7 +217,6 @@ export default class extends Controller {
       document.removeEventListener("mousemove", onMove)
       document.removeEventListener("mouseup", onUp)
       divider.classList.remove("bg-[#5a5a7e]")
-      // Convert all panels back to flex-grow ratios
       const finalHeights = allPanels.map(p => p.offsetHeight)
       const totalFinal = finalHeights.reduce((a, b) => a + b, 0)
       allPanels.forEach((p, i) => { p.style.flex = `${finalHeights[i] / totalFinal}` })
@@ -207,6 +242,7 @@ export default class extends Controller {
       this.store.tabs,
       this.store.activeTabId,
       this.store.selectedPanelId,
+      this.store.selectedOverlayId,
       this.config.symbols,
       this.config.timeframes,
       (tab) => this.store.tabLabel(tab),
