@@ -1,7 +1,7 @@
 import { Controller } from "@hotwired/stimulus"
-import { createChart, CandlestickSeries, HistogramSeries } from "lightweight-charts"
+import { createChart } from "lightweight-charts"
 
-import { CHART_THEME, CANDLE_STYLE } from "../chart/theme"
+import { CHART_THEME, PRICE_SERIES_TYPES, VOLUME_SERIES_TYPES } from "../chart/theme"
 import { toVolumePoint, toVolumeData } from "../chart/volume"
 import { loadVolumeVisible, saveVolumeVisible, loadVolumeRatio } from "../chart/preferences"
 import DataLoader from "../chart/data_loader"
@@ -19,6 +19,8 @@ export default class extends Controller {
   connect() {
     this.volumeVisible = loadVolumeVisible()
     this.volumeRatio = loadVolumeRatio()
+    this.priceType = "Candlestick"
+    this.volumeType = "Histogram"
     this.loader = new DataLoader(this.urlValue)
 
     this.initChart()
@@ -44,7 +46,6 @@ export default class extends Controller {
   // --- Chart ---
 
   initChart() {
-    // Wrapper: flex column with chart + scrollbar
     Object.assign(this.element.style, {
       display: "flex",
       flexDirection: "column",
@@ -69,41 +70,114 @@ export default class extends Controller {
       },
     })
 
-    this.series = this.chart.addSeries(CandlestickSeries, CANDLE_STYLE)
+    // Keep panes alive when series are removed for type switching
+    this.chart.panes()[0].setPreserveEmptyPane(true)
 
-    // Volume in a separate pane (pane index 1)
-    this.volumePane = this.chart.addPane()
-    this.volumeSeries = this.chart.addSeries(
-      HistogramSeries,
-      { priceFormat: { type: "volume" } },
-      1,
-    )
+    this.createPriceSeries()
+
+    this.volumePane = this.chart.addPane(true)
+    this.createVolumeSeries()
 
     this.applyVolumeLayout()
+    if (!this.volumeVisible) this.collapseVolumePane()
 
-    // Hide volume pane if saved as hidden
-    if (!this.volumeVisible) {
-      this.collapseVolumePane()
-    }
-
-    // Scrollbar below the chart
     this.scrollbar = new Scrollbar(this.element, {
       getVisibleRange: () => this.chart.timeScale().getVisibleLogicalRange(),
       setVisibleRange: (range) => this.chart.timeScale().setVisibleLogicalRange(range),
       getTotalBars: () => this.loader.candles.length,
     })
 
-    // Feeds
     const onCandle = (candle) => this.handleCandle(candle)
     this.bfxFeed = new BitfinexFeed(this.symbolValue, this.timeframeValue, onCandle)
     this.cableFeed = new CableFeed(this.symbolValue, this.timeframeValue, onCandle)
   }
+
+  // --- Series creation ---
+
+  createPriceSeries() {
+    const def = PRICE_SERIES_TYPES[this.priceType]
+    this.series = this.chart.addSeries(def.type, def.options, 0)
+  }
+
+  createVolumeSeries() {
+    const def = VOLUME_SERIES_TYPES[this.volumeType]
+    this.volumeSeries = this.chart.addSeries(def.type, def.options, 1)
+  }
+
+  toPriceData(candles) {
+    const type = this.priceType
+    if (type === "Candlestick" || type === "Bar") {
+      return candles
+    }
+    // Line, Area, Baseline — need { time, value }
+    return candles.map(c => ({ time: c.time, value: c.close }))
+  }
+
+  toVolumeSeriesData(candles) {
+    const type = this.volumeType
+    if (type === "Histogram") {
+      return toVolumeData(candles)
+    }
+    // Line, Area — need { time, value }
+    return candles.map(c => ({ time: c.time, value: c.volume || 0 }))
+  }
+
+  toVolumeUpdatePoint(candle) {
+    if (this.volumeType === "Histogram") {
+      return toVolumePoint(candle)
+    }
+    return { time: candle.time, value: candle.volume || 0 }
+  }
+
+  toPriceUpdatePoint(candle) {
+    if (this.priceType === "Candlestick" || this.priceType === "Bar") {
+      return candle
+    }
+    return { time: candle.time, value: candle.close }
+  }
+
+  // --- Switch series type ---
+
+  switchPriceType(type) {
+    if (type === this.priceType || !PRICE_SERIES_TYPES[type]) return
+    const factors = this.savePaneFactors()
+    this.chart.removeSeries(this.series)
+    this.priceType = type
+    this.createPriceSeries()
+    this.restorePaneFactors(factors)
+    if (this.loader.candles.length > 0) {
+      this.series.setData(this.toPriceData(this.loader.candles))
+    }
+  }
+
+  switchVolumeType(type) {
+    if (type === this.volumeType || !VOLUME_SERIES_TYPES[type]) return
+    const factors = this.savePaneFactors()
+    this.chart.removeSeries(this.volumeSeries)
+    this.volumeType = type
+    this.createVolumeSeries()
+    this.restorePaneFactors(factors)
+    if (this.loader.candles.length > 0) {
+      this.volumeSeries.setData(this.toVolumeSeriesData(this.loader.candles))
+    }
+  }
+
+  // --- Layout ---
 
   applyVolumeLayout() {
     const panes = this.chart.panes()
     if (panes.length < 2) return
     panes[0].setStretchFactor(1 - this.volumeRatio)
     panes[1].setStretchFactor(this.volumeRatio)
+  }
+
+  savePaneFactors() {
+    return this.chart.panes().map(p => p.getStretchFactor())
+  }
+
+  restorePaneFactors(factors) {
+    const panes = this.chart.panes()
+    factors.forEach((f, i) => { if (panes[i]) panes[i].setStretchFactor(f) })
   }
 
   collapseVolumePane() {
@@ -113,10 +187,12 @@ export default class extends Controller {
     panes[1].setStretchFactor(0)
   }
 
+  // --- Realtime ---
+
   handleCandle(candle) {
     this.loader.updateCandle(candle)
-    try { this.series.update(candle) } catch (e) { console.log("[chart] update skipped:", e.message) }
-    try { this.volumeSeries.update(toVolumePoint(candle)) } catch { /* skip */ }
+    try { this.series.update(this.toPriceUpdatePoint(candle)) } catch (e) { console.log("[chart] update skipped:", e.message) }
+    try { this.volumeSeries.update(this.toVolumeUpdatePoint(candle)) } catch { /* skip */ }
   }
 
   // --- Data ---
@@ -124,8 +200,8 @@ export default class extends Controller {
   async loadData() {
     try {
       const candles = await this.loader.loadInitial()
-      this.series.setData(candles)
-      this.volumeSeries.setData(toVolumeData(candles))
+      this.series.setData(this.toPriceData(candles))
+      this.volumeSeries.setData(this.toVolumeSeriesData(candles))
       this.chart.timeScale().fitContent()
       requestAnimationFrame(() => this.scrollbar.update())
     } catch (error) {
@@ -150,8 +226,8 @@ export default class extends Controller {
     const filtered = await this.loader.loadMoreHistory()
     if (!filtered) return
 
-    this.series.setData(this.loader.candles)
-    this.volumeSeries.setData(toVolumeData(this.loader.candles))
+    this.series.setData(this.toPriceData(this.loader.candles))
+    this.volumeSeries.setData(this.toVolumeSeriesData(this.loader.candles))
     this.chart.timeScale().scrollToPosition(scrollPos + filtered.length, false)
   }
 

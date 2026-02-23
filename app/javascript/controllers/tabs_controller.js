@@ -48,16 +48,28 @@ export default class extends Controller {
   }
 
   toggleVolume(e) {
-    const panel = e.currentTarget.closest("[data-panel-id]")
-    const chartEl = panel.querySelector("[data-controller='chart']")
-    if (!chartEl) return
-
-    const chartCtrl = this.application.getControllerForElementAndIdentifier(chartEl, "chart")
+    const chartCtrl = this._chartCtrl(e)
     if (!chartCtrl) return
-
     chartCtrl.toggleVolume()
     e.currentTarget.classList.toggle("text-gray-300", chartCtrl.volumeVisible)
     e.currentTarget.classList.toggle("text-gray-500", !chartCtrl.volumeVisible)
+  }
+
+  switchPriceType(e) {
+    const chartCtrl = this._chartCtrl(e)
+    if (chartCtrl) chartCtrl.switchPriceType(e.currentTarget.value)
+  }
+
+  switchVolumeType(e) {
+    const chartCtrl = this._chartCtrl(e)
+    if (chartCtrl) chartCtrl.switchVolumeType(e.currentTarget.value)
+  }
+
+  _chartCtrl(e) {
+    const panel = e.currentTarget.closest("[data-panel-id]")
+    const chartEl = panel?.querySelector("[data-controller='chart']")
+    if (!chartEl) return null
+    return this.application.getControllerForElementAndIdentifier(chartEl, "chart")
   }
 
   toggleCustomInput(e) {

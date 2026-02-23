@@ -90,6 +90,33 @@ export default class TabRenderer {
             data-action="click->${this.controllerName}#applySettings"
             class="px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded cursor-pointer"
           >Apply</button>
+          <span class="border-l border-[#3a3a4e] h-4"></span>
+          <label class="flex items-center gap-1 text-xs text-gray-400">
+            Price
+            <select
+              data-field="priceType"
+              data-action="change->${this.controllerName}#switchPriceType"
+              class="px-1.5 py-1 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+            >
+              <option value="Candlestick" selected>Candles</option>
+              <option value="Bar">Bars</option>
+              <option value="Line">Line</option>
+              <option value="Area">Area</option>
+              <option value="Baseline">Baseline</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-1 text-xs text-gray-400">
+            Vol
+            <select
+              data-field="volumeType"
+              data-action="change->${this.controllerName}#switchVolumeType"
+              class="px-1.5 py-1 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+            >
+              <option value="Histogram" selected>Bars</option>
+              <option value="Line">Line</option>
+              <option value="Area">Area</option>
+            </select>
+          </label>
           <button
             data-action="click->${this.controllerName}#toggleVolume"
             data-vol-btn
