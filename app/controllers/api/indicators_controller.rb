@@ -6,26 +6,22 @@ class Api::IndicatorsController < Api::ApplicationController
   end
 
   def show
-    candles = Candle
-      .for_symbol(params.require(:symbol))
-      .for_timeframe(params.fetch(:timeframe, '1m'))
-      .in_range(time_range_start, time_range_end)
+    candles = Candle::FindQuery.new(
+      symbol: params.require(:symbol),
+      timeframe: params.fetch(:timeframe, '1m'),
+      start_time: params[:start_time],
+      end_time: params[:end_time]
+    ).call
 
     calculator = Candle::IndicatorCalculator.new(candles)
     result = calculator.calculate(params.require(:type), **indicator_params)
 
     render json: result
+  rescue TechnicalAnalysis::Validation::ValidationError => e
+    render json: { error: e.message }, status: :unprocessable_entity
   end
 
   private
-
-  def time_range_start
-    params[:start_time] ? Time.zone.parse(params[:start_time]) : 30.days.ago
-  end
-
-  def time_range_end
-    params[:end_time] ? Time.zone.parse(params[:end_time]) : Time.current
-  end
 
   def indicator_params
     params.except(:symbol, :timeframe, :type, :start_time, :end_time, :controller, :action, :format)

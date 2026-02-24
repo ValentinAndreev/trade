@@ -1,4 +1,5 @@
 import { OVERLAY_COLORS } from "../chart/theme"
+import { INDICATOR_META } from "../chart/indicators"
 
 export default class TabRenderer {
   constructor(tabBarEl, panelsEl, sidebarEl, { controllerName }) {
@@ -8,7 +9,8 @@ export default class TabRenderer {
     this.controllerName = controllerName
   }
 
-  render(tabs, activeTabId, selectedPanelId, selectedOverlayId, symbols, timeframes, labelFn) {
+  render(tabs, activeTabId, selectedPanelId, selectedOverlayId, symbols, timeframes, labelFn, indicators) {
+    this.indicators = indicators || []
     this._renderTabBar(tabs, activeTabId, labelFn)
     this._renderPanels(tabs, activeTabId, selectedPanelId)
     this._renderSidebar(selectedPanelId, selectedOverlayId, tabs, symbols, timeframes)
@@ -168,9 +170,15 @@ export default class TabRenderer {
   }
 
   _overlaysJson(panel) {
-    return JSON.stringify(panel.overlays.filter(o => o.symbol).map(o => ({
-      id: o.id, symbol: o.symbol, mode: o.mode, chartType: o.chartType,
-    })))
+    return JSON.stringify(panel.overlays.filter(o => o.symbol).map(o => {
+      const base = { id: o.id, symbol: o.symbol, mode: o.mode, chartType: o.chartType }
+      if (o.mode === "indicator") {
+        base.indicatorType = o.indicatorType
+        base.indicatorParams = o.indicatorParams
+        base.pinnedTo = o.pinnedTo
+      }
+      return base
+    }))
   }
 
   _panelLegendHTML(panel) {
@@ -178,8 +186,19 @@ export default class TabRenderer {
     const lines = panel.overlays
       .filter(o => o.symbol)
       .map(o => {
-        const modeLabel = o.mode === "volume" ? "Volume" : "Price"
+        let modeLabel
+        if (o.mode === "indicator" && o.indicatorType) {
+          const sourceOverlay = o.pinnedTo ? panel.overlays.find(s => s.id === o.pinnedTo) : null
+          const sourceSymbol = this._escapeHTML(sourceOverlay ? sourceOverlay.symbol : o.symbol)
+          const sourceMode = sourceOverlay ? (sourceOverlay.mode === "volume" ? "Volume" : "Price") : "Price"
+          const paramsStr = o.indicatorParams
+            ? Object.values(o.indicatorParams).join(",")
+            : ""
+          modeLabel = `${(o.indicatorType || "").toUpperCase()}${paramsStr ? `(${paramsStr})` : ""}`
+          return `<div class="truncate">${sourceSymbol} ${sourceMode} ${modeLabel} ${timeframe}</div>`
+        }
         const symbol = this._escapeHTML(o.symbol)
+        modeLabel = o.mode === "volume" ? "Volume" : "Price"
         return `<div class="truncate">${symbol} ${modeLabel} ${timeframe}</div>`
       })
       .join("")
@@ -236,13 +255,13 @@ export default class TabRenderer {
            data-action="click->${this.controllerName}#selectPanel"
            class="relative flex-1 min-h-0 border ${borderClass} cursor-pointer">
         ${closeBtn}
-        ${panelLegend}
         <div
           data-controller="chart"
           data-chart-timeframe-value="${panel.timeframe}"
           data-chart-overlays-value='${overlaysJson.replace(/'/g, "&#39;")}'
-          class="h-full w-full"
+          class="absolute inset-0"
         ></div>
+        ${panelLegend}
       </div>
     `
   }
@@ -271,8 +290,13 @@ export default class TabRenderer {
     const opacityPercent = Math.round(Math.max(0, Math.min(1, opacity)) * 100)
 
     const priceActive = mode === "price"
+    const volumeActive = mode === "volume"
+    const indicatorActive = mode === "indicator"
     const activeBtnClass = "text-white bg-blue-600"
     const inactiveBtnClass = "text-gray-400 bg-[#2a2a3e] hover:bg-[#3a3a4e]"
+
+    const indicatorType = selectedOverlay?.indicatorType || "sma"
+    const indicatorParams = selectedOverlay?.indicatorParams || {}
 
     const chartTypeOptions = priceActive
       ? this._chartTypeOpts([
@@ -287,8 +311,17 @@ export default class TabRenderer {
     // Overlay list
     const overlayList = panel.overlays.map(o => {
       const isSelected = o.id === (selectedOverlay?.id)
-      const label = o.symbol || "Empty"
-      const modeLabel = o.mode === "volume" ? "Volume" : "Price"
+      let label, modeLabel
+      if (o.mode === "indicator") {
+        const sourceOverlay = o.pinnedTo ? panel.overlays.find(s => s.id === o.pinnedTo) : null
+        const sourceSymbol = sourceOverlay ? sourceOverlay.symbol : o.symbol
+        const sourceMode = sourceOverlay ? (sourceOverlay.mode === "volume" ? "Vol" : "Price") : "Price"
+        label = `${sourceSymbol || o.symbol || "Empty"} ${sourceMode}`
+        modeLabel = (o.indicatorType || "ind").toUpperCase()
+      } else {
+        label = o.symbol || "Empty"
+        modeLabel = o.mode === "volume" ? "Volume" : "Price"
+      }
       const visibilityClass = o.visible === false ? "bg-gray-600" : "bg-emerald-400"
       const visibilityTitle = o.visible === false ? "Hidden" : "Visible"
       return `
@@ -360,6 +393,13 @@ export default class TabRenderer {
           ${this._comboHTML("symbol", symbols, currentSymbol, "w-full")}
         </label>
 
+        ${!selectedOverlay?.symbol ? `
+          <button
+            data-action="click->${this.controllerName}#applySettings"
+            class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
+          >Apply</button>
+        ` : ""}
+
         <div class="flex flex-col gap-1 text-sm text-gray-400">
           <span>Color scheme</span>
           ${colorSchemeDropdown}
@@ -391,20 +431,107 @@ export default class TabRenderer {
             <button
               data-action="click->${this.controllerName}#setMode"
               data-mode="volume"
-              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${priceActive ? inactiveBtnClass : activeBtnClass}"
+              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${volumeActive ? activeBtnClass : inactiveBtnClass}"
             >Volume</button>
+            <button
+              data-action="click->${this.controllerName}#setMode"
+              data-mode="indicator"
+              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${indicatorActive ? activeBtnClass : inactiveBtnClass}"
+            >Indicator</button>
           </div>
 
-          <label class="flex flex-col gap-1 text-sm text-gray-400">
-            Chart type
-            <select
-              data-field="chartType"
-              data-action="change->${this.controllerName}#switchChartType"
-              class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-            >${chartTypeOptions}</select>
-          </label>
+          ${indicatorActive ? this._indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) : `
+            <label class="flex flex-col gap-1 text-sm text-gray-400">
+              Chart type
+              <select
+                data-field="chartType"
+                data-action="change->${this.controllerName}#switchChartType"
+                class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+              >${chartTypeOptions}</select>
+            </label>
+          `}
         ` : ""}
       </div>
+    `
+  }
+
+  _indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) {
+    const indicators = this.indicators || []
+    const meta = INDICATOR_META[indicatorType]
+
+    // Build indicator type options — prefer server list, fallback to INDICATOR_META keys
+    const indicatorKeys = indicators.length > 0
+      ? indicators.map(i => i.key)
+      : Object.keys(INDICATOR_META)
+
+    const indicatorOpts = indicatorKeys.map(key => {
+      const serverInfo = indicators.find(i => i.key === key)
+      const label = serverInfo ? serverInfo.name : key.toUpperCase()
+      return `<option value="${key}"${key === indicatorType ? " selected" : ""}>${label}</option>`
+    }).join("")
+
+    // Build param inputs from meta
+    let paramInputs = ""
+    if (meta && meta.defaults) {
+      const params = { ...meta.defaults, ...indicatorParams }
+      paramInputs = Object.entries(meta.defaults).map(([key, defaultVal]) => {
+        const value = params[key] ?? defaultVal
+        const label = meta.paramLabels?.[key] || key
+        return `
+          <label class="flex flex-col gap-1 text-sm text-gray-400">
+            ${this._escapeHTML(label)}
+            <input
+              type="number"
+              data-indicator-param="${key}"
+              value="${value}"
+              data-action="keydown->${this.controllerName}#applyIndicatorOnEnter"
+              class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+            >
+          </label>
+        `
+      }).join("")
+    }
+
+    // Build "Source" dropdown — which overlay's data to calculate indicator from
+    const pinnedTo = selectedOverlay?.pinnedTo || null
+    const pinTargets = panel.overlays.filter(o => o.id !== selectedOverlay?.id && o.symbol)
+    let sourceHTML = ""
+    if (pinTargets.length > 0) {
+      const sourceOpts = [
+        `<option value=""${!pinnedTo ? " selected" : ""}>Own (${this._escapeHTML(selectedOverlay?.symbol || "—")})</option>`,
+        ...pinTargets.map(o => {
+          const modeLabel = o.mode === "volume" ? "Vol" : (o.mode === "indicator" ? (o.indicatorType || "").toUpperCase() : "Price")
+          return `<option value="${o.id}"${o.id === pinnedTo ? " selected" : ""}>${this._escapeHTML(o.symbol)} ${modeLabel}</option>`
+        }),
+      ].join("")
+
+      sourceHTML = `
+        <label class="flex flex-col gap-1 text-sm text-gray-400">
+          Source
+          <select
+            data-field="pinnedTo"
+            data-action="change->${this.controllerName}#changePinnedTo"
+            class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+          >${sourceOpts}</select>
+        </label>
+      `
+    }
+
+    return `
+      <label class="flex flex-col gap-1 text-sm text-gray-400">
+        Indicator
+        <select
+          data-field="indicatorType"
+          data-action="change->${this.controllerName}#switchIndicatorType"
+          class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+        >${indicatorOpts}</select>
+      </label>
+      ${paramInputs}
+      ${sourceHTML}
+      <button
+        data-action="click->${this.controllerName}#applyIndicator"
+        class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
+      >Apply</button>
     `
   }
 

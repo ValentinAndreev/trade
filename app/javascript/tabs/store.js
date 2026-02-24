@@ -211,6 +211,46 @@ export default class TabStore {
     const overlay = this._findOverlay(overlayId)
     if (!overlay || overlay.mode === mode) return false
     overlay.mode = mode
+    if (mode === "indicator") {
+      if (!overlay.indicatorType) {
+        overlay.indicatorType = "sma"
+        overlay.indicatorParams = { period: 20 }
+      }
+      // Auto-pin to first price overlay on same panel
+      if (!overlay.pinnedTo) {
+        const panel = this._findPanelForOverlay(overlayId)
+        if (panel) {
+          const priceOverlay = panel.overlays.find(o => o.id !== overlayId && o.mode === "price" && o.symbol)
+          if (priceOverlay) overlay.pinnedTo = priceOverlay.id
+        }
+      }
+    } else {
+      overlay.pinnedTo = null
+    }
+    this._save()
+    return true
+  }
+
+  setOverlayPinnedTo(overlayId, pinnedTo) {
+    const overlay = this._findOverlay(overlayId)
+    if (!overlay) return false
+    overlay.pinnedTo = pinnedTo || null
+    this._save()
+    return true
+  }
+
+  setOverlayIndicatorType(overlayId, type) {
+    const overlay = this._findOverlay(overlayId)
+    if (!overlay) return false
+    overlay.indicatorType = type
+    this._save()
+    return true
+  }
+
+  setOverlayIndicatorParams(overlayId, params) {
+    const overlay = this._findOverlay(overlayId)
+    if (!overlay) return false
+    overlay.indicatorParams = params ? { ...params } : null
     this._save()
     return true
   }
@@ -271,6 +311,15 @@ export default class TabStore {
     return null
   }
 
+  _findPanelForOverlay(overlayId) {
+    for (const tab of this.tabs) {
+      for (const panel of tab.panels) {
+        if (panel.overlays.some(o => o.id === overlayId)) return panel
+      }
+    }
+    return null
+  }
+
   _findPanel(panelId) {
     for (const tab of this.tabs) {
       const panel = tab.panels.find(p => p.id === panelId)
@@ -288,6 +337,9 @@ export default class TabStore {
       visible: true,
       colorScheme: this._normalizeColorScheme(colorScheme),
       opacity: 1,
+      indicatorType: null,
+      indicatorParams: null,
+      pinnedTo: null,
     }
   }
 
@@ -398,6 +450,9 @@ export default class TabStore {
           visible: o.visible !== false,
           colorScheme: this._normalizeColorScheme(o.colorScheme ?? idx),
           opacity: this._normalizeOpacity(o.opacity),
+          indicatorType: o.indicatorType ?? null,
+          indicatorParams: o.indicatorParams ?? null,
+          pinnedTo: o.pinnedTo ?? null,
         })),
       }
     }

@@ -4,10 +4,13 @@ import { createChart } from "lightweight-charts"
 import {
   CHART_THEME, PRICE_SERIES_TYPES, VOLUME_SERIES_TYPES, OVERLAY_COLORS,
 } from "../chart/theme"
+import { LineSeries, HistogramSeries } from "lightweight-charts"
 import DataLoader from "../chart/data_loader"
 import BitfinexFeed from "../chart/bitfinex_feed"
 import CableFeed from "../chart/cable_feed"
 import Scrollbar from "../chart/scrollbar"
+import IndicatorLoader from "../chart/indicator_loader"
+import { INDICATOR_META } from "../chart/indicators"
 
 export default class extends Controller {
   static values = {
@@ -25,17 +28,30 @@ export default class extends Controller {
 
     this._initChart()
 
+    const indicatorConfigs = []
     configs.forEach(config => {
-      if (config.symbol) this._addOverlayInternal(config)
+      if (!config.symbol) return
+      if (config.mode === "indicator") {
+        indicatorConfigs.push(config)
+      } else {
+        this._addOverlayInternal(config)
+      }
     })
 
     this._startFeeds()
+
+    indicatorConfigs.forEach(config => {
+      this._addIndicatorOverlay(config)
+    })
   }
 
   disconnect() {
     for (const [, ov] of this.overlayMap) {
       ov.bfxFeed?.disconnect()
       ov.cableFeed?.disconnect()
+      if (ov.indicatorSeries) {
+        ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch {} })
+      }
     }
     if (this.scrollHandler) {
       this.chart?.timeScale().unsubscribeVisibleLogicalRangeChange(this.scrollHandler)
@@ -51,6 +67,10 @@ export default class extends Controller {
   addOverlay(config) {
     if (!this.chart) {
       this._initChart()
+    }
+    if (config.mode === "indicator") {
+      this._addIndicatorOverlay(config)
+      return
     }
     this._addOverlayInternal(config)
     const ov = this.overlayMap.get(config.id)
@@ -68,7 +88,11 @@ export default class extends Controller {
     if (!ov) return
     ov.bfxFeed?.disconnect()
     ov.cableFeed?.disconnect()
-    this.chart.removeSeries(ov.series)
+    if (ov.indicatorSeries) {
+      ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch {} })
+    } else if (ov.series) {
+      this.chart.removeSeries(ov.series)
+    }
     this.overlayMap.delete(id)
     if (this.selectedOverlayId === id) this.selectedOverlayId = null
     this._syncSelectedOverlayScale()
@@ -77,6 +101,31 @@ export default class extends Controller {
   showMode(id, mode) {
     const ov = this.overlayMap.get(id)
     if (!ov || ov.mode === mode) return
+
+    // Switching away from indicator — remove indicator series
+    if (ov.indicatorSeries) {
+      ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch {} })
+      ov.indicatorSeries = null
+    }
+
+    // Switching to indicator — handled via updateIndicator, just store mode
+    if (mode === "indicator") {
+      ov.mode = mode
+      return
+    }
+
+    // If switching from indicator back to price/volume, need to recreate candle series
+    if (!ov.series && ov.loader) {
+      ov.mode = mode
+      ov.chartType = mode === "volume" ? "Histogram" : "Candlestick"
+      ov.series = this._createSeries(ov.mode, ov.chartType, ov.colors, ov.activePriceScaleId, ov.visible, ov.opacity)
+      if (ov.loader.candles.length > 0) {
+        ov.series.setData(this._toSeriesData(ov, ov.loader.candles))
+      }
+      this._syncSelectedOverlayScale()
+      return
+    }
+
     ov.mode = mode
     this._recreateSeries(id)
   }
@@ -99,7 +148,11 @@ export default class extends Controller {
     const normalized = visible !== false
     if (ov.visible === normalized) return
     ov.visible = normalized
-    ov.series.applyOptions({ visible: normalized })
+    if (ov.indicatorSeries) {
+      ov.indicatorSeries.forEach(s => s.series.applyOptions({ visible: normalized }))
+    } else if (ov.series) {
+      ov.series.applyOptions({ visible: normalized })
+    }
     this._syncSelectedOverlayScale()
   }
 
@@ -121,6 +174,143 @@ export default class extends Controller {
     if (ov.opacity === normalized) return
     ov.opacity = normalized
     this._applyOverlayStyle(ov)
+  }
+
+  // --- Indicator support ---
+
+  _addIndicatorOverlay(config) {
+    const colorIndex = this._normalizeColorScheme(config.colorScheme, this._colorIndex++)
+    const colors = OVERLAY_COLORS[colorIndex]
+    const visible = config.visible !== false
+    const opacity = this._normalizeOpacity(config.opacity, 1)
+    const basePriceScaleId = `overlay-${config.id}`
+    const indicatorType = config.indicatorType || "sma"
+    const indicatorParams = config.indicatorParams || {}
+    const pinnedTo = config.pinnedTo || null
+    const meta = INDICATOR_META[indicatorType]
+
+    // Create a candle loader + feeds for potential mode switching back to price/volume
+    const url = `/api/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${encodeURIComponent(this.timeframeValue)}&limit=1500`
+    const loader = new DataLoader(url)
+    const onCandle = (candle) => this._handleCandle(config.id, candle)
+    const bfxFeed = new BitfinexFeed(config.symbol, this.timeframeValue, onCandle)
+    const cableFeed = new CableFeed(config.symbol, this.timeframeValue, onCandle)
+
+    const ov = {
+      series: null, loader, bfxFeed, cableFeed,
+      mode: "indicator", chartType: "Line",
+      colorIndex, colorScheme: colorIndex, opacity, colors, visible,
+      basePriceScaleId, activePriceScaleId: basePriceScaleId,
+      symbol: config.symbol,
+      indicatorType, indicatorParams, pinnedTo,
+      indicatorSeries: [],
+    }
+
+    this.overlayMap.set(config.id, ov)
+
+    if (meta) {
+      this._loadIndicatorData(config.id, ov)
+    }
+    this._syncSelectedOverlayScale()
+  }
+
+  async _loadIndicatorData(id, ov) {
+    const meta = INDICATOR_META[ov.indicatorType]
+    if (!meta) return
+
+    // Use pinned overlay's symbol as data source if available
+    const sourceSymbol = this._resolveIndicatorSymbol(ov)
+    const scaleId = this._resolveIndicatorScaleId(ov)
+
+    const indLoader = new IndicatorLoader(sourceSymbol, this.timeframeValue, ov.indicatorType, ov.indicatorParams)
+    try {
+      const data = await indLoader.load()
+
+      // Create a series per field
+      const fieldColors = this._indicatorFieldColors(ov.colors, meta.fields.length, ov.opacity)
+      ov.indicatorSeries = meta.fields.map((field, i) => {
+        const seriesType = field.seriesType === "Histogram" ? HistogramSeries : LineSeries
+        const color = fieldColors[i]
+        const options = field.seriesType === "Histogram"
+          ? { color, priceScaleId: scaleId, visible: ov.visible }
+          : { color, lineWidth: 2, priceScaleId: scaleId, visible: ov.visible }
+        const series = this.chart.addSeries(seriesType, options)
+        const seriesData = data
+          .filter(d => d[field.key] != null)
+          .map(d => ({ time: d.time, value: d[field.key] }))
+        series.setData(seriesData)
+        return { series, fieldKey: field.key }
+      })
+
+      this.chart.timeScale().fitContent()
+      this._syncSelectedOverlayScale()
+    } catch (error) {
+      console.error(`Failed to load indicator ${ov.indicatorType} for overlay ${id}:`, error)
+    }
+  }
+
+  _resolveIndicatorSymbol(ov) {
+    if (!ov.pinnedTo) return ov.symbol
+    const target = this.overlayMap.get(ov.pinnedTo)
+    return target ? target.symbol : ov.symbol
+  }
+
+  _resolveIndicatorScaleId(ov) {
+    if (!ov.pinnedTo) return ov.basePriceScaleId
+    const target = this.overlayMap.get(ov.pinnedTo)
+    if (!target) return ov.basePriceScaleId
+    return target.activePriceScaleId || target.basePriceScaleId
+  }
+
+  setPinnedTo(id, pinnedTo) {
+    const ov = this.overlayMap.get(id)
+    if (!ov) return
+    const oldPinnedTo = ov.pinnedTo
+    ov.pinnedTo = pinnedTo || null
+
+    // Source symbol changed — reload indicator data
+    const oldSymbol = oldPinnedTo ? (this.overlayMap.get(oldPinnedTo)?.symbol || ov.symbol) : ov.symbol
+    const newSymbol = this._resolveIndicatorSymbol(ov)
+    if (oldSymbol !== newSymbol && ov.indicatorSeries) {
+      // Full reload with new source
+      ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch {} })
+      ov.indicatorSeries = []
+      this._loadIndicatorData(id, ov)
+      return
+    }
+
+    // Same symbol — just re-apply scale
+    const scaleId = this._resolveIndicatorScaleId(ov)
+    if (ov.indicatorSeries) {
+      ov.indicatorSeries.forEach(s => s.series.applyOptions({ priceScaleId: scaleId }))
+    }
+    this._syncSelectedOverlayScale()
+  }
+
+  updateIndicator(id, type, params, pinnedTo) {
+    const ov = this.overlayMap.get(id)
+    if (!ov) return
+
+    // Remove old indicator series
+    if (ov.indicatorSeries) {
+      ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch {} })
+      ov.indicatorSeries = []
+    }
+
+    ov.indicatorType = type
+    ov.indicatorParams = params
+    ov.mode = "indicator"
+    if (pinnedTo !== undefined) ov.pinnedTo = pinnedTo || null
+
+    this._loadIndicatorData(id, ov)
+  }
+
+  _indicatorFieldColors(colors, count, opacity) {
+    if (count === 1) return [this._withAlpha(colors.line, opacity)]
+    const palette = [colors.line, colors.up, colors.down, "#ffa726", "#ab47bc"]
+    return Array.from({ length: count }, (_, i) =>
+      this._withAlpha(palette[i % palette.length], opacity)
+    )
   }
 
   // --- Internal ---
@@ -149,7 +339,7 @@ export default class extends Controller {
       autoSize: true,
       timeScale: { timeVisible: true, secondsVisible: false },
       leftPriceScale: { visible: false },
-      rightPriceScale: { visible: true },
+      rightPriceScale: { visible: true, scaleMargins: { top: 0.05, bottom: 0.05 } },
     })
 
     this.scrollbar = new Scrollbar(this.element, {
@@ -261,6 +451,17 @@ export default class extends Controller {
 
   _applyOverlayStyle(ov) {
     if (!ov) return
+    if (ov.indicatorSeries) {
+      const meta = INDICATOR_META[ov.indicatorType]
+      if (meta) {
+        const fieldColors = this._indicatorFieldColors(ov.colors, meta.fields.length, ov.opacity)
+        ov.indicatorSeries.forEach((s, i) => {
+          s.series.applyOptions({ color: fieldColors[i] })
+        })
+      }
+      return
+    }
+    if (!ov.series) return
     const styleOverrides = this._seriesStyleOverrides(ov.mode, ov.chartType, ov.colors, ov.opacity)
     if (Object.keys(styleOverrides).length > 0) {
       ov.series.applyOptions(styleOverrides)
@@ -325,23 +526,53 @@ export default class extends Controller {
   _syncSelectedOverlayScale() {
     if (!this.chart) return
 
-    const visibleOverlayIds = []
+    // Collect visible non-pinned overlay ids for right scale candidates
+    const visibleUnpinned = []
     for (const [id, ov] of this.overlayMap) {
-      if (ov.visible) visibleOverlayIds.push(id)
+      if (ov.visible && !ov.pinnedTo) visibleUnpinned.push(id)
     }
 
-    const selectedVisible = this.selectedOverlayId &&
-      this.overlayMap.has(this.selectedOverlayId) &&
-      this.overlayMap.get(this.selectedOverlayId).visible
-    const rightScaleOverlayId = selectedVisible ? this.selectedOverlayId : (visibleOverlayIds[0] || null)
+    // Determine which overlay gets the "right" price scale
+    let rightScaleOverlayId = null
+    if (this.selectedOverlayId && this.overlayMap.has(this.selectedOverlayId)) {
+      const selOv = this.overlayMap.get(this.selectedOverlayId)
+      if (selOv.visible) {
+        // If selected is pinned, promote its target to "right" instead
+        rightScaleOverlayId = selOv.pinnedTo || this.selectedOverlayId
+      }
+    }
+    if (!rightScaleOverlayId) {
+      rightScaleOverlayId = visibleUnpinned[0] || null
+    }
 
+    // First pass: non-pinned overlays
     for (const [id, ov] of this.overlayMap) {
+      if (ov.pinnedTo) continue
       const targetScaleId = (rightScaleOverlayId && id === rightScaleOverlayId)
         ? "right"
         : ov.basePriceScaleId
-
       if (ov.activePriceScaleId !== targetScaleId) {
-        ov.series.applyOptions({ priceScaleId: targetScaleId })
+        if (ov.indicatorSeries) {
+          ov.indicatorSeries.forEach(s => s.series.applyOptions({ priceScaleId: targetScaleId }))
+        } else if (ov.series) {
+          ov.series.applyOptions({ priceScaleId: targetScaleId })
+        }
+        ov.activePriceScaleId = targetScaleId
+      }
+    }
+    // Second pass: pinned overlays (targets already resolved)
+    for (const [, ov] of this.overlayMap) {
+      if (!ov.pinnedTo) continue
+      const target = this.overlayMap.get(ov.pinnedTo)
+      const targetScaleId = target
+        ? (target.activePriceScaleId || target.basePriceScaleId)
+        : ov.basePriceScaleId
+      if (ov.activePriceScaleId !== targetScaleId) {
+        if (ov.indicatorSeries) {
+          ov.indicatorSeries.forEach(s => s.series.applyOptions({ priceScaleId: targetScaleId }))
+        } else if (ov.series) {
+          ov.series.applyOptions({ priceScaleId: targetScaleId })
+        }
         ov.activePriceScaleId = targetScaleId
       }
     }
@@ -390,6 +621,7 @@ export default class extends Controller {
     const ov = this.overlayMap.get(overlayId)
     if (!ov) return
     ov.loader.updateCandle(candle)
+    if (ov.mode === "indicator" || !ov.series) return
     try {
       ov.series.update(this._toUpdatePoint(ov, candle))
     } catch (e) {
@@ -410,16 +642,17 @@ export default class extends Controller {
       requestAnimationFrame(() => this.scrollbar?.update())
       this._subscribeToScroll()
       for (const [, ov] of this.overlayMap) {
-        ov.bfxFeed.connect()
+        if (ov.mode !== "indicator") ov.bfxFeed.connect()
       }
     })
 
     for (const [, ov] of this.overlayMap) {
-      ov.cableFeed.connect()
+      if (ov.mode !== "indicator") ov.cableFeed.connect()
     }
   }
 
   async _loadOverlayData(ov, id) {
+    if (!ov.series) return
     try {
       const candles = await ov.loader.loadInitial()
       ov.series.setData(this._toSeriesData(ov, candles))
@@ -445,6 +678,7 @@ export default class extends Controller {
     let maxAdded = 0
 
     for (const [, ov] of this.overlayMap) {
+      if (!ov.series) continue
       const filtered = await ov.loader.loadMoreHistory()
       if (!filtered) continue
       ov.series.setData(this._toSeriesData(ov, ov.loader.candles))

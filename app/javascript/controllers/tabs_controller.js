@@ -2,6 +2,7 @@ import { Controller } from "@hotwired/stimulus"
 import TabStore from "../tabs/store"
 import TabRenderer from "../tabs/renderer"
 import { fetchConfig } from "../tabs/config"
+import { INDICATOR_META } from "../chart/indicators"
 
 export default class extends Controller {
   static targets = ["tabBar", "panels", "sidebar"]
@@ -177,7 +178,12 @@ export default class extends Controller {
     if (this.store.setOverlayMode(overlay.id, mode)) {
       const panel = this.store.selectedPanel
       const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-      if (chartCtrl) chartCtrl.showMode(overlay.id, mode)
+      if (chartCtrl) {
+        chartCtrl.showMode(overlay.id, mode)
+        if (mode === "indicator") {
+          chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo)
+        }
+      }
       this.render()
     }
   }
@@ -192,6 +198,70 @@ export default class extends Controller {
       const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
       if (chartCtrl) chartCtrl.switchChartType(overlay.id, type)
     }
+  }
+
+  changePinnedTo(e) {
+    const overlay = this.store.selectedOverlay
+    if (!overlay) return
+
+    const pinnedTo = e.currentTarget.value || null
+    this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
+
+    const panel = this.store.selectedPanel
+    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+    if (chartCtrl?.setPinnedTo) {
+      chartCtrl.setPinnedTo(overlay.id, pinnedTo)
+    }
+  }
+
+  switchIndicatorType(e) {
+    const type = e.currentTarget.value
+    const overlay = this.store.selectedOverlay
+    if (!overlay || !type) return
+
+    const meta = INDICATOR_META[type]
+    const params = meta ? { ...meta.defaults } : {}
+
+    this.store.setOverlayIndicatorType(overlay.id, type)
+    this.store.setOverlayIndicatorParams(overlay.id, params)
+    this.render()
+  }
+
+  applyIndicatorOnEnter(e) {
+    if (e.key !== "Enter") return
+    e.preventDefault()
+    this.applyIndicator()
+  }
+
+  applyIndicator() {
+    const overlay = this.store.selectedOverlay
+    if (!overlay || overlay.mode !== "indicator") return
+
+    const typeEl = this.sidebarTarget.querySelector("[data-field='indicatorType']")
+    const type = typeEl?.value || overlay.indicatorType || "sma"
+
+    // Collect params from inputs
+    const paramInputs = this.sidebarTarget.querySelectorAll("[data-indicator-param]")
+    const params = {}
+    paramInputs.forEach(input => {
+      const key = input.dataset.indicatorParam
+      const val = parseFloat(input.value)
+      if (!Number.isNaN(val)) params[key] = val
+    })
+
+    const pinnedEl = this.sidebarTarget.querySelector("[data-field='pinnedTo']")
+    const pinnedTo = pinnedEl?.value || null
+
+    this.store.setOverlayIndicatorType(overlay.id, type)
+    this.store.setOverlayIndicatorParams(overlay.id, params)
+    this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
+
+    const panel = this.store.selectedPanel
+    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+    if (chartCtrl) {
+      chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo)
+    }
+    this.render()
   }
 
   switchColorScheme(e) {
@@ -363,6 +433,7 @@ export default class extends Controller {
       this.config.symbols,
       this.config.timeframes,
       (tab) => this.store.tabLabel(tab),
+      this.config.indicators,
     )
     this._syncSelectedOverlayScale()
     requestAnimationFrame(() => this._syncSelectedOverlayScale())

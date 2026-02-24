@@ -19,10 +19,12 @@ class Candle::IndicatorCalculator
 
   class UnknownIndicatorError < StandardError; end
 
-  private attr_reader :candles
+  private attr_reader :candle_data
 
+  # Accepts either an AR relation or an array of OHLCV hashes
+  # (as returned by FindQuery: { time:, open:, high:, low:, close:, volume: })
   def initialize(candles)
-    @candles = candles
+    @candle_data = candles
   end
 
   def calculate(indicator, **params)
@@ -48,15 +50,29 @@ class Candle::IndicatorCalculator
   private
 
   def input_data
-    @input_data ||= candles.ordered.map do |c|
-      {
-        date_time: c.ts.iso8601,
-        open: c.open.to_f,
-        high: c.high.to_f,
-        low: c.low.to_f,
-        close: c.close.to_f,
-        volume: c.volume.to_f
-      }
+    @input_data ||= if candle_data.is_a?(Array)
+      candle_data.map do |c|
+        ts = c[:time] || c['time']
+        {
+          date_time: Time.at(ts).utc.iso8601,
+          open: c[:open]&.to_f || c['open']&.to_f,
+          high: c[:high]&.to_f || c['high']&.to_f,
+          low: c[:low]&.to_f || c['low']&.to_f,
+          close: c[:close]&.to_f || c['close']&.to_f,
+          volume: c[:volume]&.to_f || c['volume']&.to_f
+        }
+      end
+    else
+      candle_data.ordered.map do |c|
+        {
+          date_time: c.ts.iso8601,
+          open: c.open.to_f,
+          high: c.high.to_f,
+          low: c.low.to_f,
+          close: c.close.to_f,
+          volume: c.volume.to_f
+        }
+      end
     end
   end
 
