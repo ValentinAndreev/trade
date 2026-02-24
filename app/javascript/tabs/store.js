@@ -1,30 +1,12 @@
 import { OVERLAY_COLORS } from "../chart/theme"
-
-const STORAGE_KEY = "chart-tabs"
-const DEFAULT_TABS = [{
-  id: "tab-1",
-  name: null,
-  panels: [{
-    id: "p-1",
-    timeframe: "1m",
-    overlays: [{
-      id: "o-1",
-      symbol: "BTCUSD",
-      mode: "price",
-      chartType: "Candlestick",
-      visible: true,
-      colorScheme: 0,
-      opacity: 1,
-    }],
-  }],
-}]
+import { loadTabs, saveTabs, calcNextId } from "./persistence"
 
 export default class TabStore {
   constructor() {
-    this.tabs = this._load()
+    this.tabs = loadTabs()
     this._nextTabId = Math.max(...this.tabs.map(t => parseInt(t.id.split("-")[1]))) + 1
-    this._nextPanelId = this._calcNextId("p")
-    this._nextOverlayId = this._calcNextId("o")
+    this._nextPanelId = calcNextId(this.tabs, "p")
+    this._nextOverlayId = calcNextId(this.tabs, "o")
     this.activeTabId = this.tabs[0].id
     this.selectedPanelId = this.tabs[0].panels[0].id
     this.selectedOverlayId = this.tabs[0].panels[0].overlays[0]?.id || null
@@ -373,107 +355,7 @@ export default class TabStore {
     return Math.round(value * 100) / 100
   }
 
-  // --- Persistence ---
-
-  _calcNextId(prefix) {
-    let max = 0
-    for (const tab of this.tabs) {
-      for (const p of tab.panels) {
-        if (prefix === "p") {
-          const n = parseInt(p.id.split("-")[1])
-          if (n > max) max = n
-        }
-        if (prefix === "o" && p.overlays) {
-          for (const o of p.overlays) {
-            const n = parseInt(o.id.split("-")[1])
-            if (n > max) max = n
-          }
-        }
-      }
-    }
-    return max + 1
-  }
-
-  _load() {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        const tabs = JSON.parse(stored)
-        if (Array.isArray(tabs) && tabs.length > 0) {
-          return tabs.map(t => this._migrateTab(t))
-        }
-      }
-    } catch { /* ignore */ }
-    return structuredClone(DEFAULT_TABS)
-  }
-
-  _migrateTab(t) {
-    // Very old format: { id, symbol, timeframe, mode, name } (no panels)
-    if (!t.panels) {
-      return {
-        id: t.id,
-        name: t.name ?? null,
-        panels: [{
-          id: `p-${t.id.split("-")[1]}`,
-          timeframe: t.timeframe || "1m",
-          overlays: [{
-            id: `o-${t.id.split("-")[1]}`,
-            symbol: t.symbol ?? null,
-            mode: t.mode || "price",
-            chartType: "Candlestick",
-            visible: true,
-            colorScheme: 0,
-            opacity: 1,
-          }],
-        }],
-      }
-    }
-
-    // Migrate panels
-    return {
-      ...t,
-      name: t.name ?? null,
-      panels: t.panels.map(p => this._migratePanel(p)),
-    }
-  }
-
-  _migratePanel(p) {
-    // Already has overlays — just ensure defaults
-    if (p.overlays) {
-      return {
-        ...p,
-        timeframe: p.timeframe || "1m",
-        overlays: p.overlays.map((o, idx) => ({
-          ...o,
-          mode: o.mode || "price",
-          chartType: o.chartType || "Candlestick",
-          visible: o.visible !== false,
-          colorScheme: this._normalizeColorScheme(o.colorScheme ?? idx),
-          opacity: this._normalizeOpacity(o.opacity),
-          indicatorType: o.indicatorType ?? null,
-          indicatorParams: o.indicatorParams ?? null,
-          pinnedTo: o.pinnedTo ?? null,
-        })),
-      }
-    }
-
-    // Old panel format: { id, symbol, timeframe, mode } — convert to overlay model
-    return {
-      id: p.id,
-      timeframe: p.timeframe || "1m",
-      overlays: [{
-        id: `o-${p.id.split("-")[1]}`,
-        symbol: p.symbol ?? null,
-        mode: p.mode || "price",
-        chartType: "Candlestick",
-        visible: true,
-        colorScheme: 0,
-        opacity: 1,
-      }],
-    }
-  }
-
   _save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.tabs))
+    saveTabs(this.tabs)
   }
 }
