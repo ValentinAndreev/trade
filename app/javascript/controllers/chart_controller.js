@@ -216,6 +216,13 @@ export default class extends Controller {
       getVisibleRange: () => this.chart.timeScale().getVisibleLogicalRange(),
       setVisibleRange: (range) => this.chart.timeScale().setVisibleLogicalRange(range),
       getTotalBars: () => this._maxBarsCount(),
+      getTimeRange: () => this._timeRange(),
+      onGoStart: () => this._goToStart(),
+      onGoEnd: () => {
+        this.chart.timeScale().scrollToPosition(0, false)
+        requestAnimationFrame(() => this.scrollbar?.update())
+      },
+      onGoToDate: (ts) => this._navigateToTime(ts),
     })
 
     this.indicators = new IndicatorManager(this.chart, this.overlayMap, this.timeframeValue, {
@@ -446,6 +453,66 @@ export default class extends Controller {
       this.chart.timeScale().scrollToPosition(scrollPos + maxAdded, false)
       this.indicators.refreshAll()
     }
+  }
+
+  _goToStart() {
+    const total = this._maxBarsCount()
+    if (total === 0) return
+    const range = this.chart.timeScale().getVisibleLogicalRange()
+    const visible = range ? range.to - range.from : 100
+    this.chart.timeScale().setVisibleLogicalRange({ from: 0, to: visible })
+    requestAnimationFrame(() => this.scrollbar?.update())
+  }
+
+  async _navigateToTime(targetTime) {
+    // Load data starting from that date for each overlay
+    for (const [, ov] of this.overlayMap) {
+      if (!ov.loader) continue
+      const startTime = new Date(targetTime * 1000).toISOString()
+      const url = new URL(ov.loader.baseUrl, window.location.origin)
+      url.searchParams.set("start_time", startTime)
+      url.searchParams.set("limit", "1500")
+      try {
+        const resp = await fetch(url)
+        const newCandles = await resp.json()
+        if (newCandles.length === 0) continue
+        // Merge: new candles before existing, then existing after
+        const existing = ov.loader.candles
+        const oldestExisting = existing.length > 0 ? existing[0].time : Infinity
+        const before = newCandles.filter(c => c.time < oldestExisting)
+        if (before.length > 0) {
+          ov.loader.candles = [...before, ...existing]
+          ov.loader.oldestTime = ov.loader.candles[0].time
+        }
+        ov.series.setData(toSeriesData(ov, ov.loader.candles))
+      } catch (e) {
+        console.error("[nav] load failed:", e)
+      }
+    }
+
+    // Scroll to the target time
+    const firstOv = [...this.overlayMap.values()].find(ov => ov.loader?.candles?.length)
+    if (!firstOv) return
+    const candles = firstOv.loader.candles
+    let idx = candles.findIndex(c => c.time >= targetTime)
+    if (idx === -1) idx = candles.length - 1
+
+    const range = this.chart.timeScale().getVisibleLogicalRange()
+    const visible = range ? range.to - range.from : 100
+    this.chart.timeScale().setVisibleLogicalRange({ from: idx, to: idx + visible })
+    this.indicators.refreshAll()
+    requestAnimationFrame(() => this.scrollbar?.update())
+  }
+
+  _timeRange() {
+    let first = Infinity, last = 0
+    for (const [, ov] of this.overlayMap) {
+      const c = ov.loader?.candles
+      if (!c?.length) continue
+      if (c[0].time < first) first = c[0].time
+      if (c[c.length - 1].time > last) last = c[c.length - 1].time
+    }
+    return first < Infinity ? { first, last } : null
   }
 
   _maxBarsCount() {

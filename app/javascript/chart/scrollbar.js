@@ -1,30 +1,76 @@
 export default class Scrollbar {
-  constructor(container, { getVisibleRange, setVisibleRange, getTotalBars }) {
+  constructor(container, { getVisibleRange, setVisibleRange, getTotalBars, getTimeRange, onGoStart, onGoEnd, onGoToDate }) {
     this.getVisibleRange = getVisibleRange
     this.setVisibleRange = setVisibleRange
     this.getTotalBars = getTotalBars
+    this.getTimeRange = getTimeRange // () => { first, last } timestamps
+    this.onGoStart = onGoStart
+    this.onGoEnd = onGoEnd
+    this.onGoToDate = onGoToDate
     this.dragging = false
 
+    this.wrapper = document.createElement("div")
+    Object.assign(this.wrapper.style, { flexShrink: "0" })
+    container.appendChild(this.wrapper)
+
+    // Navigation bar
+    this.nav = document.createElement("div")
+    Object.assign(this.nav.style, {
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      height: "46px", background: "#1a1a2e", borderTop: "1px solid #2a2a3e",
+      padding: "0 0px 0 4px", gap: "4px",
+    })
+    this.wrapper.appendChild(this.nav)
+
+    const btnStyle = {
+      background: "#2a2a3e", border: "1px solid #3a3a4e", borderRadius: "4px",
+      color: "#ccc", cursor: "pointer", padding: "6px 10px", fontSize: "13px",
+      lineHeight: "1.4", whiteSpace: "nowrap", textAlign: "center",
+      outline: "none", boxShadow: "none", WebkitAppearance: "none",
+    }
+
+    this.btnStart = document.createElement("button")
+    Object.assign(this.btnStart.style, btnStyle)
+    this.btnStart.title = "Go to start"
+    this.nav.appendChild(this.btnStart)
+
+    this.dateInput = document.createElement("input")
+    this.dateInput.type = "date"
+    Object.assign(this.dateInput.style, {
+      background: "#2a2a3e", border: "1px solid #3a3a4e", borderRadius: "3px",
+      color: "#ccc", fontSize: "14px", padding: "6px 8px", width: "140px",
+      textAlign: "center", outline: "none",
+    })
+    this.nav.appendChild(this.dateInput)
+
+    this.btnEnd = document.createElement("button")
+    Object.assign(this.btnEnd.style, btnStyle)
+    this.btnEnd.title = "Go to end"
+    this.nav.appendChild(this.btnEnd)
+
+    this._updateButtonLabels()
+
+    this.btnStart.addEventListener("click", () => this.onGoStart?.())
+    this.btnEnd.addEventListener("click", () => this.onGoEnd?.())
+    this.dateInput.addEventListener("change", () => {
+      const val = this.dateInput.value
+      if (!val) return
+      const ts = Math.floor(new Date(val + "T00:00:00").getTime() / 1000)
+      this.onGoToDate?.(ts)
+    })
+
+    // Scrollbar track
     this.el = document.createElement("div")
     Object.assign(this.el.style, {
-      height: "12px",
-      flexShrink: "0",
-      background: "#1a1a2e",
-      borderTop: "1px solid #2a2a3e",
-      position: "relative",
-      cursor: "pointer",
+      height: "12px", background: "#1a1a2e",
+      borderTop: "1px solid #2a2a3e", position: "relative", cursor: "pointer",
     })
-    container.appendChild(this.el)
+    this.wrapper.appendChild(this.el)
 
     this.thumb = document.createElement("div")
     Object.assign(this.thumb.style, {
-      position: "absolute",
-      top: "2px",
-      height: "8px",
-      background: "#4a4a6e",
-      borderRadius: "4px",
-      minWidth: "20px",
-      cursor: "grab",
+      position: "absolute", top: "2px", height: "8px",
+      background: "#4a4a6e", borderRadius: "4px", minWidth: "20px", cursor: "grab",
     })
     this.el.appendChild(this.thumb)
 
@@ -46,12 +92,30 @@ export default class Scrollbar {
 
     this.thumb.style.left = `${thumbLeft}px`
     this.thumb.style.width = `${thumbWidth}px`
+
+    this._updateButtonLabels()
+  }
+
+  _updateButtonLabels() {
+    const tr = this.getTimeRange?.()
+    const dateStart = tr?.first ? this._formatDate(tr.first) : "..."
+    const dateEnd = tr?.last ? this._formatDate(tr.last) : "..."
+    this.btnStart.innerHTML = `<small style="opacity:0.6">Oldest</small><br>${dateStart}`
+    this.btnEnd.innerHTML = `<small style="opacity:0.6">Latest</small><br>${dateEnd}`
+  }
+
+  _formatDate(ts) {
+    const d = new Date(ts * 1000)
+    const dd = String(d.getDate()).padStart(2, "0")
+    const mm = String(d.getMonth() + 1).padStart(2, "0")
+    const yy = String(d.getFullYear()).slice(2)
+    return `${dd}.${mm}.${yy}`
   }
 
   destroy() {
     document.removeEventListener("mousemove", this._onMouseMove)
     document.removeEventListener("mouseup", this._onMouseUp)
-    this.el.remove()
+    this.wrapper.remove()
   }
 
   _bindEvents() {
