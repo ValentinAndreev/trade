@@ -255,6 +255,14 @@ export default class extends Controller {
     }
   }
 
+  cycleIndicatorFilter() {
+    const filters = ["all", "client", "server"]
+    const current = this.renderer.sidebar.indicatorFilter || "all"
+    const next = filters[(filters.indexOf(current) + 1) % filters.length]
+    this.renderer.sidebar.indicatorFilter = next
+    this.render()
+  }
+
   switchIndicatorType(e) {
     const type = e.currentTarget.value
     const overlay = this.store.selectedOverlay

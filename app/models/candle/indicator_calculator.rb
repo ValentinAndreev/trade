@@ -19,12 +19,10 @@ class Candle::IndicatorCalculator
 
   class UnknownIndicatorError < StandardError; end
 
-  private attr_reader :candle_data
+  private attr_reader :candles
 
-  # Accepts either an AR relation or an array of OHLCV hashes
-  # (as returned by FindQuery: { time:, open:, high:, low:, close:, volume: })
   def initialize(candles)
-    @candle_data = candles
+    @candles = candles
   end
 
   def calculate(indicator, **params)
@@ -33,7 +31,7 @@ class Candle::IndicatorCalculator
     end
 
     results = klass.calculate(input_data, **build_params(klass, params))
-    format_results(results)
+    results.map(&:to_hash)
   end
 
   def self.available
@@ -50,41 +48,19 @@ class Candle::IndicatorCalculator
   private
 
   def input_data
-    @input_data ||= if candle_data.is_a?(Array)
-      candle_data.map do |c|
-        ts = c[:time] || c['time']
-        {
-          date_time: Time.at(ts).utc.iso8601,
-          open: c[:open]&.to_f || c['open']&.to_f,
-          high: c[:high]&.to_f || c['high']&.to_f,
-          low: c[:low]&.to_f || c['low']&.to_f,
-          close: c[:close]&.to_f || c['close']&.to_f,
-          volume: c[:volume]&.to_f || c['volume']&.to_f
-        }
-      end
-    else
-      candle_data.ordered.map do |c|
-        {
-          date_time: c.ts.iso8601,
-          open: c.open.to_f,
-          high: c.high.to_f,
-          low: c.low.to_f,
-          close: c.close.to_f,
-          volume: c.volume.to_f
-        }
-      end
+    @input_data ||= candles.map do |c|
+      {
+        date_time: Time.at(c[:time]).utc.iso8601,
+        open: c[:open], high: c[:high],
+        low: c[:low], close: c[:close],
+        volume: c[:volume]
+      }
     end
   end
 
   def build_params(klass, params)
     valid = klass.valid_options
     filtered = params.select { |k, _| valid.include?(k.to_sym) }
-    # Use :close as default price_key for single-price indicators
-    filtered[:price_key] = :close if valid.include?(:price_key) && !filtered.key?(:price_key)
     filtered.transform_values { |v| v.is_a?(String) ? (v.match?(/\A\d+\z/) ? v.to_i : v.to_f) : v }
-  end
-
-  def format_results(results)
-    results.map(&:to_hash)
   end
 end

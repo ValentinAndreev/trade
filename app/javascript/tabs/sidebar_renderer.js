@@ -1,10 +1,14 @@
 import { OVERLAY_COLORS } from "../chart/theme"
 import { INDICATOR_META } from "../chart/indicators"
 
+const INDICATOR_FILTERS = ["all", "client", "server"]
+const INDICATOR_FILTER_LABELS = { all: "All", client: "\u26A1 Client", server: "\uD83C\uDF10 Server" }
+
 export default class SidebarRenderer {
   constructor(sidebarEl, controllerName) {
     this.sidebarEl = sidebarEl
     this.controllerName = controllerName
+    this.indicatorFilter = "all"
   }
 
   render(panel, selectedOverlayId, symbols, timeframes, indicators) {
@@ -192,15 +196,24 @@ export default class SidebarRenderer {
     const indicators = this.indicators || []
     const meta = INDICATOR_META[indicatorType]
 
-    const indicatorKeys = indicators.length > 0
+    const allKeys = indicators.length > 0
       ? indicators.map(i => i.key)
       : Object.keys(INDICATOR_META)
 
+    const indicatorKeys = allKeys.filter(key => {
+      if (this.indicatorFilter === "all") return true
+      const m = INDICATOR_META[key]
+      return this.indicatorFilter === "client" ? !!m?.lib : !m?.lib
+    })
+
     const indicatorOpts = indicatorKeys.map(key => {
-      const serverInfo = indicators.find(i => i.key === key)
-      const label = serverInfo ? serverInfo.name : key.toUpperCase()
-      return `<option value="${key}"${key === indicatorType ? " selected" : ""}>${label}</option>`
+      const m = INDICATOR_META[key]
+      const label = m?.label || key.toUpperCase()
+      const icon = m?.lib ? "\u26A1" : "\uD83C\uDF10"
+      return `<option value="${key}"${key === indicatorType ? " selected" : ""}>${icon} ${label}</option>`
     }).join("")
+
+    const filterLabel = INDICATOR_FILTER_LABELS[this.indicatorFilter]
 
     let paramInputs = ""
     if (meta && meta.defaults) {
@@ -224,7 +237,12 @@ export default class SidebarRenderer {
     }
 
     const pinnedTo = selectedOverlay?.pinnedTo || null
-    const pinTargets = panel.overlays.filter(o => o.id !== selectedOverlay?.id && o.symbol)
+    const requires = meta?.requires || "values"
+    const pinTargets = panel.overlays.filter(o => {
+      if (o.id === selectedOverlay?.id || !o.symbol) return false
+      if (requires === "values") return true
+      return o.mode === "price"
+    })
     const sourceOpts = pinTargets.map(o => {
       const modeLabel = o.mode === "volume" ? "Vol" : (o.mode === "indicator" ? (o.indicatorType || "").toUpperCase() : "Price")
       return `<option value="${o.id}"${o.id === pinnedTo ? " selected" : ""}>${this._escapeHTML(o.symbol)} ${modeLabel}</option>`
@@ -242,14 +260,21 @@ export default class SidebarRenderer {
     `
 
     return `
-      <label class="flex flex-col gap-1 text-sm text-gray-400">
-        Indicator
-        <select
-          data-field="indicatorType"
-          data-action="change->${this.controllerName}#switchIndicatorType"
-          class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-        >${indicatorOpts}</select>
-      </label>
+      <div class="flex flex-col gap-1 text-sm text-gray-400">
+        <span>Indicator</span>
+        <div class="flex gap-1 items-stretch">
+          <select
+            data-field="indicatorType"
+            data-action="change->${this.controllerName}#switchIndicatorType"
+            class="flex-1 min-w-0 px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+          >${indicatorOpts}</select>
+          <button
+            data-action="click->${this.controllerName}#cycleIndicatorFilter"
+            class="px-2 py-2 text-xs text-gray-300 bg-[#2a2a3e] border border-[#3a3a4e] rounded hover:bg-[#3a3a4e] whitespace-nowrap"
+            title="Filter: ${filterLabel}"
+          >${filterLabel}</button>
+        </div>
+      </div>
       ${paramInputs}
       ${sourceHTML}
     `

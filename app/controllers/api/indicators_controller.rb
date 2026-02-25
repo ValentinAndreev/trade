@@ -5,12 +5,12 @@ class Api::IndicatorsController < Api::ApplicationController
     render json: Candle::IndicatorCalculator.available
   end
 
-  def show
+  def compute
     candles = Candle::FindQuery.new(
       symbol: params.require(:symbol),
-      timeframe: params.fetch(:timeframe, '1m'),
+      timeframe: params.require(:timeframe),
       start_time: params[:start_time],
-      end_time: params[:end_time]
+      limit: params[:start_time] ? nil : 1500
     ).call
 
     calculator = Candle::IndicatorCalculator.new(candles)
@@ -24,7 +24,7 @@ class Api::IndicatorsController < Api::ApplicationController
   private
 
   def indicator_params
-    params.except(:symbol, :timeframe, :type, :start_time, :end_time, :controller, :action, :format)
+    params.except(:symbol, :timeframe, :type, :start_time, :controller, :action, :format)
       .permit!
       .to_h
       .symbolize_keys

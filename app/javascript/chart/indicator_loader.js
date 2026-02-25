@@ -1,42 +1,35 @@
 export default class IndicatorLoader {
-  constructor(symbol, timeframe, indicatorType, params = {}) {
-    this.symbol = symbol
-    this.timeframe = timeframe
+  constructor(indicatorType, params = {}) {
     this.indicatorType = indicatorType
     this.params = params
-    this.data = []
   }
 
-  async load() {
-    const url = new URL(`/api/indicators/${encodeURIComponent(this.indicatorType)}`, window.location.origin)
-    url.searchParams.set("symbol", this.symbol)
-    url.searchParams.set("timeframe", this.timeframe)
-    for (const [key, value] of Object.entries(this.params)) {
-      url.searchParams.set(key, String(value))
-    }
-
-    const response = await fetch(url)
+  async compute(symbol, timeframe, startTime) {
+    const body = { symbol, timeframe, ...this.params }
+    if (startTime) body.start_time = new Date(startTime * 1000).toISOString()
+    const response = await fetch(
+      `/api/indicators/${encodeURIComponent(this.indicatorType)}/compute`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    )
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
       console.warn(`[indicator] ${this.indicatorType}: ${err.error || response.statusText}`)
-      this.data = []
-      return this.data
+      return []
     }
     const raw = await response.json()
-    if (!Array.isArray(raw)) {
-      this.data = []
-      return this.data
-    }
+    if (!Array.isArray(raw)) return []
 
-    this.data = raw.map(item => {
-      const point = { ...item }
-      point.time = Math.floor(new Date(item.date_time).getTime() / 1000)
-      delete point.date_time
-      return point
-    })
-
-    this.data.sort((a, b) => a.time - b.time)
-
-    return this.data
+    return raw
+      .map(item => {
+        const point = { ...item }
+        point.time = Math.floor(new Date(item.date_time).getTime() / 1000)
+        delete point.date_time
+        return point
+      })
+      .sort((a, b) => a.time - b.time)
   }
 }

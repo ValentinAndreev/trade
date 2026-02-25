@@ -1,7 +1,4 @@
 import { LineSeries, HistogramSeries } from "lightweight-charts"
-import DataLoader from "./data_loader"
-import BitfinexFeed from "./bitfinex_feed"
-import CableFeed from "./cable_feed"
 import IndicatorLoader from "./indicator_loader"
 import { OVERLAY_COLORS } from "./theme"
 import { INDICATOR_META } from "./indicators"
@@ -10,12 +7,12 @@ import {
 } from "./series_factory"
 
 export default class IndicatorManager {
-  constructor(chart, overlayMap, timeframe, { onScaleSync, onCandle }) {
+  constructor(chart, overlayMap, timeframe, { onScaleSync }) {
     this.chart = chart
     this.overlayMap = overlayMap
     this.timeframe = timeframe
     this._onScaleSync = onScaleSync
-    this._onCandle = onCandle
+    this._recomputeTimers = new Map()
   }
 
   addOverlay(config, colorIndex) {
@@ -27,16 +24,9 @@ export default class IndicatorManager {
     const indicatorType = config.indicatorType || "sma"
     const indicatorParams = config.indicatorParams || {}
     const pinnedTo = config.pinnedTo || null
-    const meta = INDICATOR_META[indicatorType]
-
-    const url = `/api/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${encodeURIComponent(this.timeframe)}&limit=1500`
-    const loader = new DataLoader(url)
-    const onCandle = (candle) => this._onCandle(config.id, candle)
-    const bfxFeed = new BitfinexFeed(config.symbol, this.timeframe, onCandle)
-    const cableFeed = new CableFeed(config.symbol, this.timeframe, onCandle)
 
     const ov = {
-      series: null, loader, bfxFeed, cableFeed,
+      series: null,
       mode: "indicator", chartType: "Line",
       colorIndex: ci, colorScheme: ci, opacity, colors, visible,
       basePriceScaleId, activePriceScaleId: basePriceScaleId,
@@ -47,7 +37,7 @@ export default class IndicatorManager {
 
     this.overlayMap.set(config.id, ov)
 
-    if (meta) {
+    if (INDICATOR_META[indicatorType]) {
       this.loadData(config.id, ov)
     }
     this._onScaleSync()
@@ -58,12 +48,13 @@ export default class IndicatorManager {
     const meta = INDICATOR_META[ov.indicatorType]
     if (!meta) return
 
-    const sourceSymbol = this.resolveSymbol(ov)
-    const scaleId = this.resolveScaleId(ov)
+    // overlay indicators share source's scale, oscillators get their own
+    const scaleId = meta.overlay ? this.resolveScaleId(ov) : ov.basePriceScaleId
 
-    const indLoader = new IndicatorLoader(sourceSymbol, this.timeframe, ov.indicatorType, ov.indicatorParams)
     try {
-      const data = await indLoader.load()
+      const sourceData = this._resolveSourceData(ov)
+      const data = await this._compute(ov, sourceData)
+      if (!data || data.length === 0) return
 
       const fieldColors = indicatorFieldColors(ov.colors, meta.fields.length, ov.opacity)
       ov.indicatorSeries = meta.fields.map((field, i) => {
@@ -80,9 +71,7 @@ export default class IndicatorManager {
         return { series, fieldKey: field.key }
       })
 
-      this.chart.timeScale().fitContent()
-      // Reset so _syncSelectedOverlayScale sees a stale value and applies the correct scale
-      ov.activePriceScaleId = ov.basePriceScaleId
+      ov.activePriceScaleId = scaleId
       this._onScaleSync()
     } catch (error) {
       console.error(`Failed to load indicator ${ov.indicatorType} for overlay ${id}:`, error)
@@ -94,7 +83,6 @@ export default class IndicatorManager {
     if (!ov) return
 
     this.removeSeriesFor(ov)
-
     ov.indicatorType = type
     ov.indicatorParams = params
     ov.mode = "indicator"
@@ -106,24 +94,22 @@ export default class IndicatorManager {
   setPinnedTo(id, pinnedTo) {
     const ov = this.overlayMap.get(id)
     if (!ov) return
-    const oldPinnedTo = ov.pinnedTo
     ov.pinnedTo = pinnedTo || null
 
-    // Source symbol changed — reload indicator data
-    const oldSymbol = oldPinnedTo ? (this.overlayMap.get(oldPinnedTo)?.symbol || ov.symbol) : ov.symbol
-    const newSymbol = this.resolveSymbol(ov)
-    if (oldSymbol !== newSymbol && ov.indicatorSeries) {
-      this.removeSeriesFor(ov)
-      this.loadData(id, ov)
-      return
-    }
+    this.removeSeriesFor(ov)
+    this.loadData(id, ov)
+  }
 
-    // Same symbol — just re-apply scale
-    const scaleId = this.resolveScaleId(ov)
-    if (ov.indicatorSeries) {
-      ov.indicatorSeries.forEach(s => s.series.applyOptions({ priceScaleId: scaleId }))
+  refreshAll(sourceId) {
+    for (const [id, ov] of this.overlayMap) {
+      if (ov.mode !== "indicator") continue
+      if (sourceId && ov.pinnedTo !== sourceId) continue
+      if (ov.indicatorSeries?.length) {
+        this._scheduleRecompute(id, ov)
+      } else if (INDICATOR_META[ov.indicatorType]) {
+        this.loadData(id, ov)
+      }
     }
-    this._onScaleSync()
   }
 
   resolveSymbol(ov) {
@@ -144,5 +130,66 @@ export default class IndicatorManager {
       ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch {} })
       ov.indicatorSeries = []
     }
+  }
+
+  // --- Private ---
+
+  _scheduleRecompute(id, ov) {
+    if (this._recomputeTimers.has(id)) return
+    this._recomputeTimers.set(id, setTimeout(() => {
+      this._recomputeTimers.delete(id)
+      this._recompute(ov)
+    }, 500))
+  }
+
+  async _recompute(ov) {
+    try {
+      const sourceData = this._resolveSourceData(ov)
+      const data = await this._compute(ov, sourceData)
+      if (!data) return
+
+      ov.indicatorSeries.forEach(({ series, fieldKey }) => {
+        const seriesData = data
+          .filter(d => d[fieldKey] != null)
+          .map(d => ({ time: d.time, value: d[fieldKey] }))
+        series.setData(seriesData)
+      })
+    } catch (error) {
+      console.error(`[indicator] recompute failed:`, error)
+    }
+  }
+
+  async _compute(ov, sourceData) {
+    if (!sourceData || sourceData.length === 0) return []
+
+    const meta = INDICATOR_META[ov.indicatorType]
+    if (meta?.lib) {
+      const result = meta.lib.fn(meta.lib.input(sourceData, ov.indicatorParams || {}))
+      const offset = sourceData.length - result.length
+      return result.map((val, i) => ({ time: sourceData[i + offset].time, ...meta.lib.map(val) }))
+    }
+
+    // Server-side: skip if source data hasn't changed
+    const sourceKey = `${sourceData.length}:${sourceData[0].time}`
+    if (ov._lastSourceKey === sourceKey) return null
+    ov._lastSourceKey = sourceKey
+
+    const symbol = this.resolveSymbol(ov)
+    const startTime = sourceData[0].time
+    const indLoader = new IndicatorLoader(ov.indicatorType, ov.indicatorParams)
+    return indLoader.compute(symbol, this.timeframe, startTime)
+  }
+
+  _resolveSourceData(ov) {
+    const target = ov.pinnedTo ? this.overlayMap.get(ov.pinnedTo) : null
+
+    const candles = target?.loader?.candles
+    if (!candles || candles.length === 0) return []
+
+    const field = target?.mode === "volume" ? "volume" : "close"
+    return candles.map(c => ({
+      time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
+      value: c[field],
+    }))
   }
 }

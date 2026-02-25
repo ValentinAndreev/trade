@@ -5,7 +5,7 @@ Rails.application.routes.draw do
     resource :configs, only: :show
     resources :candles, only: :index
     resources :indicators, only: :index
-    get 'indicators/:type', to: 'indicators#show', as: :indicator
+    post 'indicators/:type/compute', to: 'indicators#compute'
   end
 
   resources :charts, only: :show

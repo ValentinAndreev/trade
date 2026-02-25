@@ -220,7 +220,6 @@ export default class extends Controller {
 
     this.indicators = new IndicatorManager(this.chart, this.overlayMap, this.timeframeValue, {
       onScaleSync: () => this._syncSelectedOverlayScale(),
-      onCandle: (id, candle) => this._handleCandle(id, candle),
     })
   }
 
@@ -296,7 +295,14 @@ export default class extends Controller {
     if (this.selectedOverlayId && this.overlayMap.has(this.selectedOverlayId)) {
       const selOv = this.overlayMap.get(this.selectedOverlayId)
       if (selOv.visible) {
-        rightScaleOverlayId = selOv.pinnedTo || this.selectedOverlayId
+        const selMeta = selOv.indicatorType ? INDICATOR_META[selOv.indicatorType] : null
+        // Oscillators (non-overlay indicators) get their own scale on "right"
+        // Overlay indicators follow their source's scale
+        if (selMeta && !selMeta.overlay) {
+          rightScaleOverlayId = this.selectedOverlayId
+        } else {
+          rightScaleOverlayId = selOv.pinnedTo || this.selectedOverlayId
+        }
       }
     }
     if (!rightScaleOverlayId) {
@@ -319,12 +325,20 @@ export default class extends Controller {
         if (targetScaleId === "right") rightScaleChanged = true
       }
     }
-    for (const [, ov] of this.overlayMap) {
+    for (const [id, ov] of this.overlayMap) {
       if (!ov.pinnedTo) continue
-      const target = this.overlayMap.get(ov.pinnedTo)
-      const targetScaleId = target
-        ? (target.activePriceScaleId || target.basePriceScaleId)
-        : ov.basePriceScaleId
+      const meta = ov.indicatorType ? INDICATOR_META[ov.indicatorType] : null
+      let targetScaleId
+      if (meta && !meta.overlay) {
+        // Oscillators: "right" if selected, own scale otherwise
+        targetScaleId = (rightScaleOverlayId === id) ? "right" : ov.basePriceScaleId
+      } else {
+        // Overlay indicators follow their source's scale
+        const target = this.overlayMap.get(ov.pinnedTo)
+        targetScaleId = target
+          ? (target.activePriceScaleId || target.basePriceScaleId)
+          : ov.basePriceScaleId
+      }
       if (ov.activePriceScaleId !== targetScaleId) {
         if (ov.indicatorSeries) {
           ov.indicatorSeries.forEach(s => s.series.applyOptions({ priceScaleId: targetScaleId }))
@@ -332,6 +346,7 @@ export default class extends Controller {
           ov.series.applyOptions({ priceScaleId: targetScaleId })
         }
         ov.activePriceScaleId = targetScaleId
+        if (targetScaleId === "right") rightScaleChanged = true
       }
     }
 
@@ -366,6 +381,7 @@ export default class extends Controller {
     } catch (e) {
       console.log("[chart] update skipped:", e.message)
     }
+    this.indicators.refreshAll(overlayId)
   }
 
   // --- Data loading ---
@@ -383,6 +399,8 @@ export default class extends Controller {
       for (const [, ov] of this.overlayMap) {
         if (ov.mode !== "indicator") ov.bfxFeed.connect()
       }
+      // Source candles loaded — now compute indicators
+      this.indicators.refreshAll()
     })
 
     for (const [, ov] of this.overlayMap) {
@@ -426,13 +444,14 @@ export default class extends Controller {
 
     if (maxAdded > 0) {
       this.chart.timeScale().scrollToPosition(scrollPos + maxAdded, false)
+      this.indicators.refreshAll()
     }
   }
 
   _maxBarsCount() {
     let max = 0
     for (const [, ov] of this.overlayMap) {
-      if (ov.loader.candles.length > max) max = ov.loader.candles.length
+      if (ov.loader?.candles?.length > max) max = ov.loader.candles.length
     }
     return max
   }
