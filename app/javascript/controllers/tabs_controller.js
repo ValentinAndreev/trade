@@ -147,22 +147,62 @@ export default class extends Controller {
   applySettings() {
     const panel = this.store.selectedPanel
     const overlay = this.store.selectedOverlay
-    if (!panel) return
+    if (!panel || !overlay) return
 
     const timeframeEl = this.sidebarTarget.querySelector("[data-field='timeframe']:not(.hidden)")
-    const symbolEl = this.sidebarTarget.querySelector("[data-field='symbol']:not(.hidden)")
     const timeframe = timeframeEl?.value?.trim().toLowerCase()
-    const symbol = symbolEl?.value?.trim().toUpperCase()
-
     if (!timeframe) return
 
     const timeframeChanged = this.store.updatePanelTimeframe(panel.id, timeframe)
     let symbolChanged = false
-    if (overlay && symbol) {
-      symbolChanged = this.store.updateOverlaySymbol(overlay.id, symbol)
+    let indicatorChanged = false
+
+    if (overlay.mode === "indicator") {
+      // Indicator: symbol comes from source overlay, not symbol field
+      const typeEl = this.sidebarTarget.querySelector("[data-field='indicatorType']")
+      const type = typeEl?.value || overlay.indicatorType || "sma"
+
+      const paramInputs = this.sidebarTarget.querySelectorAll("[data-indicator-param]")
+      const params = {}
+      paramInputs.forEach(input => {
+        const key = input.dataset.indicatorParam
+        const val = parseFloat(input.value)
+        if (!Number.isNaN(val)) params[key] = val
+      })
+
+      const pinnedEl = this.sidebarTarget.querySelector("[data-field='pinnedTo']")
+      const pinnedTo = pinnedEl?.value || null
+
+      // Copy symbol from source overlay so chart controller can load data
+      if (pinnedTo) {
+        const sourceOverlay = this.store.overlayById(pinnedTo)
+        if (sourceOverlay?.symbol) {
+          symbolChanged = this.store.updateOverlaySymbol(overlay.id, sourceOverlay.symbol)
+        }
+      }
+
+      this.store.setOverlayIndicatorType(overlay.id, type)
+      this.store.setOverlayIndicatorParams(overlay.id, params)
+      this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
+      indicatorChanged = true
+
+      // If chart already exists and no full re-render needed, update indicator live
+      if (!timeframeChanged && !symbolChanged) {
+        const chartCtrl = this._chartCtrlForPanel(panel.id)
+        if (chartCtrl) {
+          chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo)
+        }
+      }
+    } else {
+      // Price/Volume: use symbol field
+      const symbolEl = this.sidebarTarget.querySelector("[data-field='symbol']:not(.hidden)")
+      const symbol = symbolEl?.value?.trim().toUpperCase()
+      if (symbol) {
+        symbolChanged = this.store.updateOverlaySymbol(overlay.id, symbol)
+      }
     }
 
-    if (timeframeChanged || symbolChanged) this.render()
+    if (timeframeChanged || symbolChanged || indicatorChanged) this.render()
   }
 
   applySettingsOnEnter(e) {
@@ -231,7 +271,7 @@ export default class extends Controller {
   applyIndicatorOnEnter(e) {
     if (e.key !== "Enter") return
     e.preventDefault()
-    this.applyIndicator()
+    this.applySettings()
   }
 
   applyIndicator() {

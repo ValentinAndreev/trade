@@ -1,3 +1,5 @@
+import { OVERLAY_COLORS } from "../chart/theme"
+
 export default class PanelRenderer {
   constructor(panelsEl, controllerName) {
     this.panelsEl = panelsEl
@@ -40,11 +42,33 @@ export default class PanelRenderer {
       if (el.style.flex) savedFlex.set(id, el.style.flex)
     }
 
+    let removed = false
     for (const [id, el] of existing) {
       if (!panels.find(p => p.id === id)) {
         el.remove()
         existing.delete(id)
         savedFlex.delete(id)
+        removed = true
+      }
+    }
+
+    // After removing panels, normalize flex on survivors so they fill the space
+    if (removed && savedFlex.size > 0) {
+      let total = 0
+      for (const flex of savedFlex.values()) {
+        const num = parseFloat(flex)
+        if (Number.isFinite(num) && num > 0) total += num
+      }
+      if (total > 0 && total !== 1) {
+        for (const [id, flex] of savedFlex) {
+          const num = parseFloat(flex)
+          if (Number.isFinite(num) && num > 0) {
+            const normalized = `${num / total}`
+            savedFlex.set(id, normalized)
+            const el = existing.get(id)
+            if (el) el.style.flex = normalized
+          }
+        }
       }
     }
 
@@ -126,6 +150,8 @@ export default class PanelRenderer {
     const lines = panel.overlays
       .filter(o => o.symbol)
       .map(o => {
+        const colors = OVERLAY_COLORS[o.colorScheme] || OVERLAY_COLORS[0]
+        const swatches = `<span class="inline-flex items-center gap-0.5 shrink-0"><span class="w-3 h-3 rounded-sm border border-black/20" style="background:${colors.up}"></span><span class="w-3 h-3 rounded-sm border border-black/20" style="background:${colors.down}"></span></span>`
         let modeLabel
         if (o.mode === "indicator" && o.indicatorType) {
           const sourceOverlay = o.pinnedTo ? panel.overlays.find(s => s.id === o.pinnedTo) : null
@@ -135,11 +161,11 @@ export default class PanelRenderer {
             ? Object.values(o.indicatorParams).join(",")
             : ""
           modeLabel = `${(o.indicatorType || "").toUpperCase()}${paramsStr ? `(${paramsStr})` : ""}`
-          return `<div class="truncate">${sourceSymbol} ${sourceMode} ${modeLabel} ${timeframe}</div>`
+          return `<div class="flex items-center gap-1.5 truncate">${swatches} ${sourceSymbol} ${sourceMode} ${modeLabel} ${timeframe}</div>`
         }
         const symbol = this._escapeHTML(o.symbol)
         modeLabel = o.mode === "volume" ? "Volume" : "Price"
-        return `<div class="truncate">${symbol} ${modeLabel} ${timeframe}</div>`
+        return `<div class="flex items-center gap-1.5 truncate">${swatches} ${symbol} ${modeLabel} ${timeframe}</div>`
       })
       .join("")
 

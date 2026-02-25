@@ -198,12 +198,12 @@ export default class TabStore {
         overlay.indicatorType = "sma"
         overlay.indicatorParams = { period: 20 }
       }
-      // Auto-pin to first price overlay on same panel
+      // Auto-pin to first overlay with symbol on same panel
       if (!overlay.pinnedTo) {
         const panel = this._findPanelForOverlay(overlayId)
         if (panel) {
-          const priceOverlay = panel.overlays.find(o => o.id !== overlayId && o.mode === "price" && o.symbol)
-          if (priceOverlay) overlay.pinnedTo = priceOverlay.id
+          const source = panel.overlays.find(o => o.id !== overlayId && o.symbol)
+          if (source) overlay.pinnedTo = source.id
         }
       }
     } else {

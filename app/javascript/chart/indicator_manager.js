@@ -81,6 +81,8 @@ export default class IndicatorManager {
       })
 
       this.chart.timeScale().fitContent()
+      // Reset so _syncSelectedOverlayScale sees a stale value and applies the correct scale
+      ov.activePriceScaleId = ov.basePriceScaleId
       this._onScaleSync()
     } catch (error) {
       console.error(`Failed to load indicator ${ov.indicatorType} for overlay ${id}:`, error)

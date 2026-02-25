@@ -123,16 +123,11 @@ export default class SidebarRenderer {
 
         <div class="text-sm text-gray-500 uppercase tracking-wide">Selected Chart</div>
 
-        <label class="flex flex-col gap-1 text-sm text-gray-400">
-          Symbol
-          ${this._comboHTML("symbol", symbols, currentSymbol, "w-full")}
-        </label>
-
-        ${!selectedOverlay?.symbol ? `
-          <button
-            data-action="click->${this.controllerName}#applySettings"
-            class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
-          >Apply</button>
+        ${!indicatorActive ? `
+          <label class="flex flex-col gap-1 text-sm text-gray-400">
+            Symbol
+            ${this._comboHTML("symbol", symbols, currentSymbol, "w-full")}
+          </label>
         ` : ""}
 
         <div class="flex flex-col gap-1 text-sm text-gray-400">
@@ -156,36 +151,39 @@ export default class SidebarRenderer {
           >
         </label>
 
-        ${selectedOverlay?.symbol ? `
-          <div class="flex gap-1">
-            <button
-              data-action="click->${this.controllerName}#setMode"
-              data-mode="price"
-              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${priceActive ? activeBtnClass : inactiveBtnClass}"
-            >Price</button>
-            <button
-              data-action="click->${this.controllerName}#setMode"
-              data-mode="volume"
-              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${volumeActive ? activeBtnClass : inactiveBtnClass}"
-            >Volume</button>
-            <button
-              data-action="click->${this.controllerName}#setMode"
-              data-mode="indicator"
-              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${indicatorActive ? activeBtnClass : inactiveBtnClass}"
-            >Indicator</button>
-          </div>
+        <div class="flex gap-1">
+          <button
+            data-action="click->${this.controllerName}#setMode"
+            data-mode="price"
+            class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${priceActive ? activeBtnClass : inactiveBtnClass}"
+          >Price</button>
+          <button
+            data-action="click->${this.controllerName}#setMode"
+            data-mode="volume"
+            class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${volumeActive ? activeBtnClass : inactiveBtnClass}"
+          >Volume</button>
+          <button
+            data-action="click->${this.controllerName}#setMode"
+            data-mode="indicator"
+            class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${indicatorActive ? activeBtnClass : inactiveBtnClass}"
+          >Indicator</button>
+        </div>
 
-          ${indicatorActive ? this._indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) : `
-            <label class="flex flex-col gap-1 text-sm text-gray-400">
-              Chart type
-              <select
-                data-field="chartType"
-                data-action="change->${this.controllerName}#switchChartType"
-                class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-              >${chartTypeOptions}</select>
-            </label>
-          `}
-        ` : ""}
+        ${indicatorActive ? this._indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) : `
+          <label class="flex flex-col gap-1 text-sm text-gray-400">
+            Chart type
+            <select
+              data-field="chartType"
+              data-action="change->${this.controllerName}#switchChartType"
+              class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+            >${chartTypeOptions}</select>
+          </label>
+        `}
+
+        <button
+          data-action="click->${this.controllerName}#applySettings"
+          class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
+        >Apply</button>
       </div>
     `
   }
@@ -227,27 +225,21 @@ export default class SidebarRenderer {
 
     const pinnedTo = selectedOverlay?.pinnedTo || null
     const pinTargets = panel.overlays.filter(o => o.id !== selectedOverlay?.id && o.symbol)
-    let sourceHTML = ""
-    if (pinTargets.length > 0) {
-      const sourceOpts = [
-        `<option value=""${!pinnedTo ? " selected" : ""}>Own (${this._escapeHTML(selectedOverlay?.symbol || "—")})</option>`,
-        ...pinTargets.map(o => {
-          const modeLabel = o.mode === "volume" ? "Vol" : (o.mode === "indicator" ? (o.indicatorType || "").toUpperCase() : "Price")
-          return `<option value="${o.id}"${o.id === pinnedTo ? " selected" : ""}>${this._escapeHTML(o.symbol)} ${modeLabel}</option>`
-        }),
-      ].join("")
+    const sourceOpts = pinTargets.map(o => {
+      const modeLabel = o.mode === "volume" ? "Vol" : (o.mode === "indicator" ? (o.indicatorType || "").toUpperCase() : "Price")
+      return `<option value="${o.id}"${o.id === pinnedTo ? " selected" : ""}>${this._escapeHTML(o.symbol)} ${modeLabel}</option>`
+    }).join("")
 
-      sourceHTML = `
-        <label class="flex flex-col gap-1 text-sm text-gray-400">
-          Source
-          <select
-            data-field="pinnedTo"
-            data-action="change->${this.controllerName}#changePinnedTo"
-            class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-          >${sourceOpts}</select>
-        </label>
-      `
-    }
+    const sourceHTML = `
+      <label class="flex flex-col gap-1 text-sm text-gray-400">
+        Source
+        <select
+          data-field="pinnedTo"
+          data-action="change->${this.controllerName}#changePinnedTo"
+          class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+        >${pinTargets.length > 0 ? sourceOpts : '<option value="" disabled selected>No charts on panel</option>'}</select>
+      </label>
+    `
 
     return `
       <label class="flex flex-col gap-1 text-sm text-gray-400">
@@ -260,10 +252,6 @@ export default class SidebarRenderer {
       </label>
       ${paramInputs}
       ${sourceHTML}
-      <button
-        data-action="click->${this.controllerName}#applyIndicator"
-        class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
-      >Apply</button>
     `
   }
 

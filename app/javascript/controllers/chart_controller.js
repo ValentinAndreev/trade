@@ -303,6 +303,7 @@ export default class extends Controller {
       rightScaleOverlayId = visibleUnpinned[0] || null
     }
 
+    let rightScaleChanged = false
     for (const [id, ov] of this.overlayMap) {
       if (ov.pinnedTo) continue
       const targetScaleId = (rightScaleOverlayId && id === rightScaleOverlayId)
@@ -315,6 +316,7 @@ export default class extends Controller {
           ov.series.applyOptions({ priceScaleId: targetScaleId })
         }
         ov.activePriceScaleId = targetScaleId
+        if (targetScaleId === "right") rightScaleChanged = true
       }
     }
     for (const [, ov] of this.overlayMap) {
@@ -337,6 +339,19 @@ export default class extends Controller {
       leftPriceScale: { visible: false },
       rightPriceScale: { visible: !!rightScaleOverlayId },
     })
+
+    // Reset auto-scale when a different series moves onto the right axis,
+    // so lightweight-charts recalculates the Y-range for the new data.
+    if (rightScaleChanged) {
+      try { this.chart.priceScale("right").applyOptions({ autoScale: true }) } catch {}
+    }
+
+    // Hide custom price scales so only "right" axis is visible
+    for (const [, ov] of this.overlayMap) {
+      if (ov.activePriceScaleId && ov.activePriceScaleId !== "right") {
+        try { this.chart.priceScale(ov.activePriceScaleId).applyOptions({ visible: false }) } catch {}
+      }
+    }
   }
 
   // --- Realtime ---
