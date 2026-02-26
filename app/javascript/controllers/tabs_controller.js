@@ -19,6 +19,9 @@ export default class extends Controller {
 
     // Listen for labels created from chart click
     this.element.addEventListener("label:created", (e) => this._onLabelCreated(e))
+
+    // Listen for open-symbol requests from Main page tiles
+    this.element.addEventListener("tabs:openSymbol", (e) => this._onOpenSymbol(e))
   }
 
   // --- Tab actions ---
@@ -548,6 +551,15 @@ export default class extends Controller {
     if (this._labelMode) {
       chartCtrl.enterLabelMode()
     }
+  }
+
+  // --- Open symbol from Main page ---
+
+  _onOpenSymbol(e) {
+    const symbol = e.detail?.symbol
+    if (!symbol) return
+    this.store.addTab({ symbol })
+    this.render()
   }
 
   // --- Render ---

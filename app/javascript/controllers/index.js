@@ -10,3 +10,9 @@ application.register("chart", ChartController)
 import TabsController from "./tabs_controller"
 application.register("tabs", TabsController)
 
+import NavController from "./nav_controller"
+application.register("nav", NavController)
+
+import MainController from "./main_controller"
+application.register("main", MainController)
+

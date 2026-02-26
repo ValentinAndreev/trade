@@ -1,7 +1,25 @@
-<div data-controller="tabs" class="h-screen w-full bg-[#1a1a2e] flex flex-col">
-  <div data-tabs-target="tabBar" class="flex items-center gap-1 px-3 pt-2 bg-[#12122a] border-b border-[#2a2a3e] shrink-0"></div>
-  <div class="flex flex-1 min-h-0">
-    <div data-tabs-target="panels" class="flex-1 min-w-0"></div>
-    <div data-tabs-target="sidebar" class="w-[27rem] shrink-0 bg-[#12122a] border-l border-[#2a2a3e] overflow-y-auto p-4"></div>
+<div data-controller="nav" class="h-screen w-full bg-[#1a1a2e] flex flex-col">
+  <!-- Nav bar -->
+  <div class="flex items-center gap-1 px-4 py-1.5 bg-[#0a0a1e] border-b border-[#2a2a3e] shrink-0">
+    <button data-action="click->nav#showMain" data-nav-target="mainBtn"
+            class="px-3 py-1.5 rounded text-sm">Main</button>
+    <button data-action="click->nav#showGraph" data-nav-target="graphBtn"
+            class="px-3 py-1.5 rounded text-sm">Graph</button>
+  </div>
+
+  <!-- Main page -->
+  <div data-nav-target="mainPage" data-controller="main" class="flex-1 overflow-y-auto p-6">
+    <div data-main-target="grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
+  </div>
+
+  <!-- Graph page (existing tabs system, initially hidden) -->
+  <div data-nav-target="graphPage" class="hidden flex-1 flex flex-col min-h-0">
+    <div data-controller="tabs" class="flex flex-col flex-1 min-h-0">
+      <div data-tabs-target="tabBar" class="flex items-center gap-1 px-3 pt-2 bg-[#12122a] border-b border-[#2a2a3e] shrink-0"></div>
+      <div class="flex flex-1 min-h-0">
+        <div data-tabs-target="panels" class="flex-1 min-w-0"></div>
+        <div data-tabs-target="sidebar" class="w-[27rem] shrink-0 bg-[#12122a] border-l border-[#2a2a3e] overflow-y-auto p-4"></div>
+      </div>
+    </div>
   </div>
 </div>

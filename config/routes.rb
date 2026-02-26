@@ -4,6 +4,7 @@ Rails.application.routes.draw do
   namespace :api do
     resource :configs, only: :show
     resources :candles, only: :index
+    resources :tickers, only: :index
     resources :indicators, only: :index
     post 'indicators/:type/compute', to: 'indicators#compute'
   end

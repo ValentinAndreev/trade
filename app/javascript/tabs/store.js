@@ -1,5 +1,5 @@
 import { OVERLAY_COLORS } from "../chart/theme"
-import { loadTabs, saveTabs, calcNextId } from "./persistence"
+import { loadTabs, saveTabs, calcNextId, loadActiveTabId, saveActiveTabId } from "./persistence"
 
 export default class TabStore {
   constructor() {
@@ -8,23 +8,27 @@ export default class TabStore {
     this._nextPanelId = calcNextId(this.tabs, "p")
     this._nextOverlayId = calcNextId(this.tabs, "o")
     this._nextLabelId = this._calcNextLabelId()
-    this.activeTabId = this.tabs[0].id
-    this.selectedPanelId = this.tabs[0].panels[0].id
-    this.selectedOverlayId = this.tabs[0].panels[0].overlays[0]?.id || null
+
+    const savedTabId = loadActiveTabId()
+    const savedTab = savedTabId && this.tabs.find(t => t.id === savedTabId)
+    const activeTab = savedTab || this.tabs[0]
+    this.activeTabId = activeTab.id
+    this.selectedPanelId = activeTab.panels[0].id
+    this.selectedOverlayId = activeTab.panels[0].overlays[0]?.id || null
   }
 
   // --- Tabs ---
 
-  addTab() {
+  addTab({ symbol = null } = {}) {
     const overlayId = `o-${this._nextOverlayId++}`
     const panelId = `p-${this._nextPanelId++}`
     const tab = {
       id: `tab-${this._nextTabId++}`,
-      name: this._newTabName(),
+      name: symbol || this._newTabName(),
       panels: [{
         id: panelId,
         timeframe: "1m",
-        overlays: [this._newOverlay(overlayId, null, 0)],
+        overlays: [this._newOverlay(overlayId, symbol, 0)],
       }],
     }
     this.tabs.push(tab)
@@ -58,6 +62,7 @@ export default class TabStore {
       this.selectedPanelId = tab.panels[0].id
       this.selectedOverlayId = tab.panels[0].overlays[0]?.id || null
     }
+    saveActiveTabId(this.activeTabId)
     return true
   }
 
@@ -404,5 +409,6 @@ export default class TabStore {
 
   _save() {
     saveTabs(this.tabs)
+    saveActiveTabId(this.activeTabId)
   }
 }

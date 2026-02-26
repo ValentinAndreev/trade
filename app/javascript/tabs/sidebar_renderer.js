@@ -238,13 +238,13 @@ export default class SidebarRenderer {
           const anchor = [symbol, modeStr, priceStr].filter(Boolean).join(" ")
           const timeStr = this._formatLabelTime(label.time)
           return `
-          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-sm text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
+          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-[15px] text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
                data-action="click->${this.controllerName}#selectLabel dblclick->${this.controllerName}#startLabelRename"
                data-label-id="${label.id}">
             <div class="flex-1 min-w-0 flex flex-col">
               <span class="truncate" data-label-text="${label.id}">${this._escapeHTML(label.text)}</span>
-              <span class="text-xs text-gray-500 truncate">${this._escapeHTML(anchor)}</span>
-              <span class="text-xs text-gray-600 truncate">${this._escapeHTML(timeStr)}</span>
+              <span class="text-[13px] text-gray-500 truncate">${this._escapeHTML(anchor)}</span>
+              <span class="text-[13px] text-gray-600 truncate">${this._escapeHTML(timeStr)}</span>
             </div>
             <span data-action="click->${this.controllerName}#removeLabel"
                   data-remove-label="${label.id}"

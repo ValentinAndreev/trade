@@ -1,6 +1,7 @@
 import { OVERLAY_COLORS } from "../chart/theme"
 
 const STORAGE_KEY = "chart-tabs"
+const ACTIVE_TAB_KEY = "chart-active-tab"
 const DEFAULT_TABS = [{
   id: "tab-1",
   name: null,
@@ -34,6 +35,14 @@ export function loadTabs() {
 
 export function saveTabs(tabs) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs))
+}
+
+export function loadActiveTabId() {
+  return localStorage.getItem(ACTIVE_TAB_KEY)
+}
+
+export function saveActiveTabId(tabId) {
+  localStorage.setItem(ACTIVE_TAB_KEY, tabId)
 }
 
 export function calcNextId(tabs, prefix) {

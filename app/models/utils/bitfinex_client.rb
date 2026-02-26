@@ -11,6 +11,11 @@ class Utils::BitfinexClient
   INTERVALS = %w[1m].freeze
   MAX_LIMIT = 10_000
 
+  def tickers(symbols)
+    response = self.class.get('/tickers', query: { symbols: symbols.join(',') })
+    handle_response(response)
+  end
+
   def candles_history(symbol:, interval:, start_time: nil, end_time: nil, limit: MAX_LIMIT)
     params = { limit: limit }
     params[:start] = start_time if start_time
