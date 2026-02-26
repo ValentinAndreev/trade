@@ -1,5 +1,5 @@
 import { Controller } from "@hotwired/stimulus"
-import { createChart } from "lightweight-charts"
+import { createChart, createSeriesMarkers } from "lightweight-charts"
 
 import { CHART_THEME, OVERLAY_COLORS } from "../chart/theme"
 import DataLoader from "../chart/data_loader"
@@ -24,6 +24,11 @@ export default class extends Controller {
     this.overlayMap = new Map()
     this._colorIndex = 0
     this.selectedOverlayId = null
+    this.labelMode = false
+    this.labels = []
+    this._labelMarkersPrimitives = []
+    this._labelInputEl = null
+    this._labelTooltipEl = null
 
     const configs = this._parseOverlays()
     if (configs.length === 0 || configs.every(c => !c.symbol)) return
@@ -58,6 +63,14 @@ export default class extends Controller {
     if (this.scrollHandler) {
       this.chart?.timeScale().unsubscribeVisibleLogicalRangeChange(this.scrollHandler)
     }
+    if (this._clickHandler) {
+      this.chart?.unsubscribeClick(this._clickHandler)
+    }
+    if (this._crosshairHandler) {
+      this.chart?.unsubscribeCrosshairMove(this._crosshairHandler)
+    }
+    this._removeLabelInput()
+    this._removeLabelTooltip()
     this.scrollbar?.destroy()
     this.chart?.remove()
     this.chartWrapperEl?.remove()
@@ -153,6 +166,8 @@ export default class extends Controller {
       ov.series.applyOptions({ visible: normalized })
     }
     this._syncSelectedOverlayScale()
+    // Re-render markers (labels on hidden series should disappear)
+    if (this.labels?.length > 0) this._renderLabelMarkers()
   }
 
   setOverlayColorScheme(id, colorScheme) {
@@ -181,6 +196,235 @@ export default class extends Controller {
 
   setPinnedTo(id, pinnedTo) {
     this.indicators.setPinnedTo(id, pinnedTo)
+  }
+
+  // --- Label mode ---
+
+  enterLabelMode() {
+    if (!this.chart) return
+    this.labelMode = true
+    if (!this._clickHandler) {
+      this._clickHandler = (param) => this._onChartClick(param)
+      this.chart.subscribeClick(this._clickHandler)
+    }
+    if (!this._crosshairHandler) {
+      this._crosshairHandler = (param) => this._onCrosshairMove(param)
+      this.chart.subscribeCrosshairMove(this._crosshairHandler)
+    }
+    this.element.style.cursor = "crosshair"
+  }
+
+  exitLabelMode() {
+    this.labelMode = false
+    this._removeLabelInput()
+    this._removeLabelTooltip()
+    if (this._crosshairHandler) {
+      this.chart?.unsubscribeCrosshairMove(this._crosshairHandler)
+      this._crosshairHandler = null
+    }
+    this.element.style.cursor = ""
+  }
+
+  setLabels(labels) {
+    this.labels = labels || []
+    this._renderLabelMarkers()
+  }
+
+  scrollToLabel(time) {
+    if (!this.chart) return
+    const firstOv = [...this.overlayMap.values()].find(ov => ov.loader?.candles?.length)
+    if (!firstOv) return
+    const candles = firstOv.loader.candles
+    let idx = candles.findIndex(c => c.time >= time)
+    if (idx === -1) idx = candles.length - 1
+    const range = this.chart.timeScale().getVisibleLogicalRange()
+    const visible = range ? range.to - range.from : 100
+    const from = Math.max(0, idx - Math.floor(visible / 2))
+    this.chart.timeScale().setVisibleLogicalRange({ from, to: from + visible })
+  }
+
+  _onChartClick(param) {
+    if (!this.labelMode) return
+    if (!param.point) return
+
+    const time = param.time
+    if (!time) return
+
+    const target = this._findNearestSeries(param)
+    if (!target) return
+
+    const price = target.series.coordinateToPrice(param.point.y)
+    if (price === null || !Number.isFinite(price)) return
+
+    this._removeLabelTooltip()
+    const modeDetail = this._overlayModeStr(target.ov)
+    this._showLabelInput(param.point.x, param.point.y, time, price, target.id, target.ov.symbol || "", target.ov.mode || "price", modeDetail)
+  }
+
+  _onCrosshairMove(param) {
+    if (!this.labelMode || !param.point) {
+      this._removeLabelTooltip()
+      return
+    }
+    if (this._labelInputEl) return
+
+    const time = param.time
+    if (!time) { this._removeLabelTooltip(); return }
+
+    const target = this._findNearestSeries(param)
+    if (!target) { this._removeLabelTooltip(); return }
+
+    const text = `${target.ov.symbol || "?"} ${this._overlayModeStr(target.ov)}`
+    this._showLabelTooltip(param.point.x, param.point.y, text)
+  }
+
+  _overlayModeStr(ov) {
+    if (ov.mode === "indicator") {
+      return (ov.indicatorType || "ind").toUpperCase()
+    }
+    return ov.mode === "volume" ? "Vol" : "Price"
+  }
+
+  _showLabelTooltip(x, y, text) {
+    if (!this._labelTooltipEl) {
+      this._labelTooltipEl = document.createElement("div")
+      this._labelTooltipEl.className = "absolute z-40 px-2 py-0.5 text-xs text-gray-300 bg-[#1a1a2e]/90 border border-[#3a3a4e] rounded pointer-events-none whitespace-nowrap"
+      this.element.appendChild(this._labelTooltipEl)
+    }
+    this._labelTooltipEl.textContent = text
+    this._labelTooltipEl.style.left = `${x + 12}px`
+    this._labelTooltipEl.style.top = `${y - 8}px`
+  }
+
+  _removeLabelTooltip() {
+    if (this._labelTooltipEl) {
+      this._labelTooltipEl.remove()
+      this._labelTooltipEl = null
+    }
+  }
+
+  _showLabelInput(x, y, time, price, overlayId, symbol, mode, modeDetail) {
+    this._removeLabelInput()
+
+    const input = document.createElement("input")
+    input.type = "text"
+    input.placeholder = "Label text..."
+    input.className = "absolute z-50 px-2 py-1 text-sm text-white bg-[#1a1a2e] border border-blue-400 rounded outline-none"
+    input.style.left = `${x}px`
+    input.style.top = `${y - 30}px`
+    input.style.width = "160px"
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const text = input.value.trim()
+        if (text) {
+          const label = { text, time, price, color: "#ffffff", overlayId, symbol, mode, modeDetail }
+          this.element.dispatchEvent(new CustomEvent("label:created", {
+            detail: label,
+            bubbles: true,
+          }))
+        }
+        this._removeLabelInput()
+      } else if (e.key === "Escape") {
+        this._removeLabelInput()
+      }
+    })
+
+    input.addEventListener("blur", () => {
+      setTimeout(() => this._removeLabelInput(), 150)
+    })
+
+    this.element.appendChild(input)
+    this._labelInputEl = input
+    requestAnimationFrame(() => input.focus())
+  }
+
+  _removeLabelInput() {
+    if (this._labelInputEl) {
+      this._labelInputEl.remove()
+      this._labelInputEl = null
+    }
+  }
+
+  // Find the nearest visible series to the cursor Y using actual series data from the event
+  _findNearestSeries(param) {
+    const pixelY = param.point.y
+    const seriesData = param.seriesData
+    let best = null
+    let bestDist = Infinity
+
+    for (const [id, ov] of this.overlayMap) {
+      if (!ov.visible) continue
+
+      const seriesList = []
+      if (ov.series) seriesList.push(ov.series)
+      if (ov.indicatorSeries) ov.indicatorSeries.forEach(s => seriesList.push(s.series))
+
+      for (const series of seriesList) {
+        // Get the actual data value from event's seriesData
+        const data = seriesData?.get(series)
+        if (!data) continue
+
+        const dataValue = data.close ?? data.value ?? null
+        if (dataValue === null || !Number.isFinite(dataValue)) continue
+
+        const dataPixelY = series.priceToCoordinate(dataValue)
+        if (dataPixelY === null || !Number.isFinite(dataPixelY)) continue
+
+        const dist = Math.abs(pixelY - dataPixelY)
+        if (dist < bestDist) {
+          bestDist = dist
+          best = { id, ov, series }
+        }
+      }
+    }
+
+    return best
+  }
+
+  _findVisibleSeriesForMarkers(overlayId) {
+    // Find the specific overlay's series
+    const ov = this.overlayMap.get(overlayId)
+    if (ov?.visible && ov.series) return ov.series
+    if (ov?.visible && ov.indicatorSeries?.length > 0) return ov.indicatorSeries[0].series
+    return null
+  }
+
+  _renderLabelMarkers() {
+    // Detach old primitives
+    if (this._labelMarkersPrimitives) {
+      for (const prim of this._labelMarkersPrimitives) {
+        try { prim.detach() } catch {}
+      }
+    }
+    this._labelMarkersPrimitives = []
+
+    if (this.labels.length === 0) return
+
+    // Group labels by which visible series they should attach to
+    const seriesMarkersMap = new Map()
+
+    for (const label of this.labels) {
+      // Only show on the label's own series, skip if that series is hidden
+      if (!label.overlayId) continue
+      const targetSeries = this._findVisibleSeriesForMarkers(label.overlayId)
+      if (!targetSeries) continue
+
+      if (!seriesMarkersMap.has(targetSeries)) seriesMarkersMap.set(targetSeries, [])
+      seriesMarkersMap.get(targetSeries).push({
+        time: label.time,
+        position: "aboveBar",
+        shape: "circle",
+        color: label.color || "#ffffff",
+        text: label.text,
+        size: 1,
+      })
+    }
+
+    for (const [series, markers] of seriesMarkersMap) {
+      markers.sort((a, b) => a.time - b.time)
+      this._labelMarkersPrimitives.push(createSeriesMarkers(series, markers))
+    }
   }
 
   // --- Internal ---
@@ -288,6 +532,7 @@ export default class extends Controller {
       ov.series.setData(toSeriesData(ov, ov.loader.candles))
     }
     this._syncSelectedOverlayScale()
+    if (this.labels?.length > 0) this._renderLabelMarkers()
   }
 
   _syncSelectedOverlayScale() {
@@ -408,6 +653,8 @@ export default class extends Controller {
       }
       // Source candles loaded — now compute indicators
       this.indicators.refreshAll()
+      // Render label markers now that data is loaded
+      this._renderLabelMarkers()
     })
 
     for (const [, ov] of this.overlayMap) {

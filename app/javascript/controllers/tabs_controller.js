@@ -11,10 +11,14 @@ export default class extends Controller {
   async connect() {
     this.store = new TabStore()
     this.config = await fetchConfig()
+    this._labelMode = false
     this.renderer = new TabRenderer(this.tabBarTarget, this.panelsTarget, this.sidebarTarget, {
       controllerName: "tabs",
     })
     this.render()
+
+    // Listen for labels created from chart click
+    this.element.addEventListener("label:created", (e) => this._onLabelCreated(e))
   }
 
   // --- Tab actions ---
@@ -140,6 +144,109 @@ export default class extends Controller {
       chartCtrl.setOverlayVisibility(overlayId, visible)
     }
     this.render()
+  }
+
+  // --- Section collapse ---
+
+  toggleChartsSection() {
+    this.renderer.sidebar.chartsCollapsed = !this.renderer.sidebar.chartsCollapsed
+    this.render()
+  }
+
+  toggleLabelsSection() {
+    this.renderer.sidebar.labelsCollapsed = !this.renderer.sidebar.labelsCollapsed
+    this.render()
+  }
+
+  // --- Label actions ---
+
+  toggleLabelMode() {
+    this._labelMode = !this._labelMode
+    const panel = this.store.selectedPanel
+    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+    if (chartCtrl) {
+      if (this._labelMode) {
+        chartCtrl.enterLabelMode()
+      } else {
+        chartCtrl.exitLabelMode()
+      }
+    }
+    this.render()
+  }
+
+  removeLabel(e) {
+    e.stopPropagation()
+    const labelId = e.currentTarget.dataset.removeLabel
+    const panel = this.store.selectedPanel
+    if (!panel || !labelId) return
+    if (this.store.removeLabel(panel.id, labelId)) {
+      const chartCtrl = this._chartCtrlForPanel(panel.id)
+      if (chartCtrl) chartCtrl.setLabels(panel.labels || [])
+      this.render()
+    }
+  }
+
+  selectLabel(e) {
+    if (e.target.closest("[data-remove-label]")) return
+    const labelId = e.currentTarget.dataset.labelId
+    const panel = this.store.selectedPanel
+    if (!panel || !labelId) return
+    const label = (panel.labels || []).find(l => l.id === labelId)
+    if (!label) return
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.scrollToLabel(label.time)
+  }
+
+  startLabelRename(e) {
+    e.stopPropagation()
+    if (e.target.closest("[data-remove-label]")) return
+
+    const row = e.currentTarget
+    const labelId = row.dataset.labelId
+    const panel = this.store.selectedPanel
+    if (!panel || !labelId) return
+
+    const label = (panel.labels || []).find(l => l.id === labelId)
+    if (!label) return
+
+    const textSpan = row.querySelector(`[data-label-text="${labelId}"]`)
+    if (!textSpan) return
+
+    const input = document.createElement("input")
+    input.type = "text"
+    input.value = label.text
+    input.className = "w-full px-1 py-0 text-sm text-white bg-[#2a2a3e] border border-blue-400 rounded outline-none"
+
+    const commit = () => {
+      const text = input.value.trim()
+      if (text && text !== label.text) {
+        this.store.updateLabel(panel.id, labelId, { text })
+        const chartCtrl = this._chartCtrlForPanel(panel.id)
+        if (chartCtrl) chartCtrl.setLabels(panel.labels || [])
+      }
+      this.render()
+    }
+
+    input.addEventListener("blur", commit)
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") input.blur()
+      if (ev.key === "Escape") { input.value = label.text; input.blur() }
+    })
+
+    textSpan.replaceWith(input)
+    input.focus()
+    input.select()
+  }
+
+  _onLabelCreated(e) {
+    const panel = this.store.selectedPanel
+    if (!panel) return
+    const label = this.store.addLabel(panel.id, e.detail)
+    if (label) {
+      const chartCtrl = this._chartCtrlForPanel(panel.id)
+      if (chartCtrl) chartCtrl.setLabels(panel.labels || [])
+      this.render()
+    }
   }
 
   // --- Settings (sidebar) ---
@@ -432,6 +539,17 @@ export default class extends Controller {
     return null
   }
 
+  _syncLabelsToChart() {
+    const panel = this.store.selectedPanel
+    if (!panel) return
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (!chartCtrl) return
+    chartCtrl.setLabels(panel.labels || [])
+    if (this._labelMode) {
+      chartCtrl.enterLabelMode()
+    }
+  }
+
   // --- Render ---
 
   render() {
@@ -444,8 +562,12 @@ export default class extends Controller {
       this.config.timeframes,
       (tab) => this.store.tabLabel(tab),
       this.config.indicators,
+      this._labelMode,
     )
     this._syncSelectedOverlayScale()
-    requestAnimationFrame(() => this._syncSelectedOverlayScale())
+    requestAnimationFrame(() => {
+      this._syncSelectedOverlayScale()
+      this._syncLabelsToChart()
+    })
   }
 }

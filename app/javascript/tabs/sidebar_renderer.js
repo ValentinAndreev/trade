@@ -9,9 +9,11 @@ export default class SidebarRenderer {
     this.sidebarEl = sidebarEl
     this.controllerName = controllerName
     this.indicatorFilter = "all"
+    this.chartsCollapsed = false
+    this.labelsCollapsed = false
   }
 
-  render(panel, selectedOverlayId, symbols, timeframes, indicators) {
+  render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive) {
     this.indicators = indicators || []
 
     if (!panel) {
@@ -56,10 +58,13 @@ export default class SidebarRenderer {
         const sourceSymbol = sourceOverlay ? sourceOverlay.symbol : o.symbol
         const sourceMode = sourceOverlay ? (sourceOverlay.mode === "volume" ? "Vol" : "Price") : "Price"
         label = `${sourceSymbol || o.symbol || "Empty"} ${sourceMode}`
-        modeLabel = (o.indicatorType || "ind").toUpperCase()
+        const paramsStr = o.indicatorParams
+          ? Object.values(o.indicatorParams).join(", ")
+          : ""
+        modeLabel = (o.indicatorType || "ind").toUpperCase() + (paramsStr ? ` ${paramsStr}` : "")
       } else {
         label = o.symbol || "Empty"
-        modeLabel = o.mode === "volume" ? "Volume" : "Price"
+        modeLabel = !o.symbol ? "" : (o.mode === "volume" ? "Volume" : "Price")
       }
       const visibilityClass = o.visible === false ? "bg-gray-600" : "bg-emerald-400"
       const visibilityTitle = o.visible === false ? "Hidden" : "Visible"
@@ -70,8 +75,8 @@ export default class SidebarRenderer {
              data-action="click->${this.controllerName}#selectOverlay">
           <div class="flex-1 min-w-0 flex items-center gap-1.5">
             <span class="truncate">${label}</span>
-            <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded border text-xs leading-none
-                         ${isSelected ? "text-blue-200 border-blue-300/40 bg-blue-500/10" : "text-gray-400 border-gray-500/40 bg-[#2a2a3e]"}">${modeLabel}</span>
+            ${modeLabel ? `<span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded border text-xs leading-none
+                         ${isSelected ? "text-blue-200 border-blue-300/40 bg-blue-500/10" : "text-gray-400 border-gray-500/40 bg-[#2a2a3e]"}">${modeLabel}</span>` : ""}
           </div>
           <button
             type="button"
@@ -113,7 +118,15 @@ export default class SidebarRenderer {
         <hr class="border-[#3a3a4e]">
 
         <div class="flex items-center justify-between">
-          <span class="text-sm text-gray-500 uppercase tracking-wide">Charts</span>
+          <div class="flex items-center gap-1.5">
+            <button
+              data-action="click->${this.controllerName}#toggleChartsSection"
+              class="text-blue-400 hover:text-blue-300 text-base cursor-pointer select-none w-6 h-6 flex items-center justify-center"
+              title="${this.chartsCollapsed ? "Expand" : "Collapse"}"
+            >${this.chartsCollapsed ? "&#9656;" : "&#9662;"}</button>
+            <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
+                  data-action="click->${this.controllerName}#toggleChartsSection">Charts</span>
+          </div>
           <button
             data-action="click->${this.controllerName}#addOverlay"
             class="text-sm text-gray-400 hover:text-white cursor-pointer"
@@ -121,75 +134,143 @@ export default class SidebarRenderer {
           >+ Chart</button>
         </div>
 
-        <div class="flex flex-col gap-0.5">${overlayList}</div>
+        ${this.chartsCollapsed ? "" : `
+          <div class="flex flex-col gap-0.5">${overlayList}</div>
+
+          <hr class="border-[#3a3a4e]">
+
+          <div class="text-sm text-gray-500 uppercase tracking-wide">Selected Chart</div>
+
+          ${!indicatorActive ? `
+            <label class="flex flex-col gap-1 text-sm text-gray-400">
+              Symbol
+              ${this._comboHTML("symbol", symbols, currentSymbol, "w-full")}
+            </label>
+          ` : ""}
+
+          <div class="flex flex-col gap-1 text-sm text-gray-400">
+            <span>Color scheme</span>
+            ${colorSchemeDropdown}
+          </div>
+
+          <label class="flex flex-col gap-1 text-sm text-gray-400">
+            <span class="flex items-center justify-between">
+              <span>Opacity</span>
+              <span data-opacity-value class="text-gray-400">${opacityPercent}%</span>
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value="${opacityPercent}"
+              data-action="input->${this.controllerName}#adjustOverlayOpacity change->${this.controllerName}#adjustOverlayOpacity"
+              class="w-full accent-blue-500 cursor-pointer"
+            >
+          </label>
+
+          <div class="flex gap-1">
+            <button
+              data-action="click->${this.controllerName}#setMode"
+              data-mode="price"
+              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${priceActive ? activeBtnClass : inactiveBtnClass}"
+            >Price</button>
+            <button
+              data-action="click->${this.controllerName}#setMode"
+              data-mode="volume"
+              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${volumeActive ? activeBtnClass : inactiveBtnClass}"
+            >Volume</button>
+            <button
+              data-action="click->${this.controllerName}#setMode"
+              data-mode="indicator"
+              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${indicatorActive ? activeBtnClass : inactiveBtnClass}"
+            >Indicator</button>
+          </div>
+
+          ${indicatorActive ? this._indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) : `
+            <label class="flex flex-col gap-1 text-sm text-gray-400">
+              Chart type
+              <select
+                data-field="chartType"
+                data-action="change->${this.controllerName}#switchChartType"
+                class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+              >${chartTypeOptions}</select>
+            </label>
+          `}
+
+          <button
+            data-action="click->${this.controllerName}#applySettings"
+            class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
+          >Apply</button>
+        `}
 
         <hr class="border-[#3a3a4e]">
 
-        <div class="text-sm text-gray-500 uppercase tracking-wide">Selected Chart</div>
-
-        ${!indicatorActive ? `
-          <label class="flex flex-col gap-1 text-sm text-gray-400">
-            Symbol
-            ${this._comboHTML("symbol", symbols, currentSymbol, "w-full")}
-          </label>
-        ` : ""}
-
-        <div class="flex flex-col gap-1 text-sm text-gray-400">
-          <span>Color scheme</span>
-          ${colorSchemeDropdown}
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5">
+            <button
+              data-action="click->${this.controllerName}#toggleLabelsSection"
+              class="text-blue-400 hover:text-blue-300 text-base cursor-pointer select-none w-6 h-6 flex items-center justify-center"
+              title="${this.labelsCollapsed ? "Expand" : "Collapse"}"
+            >${this.labelsCollapsed ? "&#9656;" : "&#9662;"}</button>
+            <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
+                  data-action="click->${this.controllerName}#toggleLabelsSection">Labels</span>
+          </div>
+          <button data-action="click->${this.controllerName}#toggleLabelMode"
+                  class="text-sm px-2 py-1 rounded cursor-pointer ${labelModeActive ? activeBtnClass : inactiveBtnClass}">
+            Text
+          </button>
         </div>
 
-        <label class="flex flex-col gap-1 text-sm text-gray-400">
-          <span class="flex items-center justify-between">
-            <span>Opacity</span>
-            <span data-opacity-value class="text-gray-400">${opacityPercent}%</span>
-          </span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value="${opacityPercent}"
-            data-action="input->${this.controllerName}#adjustOverlayOpacity change->${this.controllerName}#adjustOverlayOpacity"
-            class="w-full accent-blue-500 cursor-pointer"
-          >
-        </label>
-
-        <div class="flex gap-1">
-          <button
-            data-action="click->${this.controllerName}#setMode"
-            data-mode="price"
-            class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${priceActive ? activeBtnClass : inactiveBtnClass}"
-          >Price</button>
-          <button
-            data-action="click->${this.controllerName}#setMode"
-            data-mode="volume"
-            class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${volumeActive ? activeBtnClass : inactiveBtnClass}"
-          >Volume</button>
-          <button
-            data-action="click->${this.controllerName}#setMode"
-            data-mode="indicator"
-            class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${indicatorActive ? activeBtnClass : inactiveBtnClass}"
-          >Indicator</button>
-        </div>
-
-        ${indicatorActive ? this._indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) : `
-          <label class="flex flex-col gap-1 text-sm text-gray-400">
-            Chart type
-            <select
-              data-field="chartType"
-              data-action="change->${this.controllerName}#switchChartType"
-              class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-            >${chartTypeOptions}</select>
-          </label>
-        `}
-
-        <button
-          data-action="click->${this.controllerName}#applySettings"
-          class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
-        >Apply</button>
+        ${this.labelsCollapsed ? "" : this._labelListHTML(panel.labels || [])}
       </div>
     `
+  }
+
+  _labelListHTML(labels) {
+    if (labels.length === 0) return ""
+    return `
+      <div class="flex flex-col gap-0.5">
+        ${labels.map(label => {
+          const symbol = label.symbol || ""
+          const modeStr = label.modeDetail || (label.mode === "volume" ? "Vol" : label.mode === "indicator" ? "Ind" : "Price")
+          const priceStr = label.price != null ? this._formatPrice(label.price) : ""
+          const anchor = [symbol, modeStr, priceStr].filter(Boolean).join(" ")
+          const timeStr = this._formatLabelTime(label.time)
+          return `
+          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-sm text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
+               data-action="click->${this.controllerName}#selectLabel dblclick->${this.controllerName}#startLabelRename"
+               data-label-id="${label.id}">
+            <div class="flex-1 min-w-0 flex flex-col">
+              <span class="truncate" data-label-text="${label.id}">${this._escapeHTML(label.text)}</span>
+              <span class="text-xs text-gray-500 truncate">${this._escapeHTML(anchor)}</span>
+              <span class="text-xs text-gray-600 truncate">${this._escapeHTML(timeStr)}</span>
+            </div>
+            <span data-action="click->${this.controllerName}#removeLabel"
+                  data-remove-label="${label.id}"
+                  title="Remove label"
+                  class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
+          </div>
+        `}).join("")}
+      </div>
+    `
+  }
+
+  _formatPrice(price) {
+    if (price >= 1000) return price.toFixed(0)
+    if (price >= 1) return price.toFixed(2)
+    return price.toPrecision(4)
+  }
+
+  _formatLabelTime(time) {
+    if (!time) return ""
+    const d = new Date(time * 1000)
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    const hours = String(d.getHours()).padStart(2, "0")
+    const minutes = String(d.getMinutes()).padStart(2, "0")
+    return `${year}-${month}-${day} ${hours}:${minutes}`
   }
 
   _indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) {
@@ -270,7 +351,7 @@ export default class SidebarRenderer {
           >${indicatorOpts}</select>
           <button
             data-action="click->${this.controllerName}#cycleIndicatorFilter"
-            class="px-2 py-2 text-xs text-gray-300 bg-[#2a2a3e] border border-[#3a3a4e] rounded hover:bg-[#3a3a4e] whitespace-nowrap"
+            class="min-w-[5.5rem] px-2 py-2 text-xs text-gray-300 bg-[#2a2a3e] border border-[#3a3a4e] rounded hover:bg-[#3a3a4e] whitespace-nowrap text-center"
             title="Filter: ${filterLabel}"
           >${filterLabel}</button>
         </div>

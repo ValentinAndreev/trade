@@ -7,6 +7,7 @@ export default class TabStore {
     this._nextTabId = Math.max(...this.tabs.map(t => parseInt(t.id.split("-")[1]))) + 1
     this._nextPanelId = calcNextId(this.tabs, "p")
     this._nextOverlayId = calcNextId(this.tabs, "o")
+    this._nextLabelId = this._calcNextLabelId()
     this.activeTabId = this.tabs[0].id
     this.selectedPanelId = this.tabs[0].panels[0].id
     this.selectedOverlayId = this.tabs[0].panels[0].overlays[0]?.id || null
@@ -308,6 +309,52 @@ export default class TabStore {
       if (panel) return panel
     }
     return null
+  }
+
+  // --- Labels ---
+
+  addLabel(panelId, label) {
+    const panel = this._findPanel(panelId)
+    if (!panel) return null
+    if (!panel.labels) panel.labels = []
+    const newLabel = { id: `lbl-${this._nextLabelId++}`, ...label }
+    panel.labels.push(newLabel)
+    this._save()
+    return newLabel
+  }
+
+  removeLabel(panelId, labelId) {
+    const panel = this._findPanel(panelId)
+    if (!panel || !panel.labels) return false
+    const idx = panel.labels.findIndex(l => l.id === labelId)
+    if (idx === -1) return false
+    panel.labels.splice(idx, 1)
+    this._save()
+    return true
+  }
+
+  updateLabel(panelId, labelId, updates) {
+    const panel = this._findPanel(panelId)
+    if (!panel || !panel.labels) return false
+    const label = panel.labels.find(l => l.id === labelId)
+    if (!label) return false
+    Object.assign(label, updates)
+    this._save()
+    return true
+  }
+
+  _calcNextLabelId() {
+    let max = 0
+    for (const tab of this.tabs) {
+      for (const panel of tab.panels) {
+        if (!panel.labels) continue
+        for (const label of panel.labels) {
+          const num = parseInt(label.id.split("-")[1])
+          if (num > max) max = num
+        }
+      }
+    }
+    return max + 1
   }
 
   _newOverlay(id, symbol = null, colorScheme = 0) {
