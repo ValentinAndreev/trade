@@ -5,7 +5,7 @@ module Api
     def show
       config = BitfinexConfig.new
 
-      render json: { symbols: config.symbols.map { |s| s.delete_prefix('t') }, timeframes: config.timeframes }
+      render json: { symbols: config.symbols, timeframes: config.timeframes }
     end
   end
 end

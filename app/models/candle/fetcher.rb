@@ -40,6 +40,8 @@ class Candle::Fetcher
 
       Rails.cache.delete("candle/max_ts/#{symbol}/#{EXCHANGE}")
       Rails.cache.delete("candle/min_ts/#{symbol}/#{EXCHANGE}") if load_all_data
+
+      @last_imported_ts = imported_timestamps.min
       sleep(BitfinexConfig.rate_limit_pause)
     end
   end
@@ -49,7 +51,7 @@ class Candle::Fetcher
   HISTORY_START = Time.utc(2016, 1, 1).to_i * 1000
 
   def end_time_ms
-    return without_last_minute_ms unless load_all_data
+    return @last_imported_ts ? (@last_imported_ts - 60).to_i * 1000 : without_last_minute_ms unless load_all_data
 
     candle_ts = Candle.min_ts(symbol: symbol, exchange: EXCHANGE)
     return without_last_minute_ms unless candle_ts

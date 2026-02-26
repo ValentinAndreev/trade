@@ -1,13 +1,8 @@
 # frozen_string_literal: true
 
 class Api::TickersController < Api::ApplicationController
-  SYMBOLS = %w[
-    BTCUSD ETHUSD XRPUSD SOLUSD ADAUSD DOGEUSD
-    LTCUSD AVAXUSD LINKUSD DOTUSD XLMUSD ETCUSD
-  ].freeze
-
   def index
-    render json: SYMBOLS.filter_map { |s| build_ticker(s) }
+    render json: BitfinexConfig.symbols.filter_map { |s| build_ticker(s) }
   end
 
   private
