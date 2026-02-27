@@ -72,10 +72,12 @@ export default class PanelRenderer {
       }
     }
 
-    panels.forEach(panel => {
+    panels.forEach((panel, panelIdx) => {
       const el = existing.get(panel.id)
       const overlaysJson = this._overlaysJson(panel)
       const hasSymbols = panel.overlays.some(o => o.symbol)
+      const isFirst = panelIdx === 0
+      const isLast = panelIdx === panels.length - 1
 
       if (el) {
         const chartEl = el.querySelector("[data-controller='chart']")
@@ -89,42 +91,56 @@ export default class PanelRenderer {
 
         if (settingsChanged || hasChart !== needsChart) {
           const placeholder = document.createElement("template")
-          placeholder.innerHTML = this._panelHTML(panel, selectedPanelId)
+          placeholder.innerHTML = this._panelHTML(panel, selectedPanelId, isFirst, isLast)
           const newEl = placeholder.content.firstElementChild
           if (savedFlex.has(panel.id)) newEl.style.flex = savedFlex.get(panel.id)
           el.replaceWith(newEl)
           existing.delete(panel.id)
         } else {
           this._updatePanelBorder(el, panel.id === selectedPanelId)
+          this._updateMoveButtons(el, panel.id, isFirst, isLast)
         }
         return
       }
 
-      wrapper.insertAdjacentHTML("beforeend", this._panelHTML(panel, selectedPanelId))
+      wrapper.insertAdjacentHTML("beforeend", this._panelHTML(panel, selectedPanelId, isFirst, isLast))
     })
 
-    // Sync dividers between panels
-    const panelEls = [...wrapper.querySelectorAll(":scope > [data-panel-id]")]
-    const expectedPairs = []
-    for (let i = 0; i < panelEls.length - 1; i++) {
-      expectedPairs.push({ above: panelEls[i].dataset.panelId, below: panelEls[i + 1].dataset.panelId })
+    // Use CSS order to visually reorder without moving DOM nodes
+    // (moving nodes triggers Stimulus disconnect/connect and reloads charts)
+    const panelElMap = new Map()
+    wrapper.querySelectorAll(":scope > [data-panel-id]").forEach(el => {
+      panelElMap.set(el.dataset.panelId, el)
+    })
+    panels.forEach((panel, i) => {
+      const el = panelElMap.get(panel.id)
+      if (el) el.style.order = i * 2
+    })
+
+    // Sync dividers based on store order
+    const orderedPairs = []
+    for (let i = 0; i < panels.length - 1; i++) {
+      orderedPairs.push({ above: panels[i].id, below: panels[i + 1].id })
     }
 
     const existingDividers = [...wrapper.querySelectorAll(":scope > [data-divider]")]
-    const needsRebuild = existingDividers.length !== expectedPairs.length ||
-      existingDividers.some((d, i) => d.dataset.above !== expectedPairs[i].above || d.dataset.below !== expectedPairs[i].below)
+    const needsRebuild = existingDividers.length !== orderedPairs.length ||
+      existingDividers.some((d, i) => d.dataset.above !== orderedPairs[i].above || d.dataset.below !== orderedPairs[i].below)
 
     if (needsRebuild) {
       existingDividers.forEach(d => d.remove())
-      for (let i = 0; i < panelEls.length - 1; i++) {
+      for (let i = 0; i < orderedPairs.length; i++) {
         const divider = document.createElement("div")
         divider.dataset.divider = ""
-        divider.dataset.above = panelEls[i].dataset.panelId
-        divider.dataset.below = panelEls[i + 1].dataset.panelId
+        divider.dataset.above = orderedPairs[i].above
+        divider.dataset.below = orderedPairs[i].below
         divider.className = "h-1.5 shrink-0 cursor-row-resize bg-[#2a2a3e] hover:bg-[#5a5a7e] transition-colors"
         divider.dataset.action = `mousedown->${this.controllerName}#startResize`
-        panelEls[i].after(divider)
+        divider.style.order = i * 2 + 1
+        wrapper.appendChild(divider)
       }
+    } else {
+      existingDividers.forEach((d, i) => { d.style.order = i * 2 + 1 })
     }
   }
 
@@ -178,28 +194,49 @@ export default class PanelRenderer {
     `
   }
 
-  _panelHTML(panel, selectedPanelId) {
+  _updateMoveButtons(el, panelId, isFirst, isLast) {
+    el.querySelectorAll(":scope > .absolute.top-1.right-1").forEach(c => c.remove())
+    const html = this._controlButtonsHTML(panelId, isFirst, isLast)
+    el.insertAdjacentHTML("afterbegin", html)
+  }
+
+  _controlButtonsHTML(panelId, isFirst, isLast) {
+    const btnClass = "w-7 h-7 flex items-center justify-center text-gray-400 hover:text-white bg-[#1a1a2e]/85 hover:bg-[#2a2a3e] rounded text-base cursor-pointer"
+
+    const upBtn = isFirst ? "" : `
+      <button data-move-panel data-panel-id="${panelId}"
+              data-action="click->${this.controllerName}#movePanelUp"
+              class="${btnClass}" title="Move up">&#9650;</button>`
+
+    const downBtn = isLast ? "" : `
+      <button data-move-panel data-panel-id="${panelId}"
+              data-action="click->${this.controllerName}#movePanelDown"
+              class="${btnClass}" title="Move down">&#9660;</button>`
+
+    const closeBtn = `
+      <button data-close-panel="${panelId}"
+              data-action="click->${this.controllerName}#removePanel"
+              class="${btnClass} hover:!text-red-300" title="Remove panel">&times;</button>`
+
+    return `
+      <div class="absolute top-1 right-1 z-10 flex gap-0.5">
+        ${upBtn}${downBtn}${closeBtn}
+      </div>
+    `
+  }
+
+  _panelHTML(panel, selectedPanelId, isFirst = true, isLast = true) {
     const selected = panel.id === selectedPanelId
     const borderClass = selected ? "border-blue-500/50" : "border-[#2a2a3e]"
     const hasSymbols = panel.overlays.some(o => o.symbol)
-
-    const closeBtn = `
-      <div class="absolute top-1 right-1 z-10">
-        <button
-          data-close-panel="${panel.id}"
-          data-action="click->${this.controllerName}#removePanel"
-          class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-300 bg-[#1a1a2e]/85 hover:bg-[#2a2a3e] rounded text-base cursor-pointer"
-          title="Remove panel"
-        >&times;</button>
-      </div>
-    `
+    const buttons = this._controlButtonsHTML(panel.id, isFirst, isLast)
 
     if (!hasSymbols) {
       return `
         <div data-panel-id="${panel.id}"
              data-action="click->${this.controllerName}#selectPanel"
              class="relative flex-1 min-h-0 border ${borderClass} flex items-center justify-center cursor-pointer">
-          ${closeBtn}
+          ${buttons}
           <span class="text-gray-500 text-base">Select a symbol</span>
         </div>
       `
@@ -211,7 +248,7 @@ export default class PanelRenderer {
       <div data-panel-id="${panel.id}"
            data-action="click->${this.controllerName}#selectPanel"
            class="relative flex-1 min-h-0 border ${borderClass} cursor-pointer">
-        ${closeBtn}
+        ${buttons}
         <div
           data-controller="chart"
           data-chart-timeframe-value="${panel.timeframe}"

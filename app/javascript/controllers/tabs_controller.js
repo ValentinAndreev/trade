@@ -87,8 +87,23 @@ export default class extends Controller {
     if (this.store.removePanel(panelId)) this.render()
   }
 
+  movePanelUp(e) {
+    e.stopPropagation()
+    const panelId = e.currentTarget.dataset.panelId
+    if (!panelId) return
+    if (this.store.movePanelUp(panelId)) this.render()
+  }
+
+  movePanelDown(e) {
+    e.stopPropagation()
+    const panelId = e.currentTarget.dataset.panelId
+    if (!panelId) return
+    if (this.store.movePanelDown(panelId)) this.render()
+  }
+
   selectPanel(e) {
     if (e.target.closest("[data-close-panel]")) return
+    if (e.target.closest("[data-move-panel]")) return
     const panelEl = e.currentTarget.closest("[data-panel-id]")
     const panelId = panelEl?.dataset.panelId
     if (!panelId) return

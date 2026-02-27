@@ -139,6 +139,27 @@ export default class TabStore {
     return true
   }
 
+  movePanelUp(panelId) {
+    return this._swapPanel(panelId, -1)
+  }
+
+  movePanelDown(panelId) {
+    return this._swapPanel(panelId, 1)
+  }
+
+  _swapPanel(panelId, direction) {
+    for (const tab of this.tabs) {
+      const idx = tab.panels.findIndex(p => p.id === panelId)
+      if (idx === -1) continue
+      const targetIdx = idx + direction
+      if (targetIdx < 0 || targetIdx >= tab.panels.length) return false;
+      [tab.panels[idx], tab.panels[targetIdx]] = [tab.panels[targetIdx], tab.panels[idx]]
+      this._save()
+      return true
+    }
+    return false
+  }
+
   updatePanelTimeframe(panelId, timeframe) {
     const panel = this._findPanel(panelId)
     if (!panel || panel.timeframe === timeframe) return false
