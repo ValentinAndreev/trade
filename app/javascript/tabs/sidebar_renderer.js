@@ -12,9 +12,13 @@ export default class SidebarRenderer {
     this.chartsCollapsed = false
     this.labelsCollapsed = false
     this.linesCollapsed = false
+    this.textCollapsed = false
+    this.trendLinesCollapsed = false
+    this.hlinesCollapsed = false
+    this.vlinesCollapsed = false
   }
 
-  render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive, lineModeActive, vpEnabled, vpOpacity) {
+  render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive, lineModeActive, vpEnabled, vpOpacity, hlModeActive, vlModeActive) {
     this.indicators = indicators || []
 
     if (!panel) {
@@ -211,7 +215,7 @@ export default class SidebarRenderer {
           <span class="text-sm text-gray-500 uppercase tracking-wide">Volume Profile</span>
           <button data-action="click->${this.controllerName}#toggleVolumeProfile"
                   class="text-sm px-2 py-1 rounded cursor-pointer ${vpEnabled ? activeBtnClass : inactiveBtnClass}">
-            VP
+            ${vpEnabled ? "On" : "Off"}
           </button>
         </div>
 
@@ -254,12 +258,29 @@ export default class SidebarRenderer {
                     class="text-sm px-2 py-1 rounded cursor-pointer ${lineModeActive ? activeBtnClass : inactiveBtnClass}">
               Line
             </button>
+            <button data-action="click->${this.controllerName}#toggleHLineMode"
+                    class="text-sm px-2 py-1 rounded cursor-pointer ${hlModeActive ? activeBtnClass : inactiveBtnClass}">
+              HL
+            </button>
+            <button data-action="click->${this.controllerName}#toggleVLineMode"
+                    class="text-sm px-2 py-1 rounded cursor-pointer ${vlModeActive ? activeBtnClass : inactiveBtnClass}">
+              VL
+            </button>
+            <button data-action="click->${this.controllerName}#clearAllLabels"
+                    class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300"
+                    title="Clear all labels, lines, HL, VL on this panel">
+              Clear
+            </button>
           </span>
         </div>
 
         ${this.labelsCollapsed ? "" : this._labelListHTML(panel.labels || [])}
 
         ${this.labelsCollapsed ? "" : this._lineListHTML(panel.lines || [])}
+
+        ${this.labelsCollapsed ? "" : this._hlineListHTML(panel.hlines || [])}
+
+        ${this.labelsCollapsed ? "" : this._vlineListHTML(panel.vlines || [])}
       </div>
     `
   }
@@ -268,21 +289,48 @@ export default class SidebarRenderer {
     if (labels.length === 0) return ""
     return `
       <div class="flex flex-col gap-0.5">
-        ${labels.map(label => {
+        <div class="flex items-center gap-1 px-2.5 select-none">
+          <span class="text-blue-400 hover:text-blue-300 text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
+                data-action="click->${this.controllerName}#toggleTextSublist">${this.textCollapsed ? "&#9656;" : "&#9662;"}</span>
+          <span class="text-[13px] text-gray-500 uppercase tracking-wide cursor-pointer flex-1"
+                data-action="click->${this.controllerName}#toggleTextSublist">Text
+            <span class="normal-case tracking-normal">(${labels.length})</span>
+          </span>
+          <button data-action="click->${this.controllerName}#clearAllText"
+                title="Clear all text labels"
+                class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300">Clear</button>
+        </div>
+        ${this.textCollapsed ? "" : labels.map(label => {
           const symbol = label.symbol || ""
           const modeStr = label.modeDetail || (label.mode === "volume" ? "Vol" : label.mode === "indicator" ? "Ind" : "Price")
           const priceStr = label.price != null ? this._formatPrice(label.price) : ""
           const anchor = [symbol, modeStr, priceStr].filter(Boolean).join(" ")
           const timeStr = this._formatLabelTime(label.time)
+          const color = label.color || "#ffffff"
+          const fontSize = label.fontSize || 1
           return `
           <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-[15px] text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
                data-action="click->${this.controllerName}#selectLabel dblclick->${this.controllerName}#startLabelRename"
                data-label-id="${label.id}">
+            <span class="shrink-0 w-4 flex items-center justify-center" title="Color">
+              <span class="block w-2.5 h-2.5 rounded-full border border-black/20" style="background:${this._escapeHTML(color)}"></span>
+            </span>
             <div class="flex-1 min-w-0 flex flex-col">
               <span class="truncate" data-label-text="${label.id}">${this._escapeHTML(label.text)}</span>
               <span class="text-[13px] text-gray-500 truncate">${this._escapeHTML(anchor)}</span>
               <span class="text-[13px] text-gray-600 truncate">${this._escapeHTML(timeStr)}</span>
             </div>
+            <input type="color" value="${this._escapeHTML(color)}"
+                   data-action="change->${this.controllerName}#changeLabelColor"
+                   data-label-id="${label.id}"
+                   class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer shrink-0 opacity-0 group-hover:opacity-100"
+                   title="Change color">
+            <select data-action="change->${this.controllerName}#changeLabelFontSize"
+                    data-label-id="${label.id}"
+                    class="hidden group-hover:block w-12 text-xs bg-[#2a2a3e] text-gray-300 border border-[#3a3a4e] rounded cursor-pointer shrink-0"
+                    title="Font size">
+              ${[["1","S"],["2","M"],["3","L"],["4","XL"],["5","XXL"]].map(([v,l]) => `<option value="${v}"${parseInt(v)===fontSize ? " selected" : ""}>${l}</option>`).join("")}
+            </select>
             <span data-action="click->${this.controllerName}#removeLabel"
                   data-remove-label="${label.id}"
                   title="Remove label"
@@ -297,7 +345,18 @@ export default class SidebarRenderer {
     if (lines.length === 0) return ""
     return `
       <div class="flex flex-col gap-0.5 mt-1">
-        ${lines.map(line => {
+        <div class="flex items-center gap-1 px-2.5 select-none">
+          <span class="text-blue-400 hover:text-blue-300 text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
+                data-action="click->${this.controllerName}#toggleTrendLinesSublist">${this.trendLinesCollapsed ? "&#9656;" : "&#9662;"}</span>
+          <span class="text-[13px] text-gray-500 uppercase tracking-wide cursor-pointer flex-1"
+                data-action="click->${this.controllerName}#toggleTrendLinesSublist">Lines
+            <span class="normal-case tracking-normal">(${lines.length})</span>
+          </span>
+          <button data-action="click->${this.controllerName}#clearAllLines"
+                title="Clear all lines"
+                class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300">Clear</button>
+        </div>
+        ${this.trendLinesCollapsed ? "" : lines.map(line => {
           const symbol = line.symbol || ""
           const modeStr = line.modeDetail || (line.mode === "volume" ? "Vol" : "Price")
           const p1Str = line.p1?.price != null ? this._formatPrice(line.p1.price) : "?"
@@ -334,6 +393,111 @@ export default class SidebarRenderer {
             <span data-action="click->${this.controllerName}#removeLine"
                   data-remove-line="${line.id}"
                   title="Remove line"
+                  class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
+          </div>
+        `}).join("")}
+      </div>
+    `
+  }
+
+  _hlineListHTML(hlines) {
+    if (hlines.length === 0) return ""
+    return `
+      <div class="flex flex-col gap-0.5 mt-1">
+        <div class="flex items-center gap-1 px-2.5 select-none">
+          <span class="text-blue-400 hover:text-blue-300 text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
+                data-action="click->${this.controllerName}#toggleHLinesSublist">${this.hlinesCollapsed ? "&#9656;" : "&#9662;"}</span>
+          <span class="text-[13px] text-gray-500 uppercase tracking-wide cursor-pointer flex-1"
+                data-action="click->${this.controllerName}#toggleHLinesSublist">Horizontal
+            <span class="normal-case tracking-normal">(${hlines.length})</span>
+          </span>
+          <button data-action="click->${this.controllerName}#clearAllHLines"
+                title="Clear all horizontal lines"
+                class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300">Clear</button>
+        </div>
+        ${this.hlinesCollapsed ? "" : hlines.map(hl => {
+          const symbol = hl.symbol || ""
+          const modeStr = hl.modeDetail || "Price"
+          const priceStr = hl.price != null ? this._formatPrice(hl.price) : "?"
+          const anchor = `${symbol} ${modeStr} ${priceStr}`
+          const color = hl.color || "#ff9800"
+          const width = hl.width || 1
+          return `
+          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-[15px] text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
+               data-action="dblclick->${this.controllerName}#startHLineRename"
+               data-hline-id="${hl.id}">
+            <span class="shrink-0 w-4 flex items-center justify-center" title="Color">
+              <span class="block rounded-sm border border-black/20" style="background:${this._escapeHTML(color)};width:${width * 4}px;height:${width * 2}px"></span>
+            </span>
+            <div class="flex-1 min-w-0 flex flex-col">
+              <span class="truncate" data-hline-name="${hl.id}">${this._escapeHTML(hl.name || hl.id)}</span>
+              <span class="text-[13px] text-gray-500 truncate">${this._escapeHTML(anchor)}</span>
+            </div>
+            <input type="color" value="${this._escapeHTML(color)}"
+                   data-action="change->${this.controllerName}#changeHLineColor"
+                   data-hline-id="${hl.id}"
+                   class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer shrink-0 opacity-0 group-hover:opacity-100"
+                   title="Change color">
+            <select data-action="change->${this.controllerName}#changeHLineWidth"
+                    data-hline-id="${hl.id}"
+                    class="hidden group-hover:block w-10 text-xs bg-[#2a2a3e] text-gray-300 border border-[#3a3a4e] rounded cursor-pointer shrink-0"
+                    title="Line width">
+              ${[1,2,3,4,5].map(w => `<option value="${w}"${w === width ? " selected" : ""}>${w}px</option>`).join("")}
+            </select>
+            <span data-action="click->${this.controllerName}#removeHLine"
+                  data-remove-hline="${hl.id}"
+                  title="Remove horizontal line"
+                  class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
+          </div>
+        `}).join("")}
+      </div>
+    `
+  }
+
+  _vlineListHTML(vlines) {
+    if (vlines.length === 0) return ""
+    return `
+      <div class="flex flex-col gap-0.5 mt-1">
+        <div class="flex items-center gap-1 px-2.5 select-none">
+          <span class="text-blue-400 hover:text-blue-300 text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
+                data-action="click->${this.controllerName}#toggleVLinesSublist">${this.vlinesCollapsed ? "&#9656;" : "&#9662;"}</span>
+          <span class="text-[13px] text-gray-500 uppercase tracking-wide cursor-pointer flex-1"
+                data-action="click->${this.controllerName}#toggleVLinesSublist">Vertical
+            <span class="normal-case tracking-normal">(${vlines.length})</span>
+          </span>
+          <button data-action="click->${this.controllerName}#clearAllVLines"
+                title="Clear all vertical lines"
+                class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300">Clear</button>
+        </div>
+        ${this.vlinesCollapsed ? "" : vlines.map(vl => {
+          const timeStr = this._formatLabelTime(vl.time)
+          const color = vl.color || "#ff9800"
+          const width = vl.width || 1
+          return `
+          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-[15px] text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
+               data-action="click->${this.controllerName}#selectVLine dblclick->${this.controllerName}#startVLineRename"
+               data-vline-id="${vl.id}">
+            <span class="shrink-0 w-4 flex items-center justify-center" title="Color">
+              <span class="block rounded-sm border border-black/20" style="background:${this._escapeHTML(color)};width:${width * 4}px;height:${width * 2}px"></span>
+            </span>
+            <div class="flex-1 min-w-0 flex flex-col">
+              <span class="truncate" data-vline-name="${vl.id}">${this._escapeHTML(vl.name || vl.id)}</span>
+              <span class="text-[13px] text-gray-500 truncate">${this._escapeHTML(timeStr)}</span>
+            </div>
+            <input type="color" value="${this._escapeHTML(color)}"
+                   data-action="change->${this.controllerName}#changeVLineColor"
+                   data-vline-id="${vl.id}"
+                   class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer shrink-0 opacity-0 group-hover:opacity-100"
+                   title="Change color">
+            <select data-action="change->${this.controllerName}#changeVLineWidth"
+                    data-vline-id="${vl.id}"
+                    class="hidden group-hover:block w-10 text-xs bg-[#2a2a3e] text-gray-300 border border-[#3a3a4e] rounded cursor-pointer shrink-0"
+                    title="Line width">
+              ${[1,2,3,4,5].map(w => `<option value="${w}"${w === width ? " selected" : ""}>${w}px</option>`).join("")}
+            </select>
+            <span data-action="click->${this.controllerName}#removeVLine"
+                  data-remove-vline="${vl.id}"
+                  title="Remove vertical line"
                   class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
           </div>
         `}).join("")}

@@ -1,5 +1,5 @@
 import { Controller } from "@hotwired/stimulus"
-import { createChart, createSeriesMarkers } from "lightweight-charts"
+import { createChart } from "lightweight-charts"
 
 import { CHART_THEME, OVERLAY_COLORS } from "../chart/theme"
 import DataLoader from "../chart/data_loader"
@@ -15,6 +15,8 @@ import {
 } from "../chart/series_factory"
 import { TrendLinePrimitive } from "../chart/trend_line"
 import { VolumeProfilePrimitive } from "../chart/volume_profile"
+import { HLinePrimitive, VLinePrimitive } from "../chart/guide_lines"
+import { TextLabelsPrimitive } from "../chart/text_labels"
 
 export default class extends Controller {
   static values = {
@@ -37,6 +39,11 @@ export default class extends Controller {
     this._linePrimitives = []    // [{ id, primitive, seriesRef }]
     this._linePreviewPrimitive = null
     this._linePreviewSeriesRef = null
+
+    this.hlMode = false
+    this.vlMode = false
+    this._hlinePrimitives = []   // [{ id, primitive, seriesRef }]
+    this._vlinePrimitives = []   // [{ id, primitive, seriesRef }]
 
     this._vpEnabled = false
     this._vpOpacity = 0.3
@@ -88,6 +95,8 @@ export default class extends Controller {
     this._removeLabelTooltip()
     this._removeLinePreview()
     this._detachAllLinePrimitives()
+    this._detachAllHLinePrimitives()
+    this._detachAllVLinePrimitives()
     this._detachVolumeProfile()
     this.scrollbar?.destroy()
     this.chart?.remove()
@@ -189,6 +198,12 @@ export default class extends Controller {
     if (this._linePrimitives.length > 0 || this._storedLines?.length > 0) {
       this.setLines(this._storedLines || [])
     }
+    if (this._hlinePrimitives.length > 0 || this._storedHLines?.length > 0) {
+      this.setHLines(this._storedHLines || [])
+    }
+    if (this._vlinePrimitives.length > 0 || this._storedVLines?.length > 0) {
+      this.setVLines(this._storedVLines || [])
+    }
   }
 
   setOverlayColorScheme(id, colorScheme) {
@@ -232,14 +247,13 @@ export default class extends Controller {
     this.labelMode = false
     this._removeLabelInput()
     this._removeLabelTooltip()
-    // Only clean up subscriptions if line mode is also off
-    if (!this.lineMode) {
+    if (!this._anyInteractiveMode()) {
       if (this._crosshairHandler) {
         this.chart?.unsubscribeCrosshairMove(this._crosshairHandler)
         this._crosshairHandler = null
       }
     }
-    this.element.style.cursor = this.lineMode ? "crosshair" : ""
+    this.element.style.cursor = this._anyInteractiveMode() ? "crosshair" : ""
   }
 
   setLabels(labels) {
@@ -274,14 +288,13 @@ export default class extends Controller {
     this._lineDrawState = null
     this._removeLabelTooltip()
     this._removeLinePreview()
-    // Only clean up subscriptions if label mode is also off
-    if (!this.labelMode) {
+    if (!this._anyInteractiveMode()) {
       if (this._crosshairHandler) {
         this.chart?.unsubscribeCrosshairMove(this._crosshairHandler)
         this._crosshairHandler = null
       }
     }
-    this.element.style.cursor = this.labelMode ? "crosshair" : ""
+    this.element.style.cursor = this._anyInteractiveMode() ? "crosshair" : ""
   }
 
   setLines(lines) {
@@ -297,6 +310,66 @@ export default class extends Controller {
     if (!this.chart) return
     const t = typeof time === "number" ? time : (time?.time || 0)
     this.scrollToLabel(t)
+  }
+
+  // --- HLine mode ---
+
+  enterHLineMode() {
+    if (!this.chart) return
+    this.hlMode = true
+    this._ensureChartSubscriptions()
+    this.element.style.cursor = "crosshair"
+  }
+
+  exitHLineMode() {
+    this.hlMode = false
+    this._removeLabelTooltip()
+    if (!this._anyInteractiveMode()) {
+      if (this._crosshairHandler) {
+        this.chart?.unsubscribeCrosshairMove(this._crosshairHandler)
+        this._crosshairHandler = null
+      }
+    }
+    this.element.style.cursor = this._anyInteractiveMode() ? "crosshair" : ""
+  }
+
+  setHLines(hlines) {
+    this._storedHLines = hlines || []
+    this._detachAllHLinePrimitives()
+    if (!hlines || hlines.length === 0) return
+    for (const hl of hlines) {
+      this._attachHLinePrimitive(hl)
+    }
+  }
+
+  // --- VLine mode ---
+
+  enterVLineMode() {
+    if (!this.chart) return
+    this.vlMode = true
+    this._ensureChartSubscriptions()
+    this.element.style.cursor = "crosshair"
+  }
+
+  exitVLineMode() {
+    this.vlMode = false
+    this._removeLabelTooltip()
+    if (!this._anyInteractiveMode()) {
+      if (this._crosshairHandler) {
+        this.chart?.unsubscribeCrosshairMove(this._crosshairHandler)
+        this._crosshairHandler = null
+      }
+    }
+    this.element.style.cursor = this._anyInteractiveMode() ? "crosshair" : ""
+  }
+
+  setVLines(vlines) {
+    this._storedVLines = vlines || []
+    this._detachAllVLinePrimitives()
+    if (!vlines || vlines.length === 0) return
+    for (const vl of vlines) {
+      this._attachVLinePrimitive(vl)
+    }
   }
 
   // --- Volume Profile ---
@@ -476,6 +549,14 @@ export default class extends Controller {
       this._onLineClick(param)
       return
     }
+    if (this.hlMode) {
+      this._onHLineClick(param)
+      return
+    }
+    if (this.vlMode) {
+      this._onVLineClick(param)
+      return
+    }
     if (!this.labelMode) return
     if (!param.point) return
 
@@ -494,7 +575,7 @@ export default class extends Controller {
   }
 
   _onCrosshairMove(param) {
-    const anyMode = this.labelMode || this.lineMode
+    const anyMode = this._anyInteractiveMode()
     if (!anyMode || !param.point) {
       this._removeLabelTooltip()
       return
@@ -576,6 +657,91 @@ export default class extends Controller {
       },
       bubbles: true,
     }))
+  }
+
+  _onHLineClick(param) {
+    if (!param.point) return
+    const time = param.time
+    if (!time) return
+    const target = this._findNearestSeries(param)
+    if (!target) return
+    const price = target.series.coordinateToPrice(param.point.y)
+    if (price === null || !Number.isFinite(price)) return
+    this._removeLabelTooltip()
+    this.element.dispatchEvent(new CustomEvent("hline:created", {
+      detail: {
+        price,
+        color: "#ff9800",
+        width: 1,
+        overlayId: target.id,
+        symbol: target.ov.symbol || "",
+        mode: target.ov.mode || "price",
+        modeDetail: this._overlayModeStr(target.ov),
+      },
+      bubbles: true,
+    }))
+  }
+
+  _onVLineClick(param) {
+    if (!param.point) return
+    const time = param.time
+    if (!time) return
+    const target = this._findNearestSeries(param)
+    if (!target) return
+    this._removeLabelTooltip()
+    this.element.dispatchEvent(new CustomEvent("vline:created", {
+      detail: {
+        time,
+        color: "#ff9800",
+        width: 1,
+        overlayId: target.id,
+        symbol: target.ov.symbol || "",
+        mode: target.ov.mode || "price",
+        modeDetail: this._overlayModeStr(target.ov),
+      },
+      bubbles: true,
+    }))
+  }
+
+  _attachHLinePrimitive(hl) {
+    const series = this._findVisibleSeriesForMarkers(hl.overlayId)
+    if (!series) return
+    const primitive = new HLinePrimitive(hl.price, {
+      color: hl.color || "#ff9800",
+      width: hl.width || 1,
+    })
+    series.attachPrimitive(primitive)
+    this._hlinePrimitives.push({ id: hl.id, primitive, seriesRef: series })
+  }
+
+  _detachAllHLinePrimitives() {
+    for (const entry of this._hlinePrimitives) {
+      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch {}
+    }
+    this._hlinePrimitives = []
+  }
+
+  _attachVLinePrimitive(vl) {
+    // VLines need any visible series to attach to (for the primitive API)
+    const series = this._findVisibleSeriesForMarkers(vl.overlayId) || this._findFirstPriceSeries()
+    if (!series) return
+    const primitive = new VLinePrimitive(vl.time, {
+      color: vl.color || "#ff9800",
+      width: vl.width || 1,
+    })
+    series.attachPrimitive(primitive)
+    this._vlinePrimitives.push({ id: vl.id, primitive, seriesRef: series })
+  }
+
+  _detachAllVLinePrimitives() {
+    for (const entry of this._vlinePrimitives) {
+      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch {}
+    }
+    this._vlinePrimitives = []
+  }
+
+  _anyInteractiveMode() {
+    return this.labelMode || this.lineMode || this.hlMode || this.vlMode
   }
 
   _overlayModeStr(ov) {
@@ -693,8 +859,8 @@ export default class extends Controller {
   _renderLabelMarkers() {
     // Detach old primitives
     if (this._labelMarkersPrimitives) {
-      for (const prim of this._labelMarkersPrimitives) {
-        try { prim.detach() } catch {}
+      for (const entry of this._labelMarkersPrimitives) {
+        try { entry.seriesRef.detachPrimitive(entry.primitive) } catch {}
       }
     }
     this._labelMarkersPrimitives = []
@@ -702,28 +868,21 @@ export default class extends Controller {
     if (this.labels.length === 0) return
 
     // Group labels by which visible series they should attach to
-    const seriesMarkersMap = new Map()
+    const seriesLabelsMap = new Map()
 
     for (const label of this.labels) {
-      // Only show on the label's own series, skip if that series is hidden
       if (!label.overlayId) continue
       const targetSeries = this._findVisibleSeriesForMarkers(label.overlayId)
       if (!targetSeries) continue
 
-      if (!seriesMarkersMap.has(targetSeries)) seriesMarkersMap.set(targetSeries, [])
-      seriesMarkersMap.get(targetSeries).push({
-        time: label.time,
-        position: "aboveBar",
-        shape: "circle",
-        color: label.color || "#ffffff",
-        text: label.text,
-        size: 1,
-      })
+      if (!seriesLabelsMap.has(targetSeries)) seriesLabelsMap.set(targetSeries, [])
+      seriesLabelsMap.get(targetSeries).push(label)
     }
 
-    for (const [series, markers] of seriesMarkersMap) {
-      markers.sort((a, b) => a.time - b.time)
-      this._labelMarkersPrimitives.push(createSeriesMarkers(series, markers))
+    for (const [series, labels] of seriesLabelsMap) {
+      const primitive = new TextLabelsPrimitive(labels)
+      series.attachPrimitive(primitive)
+      this._labelMarkersPrimitives.push({ primitive, seriesRef: series })
     }
   }
 

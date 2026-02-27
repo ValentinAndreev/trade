@@ -13,6 +13,8 @@ export default class extends Controller {
     this.config = await fetchConfig()
     this._labelMode = false
     this._lineMode = false
+    this._hlMode = false
+    this._vlMode = false
     this.renderer = new TabRenderer(this.tabBarTarget, this.panelsTarget, this.sidebarTarget, {
       controllerName: "tabs",
     })
@@ -23,6 +25,10 @@ export default class extends Controller {
 
     // Listen for lines created from chart click
     this.element.addEventListener("line:created", (e) => this._onLineCreated(e))
+
+    // Listen for hlines/vlines created from chart click
+    this.element.addEventListener("hline:created", (e) => this._onHLineCreated(e))
+    this.element.addEventListener("vline:created", (e) => this._onVLineCreated(e))
 
     // Listen for open-symbol requests from Main page tiles
     this.element.addEventListener("tabs:openSymbol", (e) => this._onOpenSymbol(e))
@@ -180,25 +186,93 @@ export default class extends Controller {
     this.render()
   }
 
+  toggleTextSublist() {
+    this.renderer.sidebar.textCollapsed = !this.renderer.sidebar.textCollapsed
+    this.render()
+  }
+
+  toggleTrendLinesSublist() {
+    this.renderer.sidebar.trendLinesCollapsed = !this.renderer.sidebar.trendLinesCollapsed
+    this.render()
+  }
+
+  toggleHLinesSublist() {
+    this.renderer.sidebar.hlinesCollapsed = !this.renderer.sidebar.hlinesCollapsed
+    this.render()
+  }
+
+  toggleVLinesSublist() {
+    this.renderer.sidebar.vlinesCollapsed = !this.renderer.sidebar.vlinesCollapsed
+    this.render()
+  }
+
+  // --- Clear all ---
+
+  clearAllLabels() {
+    const panel = this.store.selectedPanel
+    if (!panel) return
+    this.store.clearAllDrawings(panel.id)
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) {
+      chartCtrl.setLabels([])
+      chartCtrl.setLines([])
+      chartCtrl.setHLines([])
+      chartCtrl.setVLines([])
+    }
+    this.render()
+  }
+
+  clearAllText() {
+    const panel = this.store.selectedPanel
+    if (!panel || !panel.labels?.length) return
+    panel.labels = []
+    this.store._save()
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.setLabels([])
+    this.render()
+  }
+
+  clearAllLines() {
+    const panel = this.store.selectedPanel
+    if (!panel || !panel.lines?.length) return
+    panel.lines = []
+    this.store._save()
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.setLines([])
+    this.render()
+  }
+
+  clearAllHLines() {
+    const panel = this.store.selectedPanel
+    if (!panel || !panel.hlines?.length) return
+    panel.hlines = []
+    this.store._save()
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.setHLines([])
+    this.render()
+  }
+
+  clearAllVLines() {
+    const panel = this.store.selectedPanel
+    if (!panel || !panel.vlines?.length) return
+    panel.vlines = []
+    this.store._save()
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.setVLines([])
+    this.render()
+  }
+
   // --- Label actions ---
 
   toggleLabelMode() {
     this._labelMode = !this._labelMode
-    // Turn off line mode if turning on label mode
-    if (this._labelMode && this._lineMode) {
-      this._lineMode = false
-      const panel = this.store.selectedPanel
-      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-      if (chartCtrl) chartCtrl.exitLineMode()
-    }
     const panel = this.store.selectedPanel
     const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-    if (chartCtrl) {
-      if (this._labelMode) {
-        chartCtrl.enterLabelMode()
-      } else {
-        chartCtrl.exitLabelMode()
-      }
+    if (this._labelMode) {
+      this._exitOtherModes("label", chartCtrl)
+      if (chartCtrl) chartCtrl.enterLabelMode()
+    } else {
+      if (chartCtrl) chartCtrl.exitLabelMode()
     }
     this.render()
   }
@@ -217,6 +291,8 @@ export default class extends Controller {
 
   selectLabel(e) {
     if (e.target.closest("[data-remove-label]")) return
+    if (e.target.closest("input[type='color']")) return
+    if (e.target.closest("select")) return
     const labelId = e.currentTarget.dataset.labelId
     const panel = this.store.selectedPanel
     if (!panel || !labelId) return
@@ -229,6 +305,8 @@ export default class extends Controller {
   startLabelRename(e) {
     e.stopPropagation()
     if (e.target.closest("[data-remove-label]")) return
+    if (e.target.closest("input[type='color']")) return
+    if (e.target.closest("select")) return
 
     const row = e.currentTarget
     const labelId = row.dataset.labelId
@@ -268,7 +346,7 @@ export default class extends Controller {
   }
 
   _onLabelCreated(e) {
-    const panel = this.store.selectedPanel
+    const panel = this._panelFromEvent(e)
     if (!panel) return
     const label = this.store.addLabel(panel.id, e.detail)
     if (label) {
@@ -278,25 +356,41 @@ export default class extends Controller {
     }
   }
 
+  changeLabelColor(e) {
+    e.stopPropagation()
+    const labelId = e.currentTarget.dataset.labelId
+    const color = e.currentTarget.value
+    const panel = this.store.selectedPanel
+    if (!panel || !labelId) return
+    this.store.updateLabel(panel.id, labelId, { color })
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.setLabels(panel.labels || [])
+    this.render()
+  }
+
+  changeLabelFontSize(e) {
+    e.stopPropagation()
+    const labelId = e.currentTarget.dataset.labelId
+    const fontSize = parseInt(e.currentTarget.value, 10)
+    const panel = this.store.selectedPanel
+    if (!panel || !labelId || !Number.isFinite(fontSize)) return
+    this.store.updateLabel(panel.id, labelId, { fontSize })
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.setLabels(panel.labels || [])
+    this.render()
+  }
+
   // --- Line actions ---
 
   toggleLineMode() {
     this._lineMode = !this._lineMode
-    // Turn off label mode if turning on line mode
-    if (this._lineMode && this._labelMode) {
-      this._labelMode = false
-      const panel = this.store.selectedPanel
-      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-      if (chartCtrl) chartCtrl.exitLabelMode()
-    }
     const panel = this.store.selectedPanel
     const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-    if (chartCtrl) {
-      if (this._lineMode) {
-        chartCtrl.enterLineMode()
-      } else {
-        chartCtrl.exitLineMode()
-      }
+    if (this._lineMode) {
+      this._exitOtherModes("line", chartCtrl)
+      if (chartCtrl) chartCtrl.enterLineMode()
+    } else {
+      if (chartCtrl) chartCtrl.exitLineMode()
     }
     this.render()
   }
@@ -390,7 +484,7 @@ export default class extends Controller {
   }
 
   _onLineCreated(e) {
-    const panel = this.store.selectedPanel
+    const panel = this._panelFromEvent(e)
     if (!panel) return
     const detail = e.detail
     // Auto-name: "{SYMBOL} line{N}"
@@ -410,6 +504,241 @@ export default class extends Controller {
     const chartCtrl = this._chartCtrlForPanel(panel.id)
     if (!chartCtrl) return
     chartCtrl.setLines(panel.lines || [])
+  }
+
+  // --- HLine actions ---
+
+  toggleHLineMode() {
+    this._hlMode = !this._hlMode
+    const panel = this.store.selectedPanel
+    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+    if (this._hlMode) {
+      this._exitOtherModes("hl", chartCtrl)
+      if (chartCtrl) chartCtrl.enterHLineMode()
+    } else {
+      if (chartCtrl) chartCtrl.exitHLineMode()
+    }
+    this.render()
+  }
+
+  removeHLine(e) {
+    e.stopPropagation()
+    const hlineId = e.currentTarget.dataset.removeHline
+    const panel = this.store.selectedPanel
+    if (!panel || !hlineId) return
+    if (this.store.removeHLine(panel.id, hlineId)) {
+      this._syncHLinesToChart()
+      this.render()
+    }
+  }
+
+  changeHLineColor(e) {
+    e.stopPropagation()
+    const hlineId = e.currentTarget.dataset.hlineId
+    const color = e.currentTarget.value
+    const panel = this.store.selectedPanel
+    if (!panel || !hlineId) return
+    this.store.updateHLine(panel.id, hlineId, { color })
+    this._syncHLinesToChart()
+    this.render()
+  }
+
+  changeHLineWidth(e) {
+    e.stopPropagation()
+    const hlineId = e.currentTarget.dataset.hlineId
+    const width = parseInt(e.currentTarget.value, 10)
+    const panel = this.store.selectedPanel
+    if (!panel || !hlineId || !Number.isFinite(width)) return
+    this.store.updateHLine(panel.id, hlineId, { width })
+    this._syncHLinesToChart()
+    this.render()
+  }
+
+  startHLineRename(e) {
+    e.stopPropagation()
+    if (e.target.closest("[data-remove-hline]")) return
+    if (e.target.closest("input[type='color']")) return
+    if (e.target.closest("select")) return
+
+    const row = e.currentTarget
+    const hlineId = row.dataset.hlineId
+    const panel = this.store.selectedPanel
+    if (!panel || !hlineId) return
+
+    const hl = (panel.hlines || []).find(l => l.id === hlineId)
+    if (!hl) return
+
+    const nameSpan = row.querySelector(`[data-hline-name="${hlineId}"]`)
+    if (!nameSpan) return
+
+    const input = document.createElement("input")
+    input.type = "text"
+    input.value = hl.name || hl.id
+    input.className = "w-full px-1 py-0 text-sm text-white bg-[#2a2a3e] border border-blue-400 rounded outline-none"
+
+    const commit = () => {
+      const name = input.value.trim()
+      if (name && name !== hl.name) {
+        this.store.updateHLine(panel.id, hlineId, { name })
+      }
+      this.render()
+    }
+
+    input.addEventListener("blur", commit, { once: true })
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") { ev.preventDefault(); input.blur() }
+      if (ev.key === "Escape") { input.value = hl.name || hl.id; input.blur() }
+    })
+
+    nameSpan.textContent = ""
+    nameSpan.appendChild(input)
+    input.focus()
+    input.select()
+  }
+
+  _onHLineCreated(e) {
+    const panel = this._panelFromEvent(e)
+    if (!panel) return
+    const detail = e.detail
+    const existing = panel.hlines || []
+    const name = `${detail.symbol || "HL"} HL${existing.length + 1}`
+    const hl = this.store.addHLine(panel.id, { ...detail, name })
+    if (hl) {
+      this._syncHLinesToChart()
+      this.render()
+    }
+  }
+
+  _syncHLinesToChart() {
+    const panel = this.store.selectedPanel
+    if (!panel) return
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (!chartCtrl) return
+    chartCtrl.setHLines(panel.hlines || [])
+  }
+
+  // --- VLine actions ---
+
+  toggleVLineMode() {
+    this._vlMode = !this._vlMode
+    const panel = this.store.selectedPanel
+    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+    if (this._vlMode) {
+      this._exitOtherModes("vl", chartCtrl)
+      if (chartCtrl) chartCtrl.enterVLineMode()
+    } else {
+      if (chartCtrl) chartCtrl.exitVLineMode()
+    }
+    this.render()
+  }
+
+  selectVLine(e) {
+    if (e.target.closest("[data-remove-vline]")) return
+    if (e.target.closest("input[type='color']")) return
+    if (e.target.closest("select")) return
+    const vlineId = e.currentTarget.dataset.vlineId
+    const panel = this.store.selectedPanel
+    if (!panel || !vlineId) return
+    const vl = (panel.vlines || []).find(l => l.id === vlineId)
+    if (!vl) return
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.scrollToLabel(vl.time)
+  }
+
+  removeVLine(e) {
+    e.stopPropagation()
+    const vlineId = e.currentTarget.dataset.removeVline
+    const panel = this.store.selectedPanel
+    if (!panel || !vlineId) return
+    if (this.store.removeVLine(panel.id, vlineId)) {
+      this._syncVLinesToChart()
+      this.render()
+    }
+  }
+
+  changeVLineColor(e) {
+    e.stopPropagation()
+    const vlineId = e.currentTarget.dataset.vlineId
+    const color = e.currentTarget.value
+    const panel = this.store.selectedPanel
+    if (!panel || !vlineId) return
+    this.store.updateVLine(panel.id, vlineId, { color })
+    this._syncVLinesToChart()
+    this.render()
+  }
+
+  changeVLineWidth(e) {
+    e.stopPropagation()
+    const vlineId = e.currentTarget.dataset.vlineId
+    const width = parseInt(e.currentTarget.value, 10)
+    const panel = this.store.selectedPanel
+    if (!panel || !vlineId || !Number.isFinite(width)) return
+    this.store.updateVLine(panel.id, vlineId, { width })
+    this._syncVLinesToChart()
+    this.render()
+  }
+
+  startVLineRename(e) {
+    e.stopPropagation()
+    if (e.target.closest("[data-remove-vline]")) return
+    if (e.target.closest("input[type='color']")) return
+    if (e.target.closest("select")) return
+
+    const row = e.currentTarget
+    const vlineId = row.dataset.vlineId
+    const panel = this.store.selectedPanel
+    if (!panel || !vlineId) return
+
+    const vl = (panel.vlines || []).find(l => l.id === vlineId)
+    if (!vl) return
+
+    const nameSpan = row.querySelector(`[data-vline-name="${vlineId}"]`)
+    if (!nameSpan) return
+
+    const input = document.createElement("input")
+    input.type = "text"
+    input.value = vl.name || vl.id
+    input.className = "w-full px-1 py-0 text-sm text-white bg-[#2a2a3e] border border-blue-400 rounded outline-none"
+
+    const commit = () => {
+      const name = input.value.trim()
+      if (name && name !== vl.name) {
+        this.store.updateVLine(panel.id, vlineId, { name })
+      }
+      this.render()
+    }
+
+    input.addEventListener("blur", commit, { once: true })
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") { ev.preventDefault(); input.blur() }
+      if (ev.key === "Escape") { input.value = vl.name || vl.id; input.blur() }
+    })
+
+    nameSpan.textContent = ""
+    nameSpan.appendChild(input)
+    input.focus()
+    input.select()
+  }
+
+  _onVLineCreated(e) {
+    const panel = this._panelFromEvent(e)
+    if (!panel) return
+    const detail = e.detail
+    const existing = panel.vlines || []
+    const name = `${detail.symbol || "VL"} VL${existing.length + 1}`
+    const vl = this.store.addVLine(panel.id, { ...detail, name })
+    if (vl) {
+      this._syncVLinesToChart()
+      this.render()
+    }
+  }
+
+  _syncVLinesToChart() {
+    const panel = this.store.selectedPanel
+    if (!panel) return
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (!chartCtrl) return
+    chartCtrl.setVLines(panel.vlines || [])
   }
 
   // --- Volume Profile ---
@@ -694,6 +1023,12 @@ export default class extends Controller {
 
   // --- Helpers ---
 
+  _panelFromEvent(e) {
+    const panelEl = e.target.closest("[data-panel-id]")
+    if (!panelEl) return this.store.selectedPanel
+    return this._panelById(panelEl.dataset.panelId) || this.store.selectedPanel
+  }
+
   _chartCtrlForPanel(panelId) {
     const panelEl = this.panelsTarget.querySelector(`[data-panel-id="${panelId}"]`)
     const chartEl = panelEl?.querySelector("[data-controller='chart']")
@@ -725,6 +1060,21 @@ export default class extends Controller {
         })
       }
 
+      // Sync drawings (labels, lines, hlines, vlines) to all panels
+      if (panel) {
+        chartCtrl.setLabels(panel.labels || [])
+        chartCtrl.setLines(panel.lines || [])
+        chartCtrl.setHLines(panel.hlines || [])
+        chartCtrl.setVLines(panel.vlines || [])
+        // Sync volume profile
+        const vp = panel.volumeProfile || {}
+        if (vp.enabled && !chartCtrl._vpEnabled) {
+          chartCtrl.enableVolumeProfile(vp.opacity ?? 0.3)
+        } else if (!vp.enabled && chartCtrl._vpEnabled) {
+          chartCtrl.disableVolumeProfile()
+        }
+      }
+
       if (panelEl.dataset.panelId === selectedPanelId) {
         chartCtrl.setSelectedOverlayScale(selectedOverlayId)
       } else {
@@ -741,26 +1091,38 @@ export default class extends Controller {
     return null
   }
 
+  _exitOtherModes(except, chartCtrl) {
+    if (except !== "label" && this._labelMode) {
+      this._labelMode = false
+      if (chartCtrl) chartCtrl.exitLabelMode()
+    }
+    if (except !== "line" && this._lineMode) {
+      this._lineMode = false
+      if (chartCtrl) chartCtrl.exitLineMode()
+    }
+    if (except !== "hl" && this._hlMode) {
+      this._hlMode = false
+      if (chartCtrl) chartCtrl.exitHLineMode()
+    }
+    if (except !== "vl" && this._vlMode) {
+      this._vlMode = false
+      if (chartCtrl) chartCtrl.exitVLineMode()
+    }
+  }
+
   _syncLabelsAndLinesToChart() {
     const panel = this.store.selectedPanel
     if (!panel) return
     const chartCtrl = this._chartCtrlForPanel(panel.id)
     if (!chartCtrl) return
-    chartCtrl.setLabels(panel.labels || [])
-    chartCtrl.setLines(panel.lines || [])
-    if (this._labelMode) {
-      chartCtrl.enterLabelMode()
-    }
-    if (this._lineMode) {
-      chartCtrl.enterLineMode()
-    }
-    // Sync volume profile state
-    const vp = panel.volumeProfile || {}
-    if (vp.enabled && !chartCtrl._vpEnabled) {
-      chartCtrl.enableVolumeProfile(vp.opacity ?? 0.3)
-    } else if (!vp.enabled && chartCtrl._vpEnabled) {
-      chartCtrl.disableVolumeProfile()
-    }
+    if (this._labelMode) chartCtrl.enterLabelMode()
+    else chartCtrl.exitLabelMode()
+    if (this._lineMode) chartCtrl.enterLineMode()
+    else chartCtrl.exitLineMode()
+    if (this._hlMode) chartCtrl.enterHLineMode()
+    else chartCtrl.exitHLineMode()
+    if (this._vlMode) chartCtrl.enterVLineMode()
+    else chartCtrl.exitVLineMode()
   }
 
   // --- Open symbol from Main page ---
@@ -790,6 +1152,8 @@ export default class extends Controller {
       this._lineMode,
       !!vp.enabled,
       vp.opacity ?? 0.3,
+      this._hlMode,
+      this._vlMode,
     )
     this._syncSelectedOverlayScale()
     requestAnimationFrame(() => {

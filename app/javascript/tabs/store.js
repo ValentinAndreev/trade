@@ -9,6 +9,8 @@ export default class TabStore {
     this._nextOverlayId = calcNextId(this.tabs, "o")
     this._nextLabelId = this._calcNextLabelId()
     this._nextLineId = this._calcNextLineId()
+    this._nextHLineId = this._calcNextIdFor("hl")
+    this._nextVLineId = this._calcNextIdFor("vl")
 
     const savedTabId = loadActiveTabId()
     const savedTab = savedTabId && this.tabs.find(t => t.id === savedTabId)
@@ -402,6 +404,80 @@ export default class TabStore {
     return true
   }
 
+  // --- HLines ---
+
+  addHLine(panelId, hline) {
+    const panel = this._findPanel(panelId)
+    if (!panel) return null
+    if (!panel.hlines) panel.hlines = []
+    const newHLine = { id: `hl-${this._nextHLineId++}`, ...hline }
+    panel.hlines.push(newHLine)
+    this._save()
+    return newHLine
+  }
+
+  removeHLine(panelId, hlineId) {
+    const panel = this._findPanel(panelId)
+    if (!panel || !panel.hlines) return false
+    const idx = panel.hlines.findIndex(l => l.id === hlineId)
+    if (idx === -1) return false
+    panel.hlines.splice(idx, 1)
+    this._save()
+    return true
+  }
+
+  updateHLine(panelId, hlineId, updates) {
+    const panel = this._findPanel(panelId)
+    if (!panel || !panel.hlines) return false
+    const hl = panel.hlines.find(l => l.id === hlineId)
+    if (!hl) return false
+    Object.assign(hl, updates)
+    this._save()
+    return true
+  }
+
+  // --- VLines ---
+
+  addVLine(panelId, vline) {
+    const panel = this._findPanel(panelId)
+    if (!panel) return null
+    if (!panel.vlines) panel.vlines = []
+    const newVLine = { id: `vl-${this._nextVLineId++}`, ...vline }
+    panel.vlines.push(newVLine)
+    this._save()
+    return newVLine
+  }
+
+  removeVLine(panelId, vlineId) {
+    const panel = this._findPanel(panelId)
+    if (!panel || !panel.vlines) return false
+    const idx = panel.vlines.findIndex(l => l.id === vlineId)
+    if (idx === -1) return false
+    panel.vlines.splice(idx, 1)
+    this._save()
+    return true
+  }
+
+  updateVLine(panelId, vlineId, updates) {
+    const panel = this._findPanel(panelId)
+    if (!panel || !panel.vlines) return false
+    const vl = panel.vlines.find(l => l.id === vlineId)
+    if (!vl) return false
+    Object.assign(vl, updates)
+    this._save()
+    return true
+  }
+
+  clearAllDrawings(panelId) {
+    const panel = this._findPanel(panelId)
+    if (!panel) return
+    panel.labels = []
+    panel.lines = []
+    panel.hlines = []
+    panel.vlines = []
+    this._save()
+  }
+
   updateLine(panelId, lineId, updates) {
     const panel = this._findPanel(panelId)
     if (!panel || !panel.lines) return false
@@ -453,6 +529,21 @@ export default class TabStore {
       indicatorParams: null,
       pinnedTo: null,
     }
+  }
+
+  _calcNextIdFor(prefix) {
+    let max = 0
+    for (const tab of this.tabs) {
+      for (const panel of tab.panels) {
+        const arr = prefix === "hl" ? panel.hlines : panel.vlines
+        if (!arr) continue
+        for (const item of arr) {
+          const num = parseInt(item.id.split("-")[1])
+          if (num > max) max = num
+        }
+      }
+    }
+    return max + 1
   }
 
   _newTabName() {
