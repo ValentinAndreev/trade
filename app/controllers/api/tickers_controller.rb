@@ -2,10 +2,22 @@
 
 class Api::TickersController < Api::ApplicationController
   def index
-    render json: BitfinexConfig.symbols.filter_map { |s| build_ticker(s) }
+    render json: dashboard_symbols.filter_map { |s| build_ticker(s) }
   end
 
   private
+
+  YAML_PATH = Rails.root.join('config/dashboard.yml')
+
+  def dashboard_symbols
+    if YAML_PATH.exist?
+      data = YAML.safe_load_file(YAML_PATH)
+      symbols = data&.fetch('symbols', nil)
+
+      return symbols if symbols.present?
+    end
+    BitfinexConfig.symbols
+  end
 
   def build_ticker(symbol)
     candles = Candle.for_symbol(symbol)
@@ -31,7 +43,8 @@ class Api::TickersController < Api::ApplicationController
       volume: recent.sum(:volume).to_f,
       high: recent.maximum(:high)&.to_f,
       low: recent.minimum(:low)&.to_f,
-      sparkline: sample_sparkline(closes)
+      sparkline: sample_sparkline(closes),
+      updated_at: last_candle.ts.iso8601
     }
   end
 
