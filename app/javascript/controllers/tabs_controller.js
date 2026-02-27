@@ -12,6 +12,7 @@ export default class extends Controller {
     this.store = new TabStore()
     this.config = await fetchConfig()
     this._labelMode = false
+    this._lineMode = false
     this.renderer = new TabRenderer(this.tabBarTarget, this.panelsTarget, this.sidebarTarget, {
       controllerName: "tabs",
     })
@@ -19,6 +20,9 @@ export default class extends Controller {
 
     // Listen for labels created from chart click
     this.element.addEventListener("label:created", (e) => this._onLabelCreated(e))
+
+    // Listen for lines created from chart click
+    this.element.addEventListener("line:created", (e) => this._onLineCreated(e))
 
     // Listen for open-symbol requests from Main page tiles
     this.element.addEventListener("tabs:openSymbol", (e) => this._onOpenSymbol(e))
@@ -180,6 +184,13 @@ export default class extends Controller {
 
   toggleLabelMode() {
     this._labelMode = !this._labelMode
+    // Turn off line mode if turning on label mode
+    if (this._labelMode && this._lineMode) {
+      this._lineMode = false
+      const panel = this.store.selectedPanel
+      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+      if (chartCtrl) chartCtrl.exitLineMode()
+    }
     const panel = this.store.selectedPanel
     const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
     if (chartCtrl) {
@@ -265,6 +276,140 @@ export default class extends Controller {
       if (chartCtrl) chartCtrl.setLabels(panel.labels || [])
       this.render()
     }
+  }
+
+  // --- Line actions ---
+
+  toggleLineMode() {
+    this._lineMode = !this._lineMode
+    // Turn off label mode if turning on line mode
+    if (this._lineMode && this._labelMode) {
+      this._labelMode = false
+      const panel = this.store.selectedPanel
+      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+      if (chartCtrl) chartCtrl.exitLabelMode()
+    }
+    const panel = this.store.selectedPanel
+    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
+    if (chartCtrl) {
+      if (this._lineMode) {
+        chartCtrl.enterLineMode()
+      } else {
+        chartCtrl.exitLineMode()
+      }
+    }
+    this.render()
+  }
+
+  removeLine(e) {
+    e.stopPropagation()
+    const lineId = e.currentTarget.dataset.removeLine
+    const panel = this.store.selectedPanel
+    if (!panel || !lineId) return
+    if (this.store.removeLine(panel.id, lineId)) {
+      this._syncLinesToChart()
+      this.render()
+    }
+  }
+
+  selectLine(e) {
+    if (e.target.closest("[data-remove-line]")) return
+    if (e.target.closest("input[type='color']")) return
+    if (e.target.closest("select")) return
+    const lineId = e.currentTarget.dataset.lineId
+    const panel = this.store.selectedPanel
+    if (!panel || !lineId) return
+    const line = (panel.lines || []).find(l => l.id === lineId)
+    if (!line) return
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.scrollToLine(line.p1)
+  }
+
+  startLineRename(e) {
+    e.stopPropagation()
+    if (e.target.closest("[data-remove-line]")) return
+    if (e.target.closest("input[type='color']")) return
+    if (e.target.closest("select")) return
+
+    const row = e.currentTarget
+    const lineId = row.dataset.lineId
+    const panel = this.store.selectedPanel
+    if (!panel || !lineId) return
+
+    const line = (panel.lines || []).find(l => l.id === lineId)
+    if (!line) return
+
+    const nameSpan = row.querySelector(`[data-line-name="${lineId}"]`)
+    if (!nameSpan) return
+
+    const input = document.createElement("input")
+    input.type = "text"
+    input.value = line.name || line.id
+    input.className = "w-full px-1 py-0 text-sm text-white bg-[#2a2a3e] border border-blue-400 rounded outline-none"
+
+    const commit = () => {
+      const name = input.value.trim()
+      if (name && name !== line.name) {
+        this.store.updateLine(panel.id, lineId, { name })
+        this._syncLinesToChart()
+      }
+      this.render()
+    }
+
+    input.addEventListener("blur", commit)
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") input.blur()
+      if (ev.key === "Escape") { input.value = line.name || line.id; input.blur() }
+    })
+
+    nameSpan.replaceWith(input)
+    input.focus()
+    input.select()
+  }
+
+  changeLineColor(e) {
+    e.stopPropagation()
+    const lineId = e.currentTarget.dataset.lineId
+    const color = e.currentTarget.value
+    const panel = this.store.selectedPanel
+    if (!panel || !lineId) return
+    this.store.updateLine(panel.id, lineId, { color })
+    this._syncLinesToChart()
+    this.render()
+  }
+
+  changeLineWidth(e) {
+    e.stopPropagation()
+    const lineId = e.currentTarget.dataset.lineId
+    const width = parseInt(e.currentTarget.value, 10)
+    const panel = this.store.selectedPanel
+    if (!panel || !lineId || !Number.isFinite(width)) return
+    this.store.updateLine(panel.id, lineId, { width })
+    this._syncLinesToChart()
+    this.render()
+  }
+
+  _onLineCreated(e) {
+    const panel = this.store.selectedPanel
+    if (!panel) return
+    const detail = e.detail
+    // Auto-name: "{SYMBOL} line{N}"
+    const existingLines = panel.lines || []
+    const symbolLines = existingLines.filter(l => l.symbol === detail.symbol)
+    const name = `${detail.symbol || "Line"} line${symbolLines.length + 1}`
+    const line = this.store.addLine(panel.id, { ...detail, name })
+    if (line) {
+      this._syncLinesToChart()
+      this.render()
+    }
+  }
+
+  _syncLinesToChart() {
+    const panel = this.store.selectedPanel
+    if (!panel) return
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (!chartCtrl) return
+    chartCtrl.setLines(panel.lines || [])
   }
 
   // --- Settings (sidebar) ---
@@ -557,14 +702,18 @@ export default class extends Controller {
     return null
   }
 
-  _syncLabelsToChart() {
+  _syncLabelsAndLinesToChart() {
     const panel = this.store.selectedPanel
     if (!panel) return
     const chartCtrl = this._chartCtrlForPanel(panel.id)
     if (!chartCtrl) return
     chartCtrl.setLabels(panel.labels || [])
+    chartCtrl.setLines(panel.lines || [])
     if (this._labelMode) {
       chartCtrl.enterLabelMode()
+    }
+    if (this._lineMode) {
+      chartCtrl.enterLineMode()
     }
   }
 
@@ -590,11 +739,12 @@ export default class extends Controller {
       (tab) => this.store.tabLabel(tab),
       this.config.indicators,
       this._labelMode,
+      this._lineMode,
     )
     this._syncSelectedOverlayScale()
     requestAnimationFrame(() => {
       this._syncSelectedOverlayScale()
-      this._syncLabelsToChart()
+      this._syncLabelsAndLinesToChart()
     })
   }
 }

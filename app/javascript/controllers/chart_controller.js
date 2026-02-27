@@ -13,6 +13,7 @@ import {
   normalizeColorScheme, normalizeOpacity,
   toSeriesData, toUpdatePoint, indicatorFieldColors,
 } from "../chart/series_factory"
+import { TrendLinePrimitive } from "../chart/trend_line"
 
 export default class extends Controller {
   static values = {
@@ -29,6 +30,12 @@ export default class extends Controller {
     this._labelMarkersPrimitives = []
     this._labelInputEl = null
     this._labelTooltipEl = null
+
+    this.lineMode = false
+    this._lineDrawState = null   // { step: "second", p1: {time, price, overlayId, symbol, mode, modeDetail} }
+    this._linePrimitives = []    // [{ id, primitive, seriesRef }]
+    this._linePreviewPrimitive = null
+    this._linePreviewSeriesRef = null
 
     const configs = this._parseOverlays()
     if (configs.length === 0 || configs.every(c => !c.symbol)) return
@@ -71,6 +78,8 @@ export default class extends Controller {
     }
     this._removeLabelInput()
     this._removeLabelTooltip()
+    this._removeLinePreview()
+    this._detachAllLinePrimitives()
     this.scrollbar?.destroy()
     this.chart?.remove()
     this.chartWrapperEl?.remove()
@@ -166,8 +175,11 @@ export default class extends Controller {
       ov.series.applyOptions({ visible: normalized })
     }
     this._syncSelectedOverlayScale()
-    // Re-render markers (labels on hidden series should disappear)
+    // Re-render markers (labels/lines on hidden series should disappear)
     if (this.labels?.length > 0) this._renderLabelMarkers()
+    if (this._linePrimitives.length > 0 || this._storedLines?.length > 0) {
+      this.setLines(this._storedLines || [])
+    }
   }
 
   setOverlayColorScheme(id, colorScheme) {
@@ -203,14 +215,7 @@ export default class extends Controller {
   enterLabelMode() {
     if (!this.chart) return
     this.labelMode = true
-    if (!this._clickHandler) {
-      this._clickHandler = (param) => this._onChartClick(param)
-      this.chart.subscribeClick(this._clickHandler)
-    }
-    if (!this._crosshairHandler) {
-      this._crosshairHandler = (param) => this._onCrosshairMove(param)
-      this.chart.subscribeCrosshairMove(this._crosshairHandler)
-    }
+    this._ensureChartSubscriptions()
     this.element.style.cursor = "crosshair"
   }
 
@@ -218,11 +223,14 @@ export default class extends Controller {
     this.labelMode = false
     this._removeLabelInput()
     this._removeLabelTooltip()
-    if (this._crosshairHandler) {
-      this.chart?.unsubscribeCrosshairMove(this._crosshairHandler)
-      this._crosshairHandler = null
+    // Only clean up subscriptions if line mode is also off
+    if (!this.lineMode) {
+      if (this._crosshairHandler) {
+        this.chart?.unsubscribeCrosshairMove(this._crosshairHandler)
+        this._crosshairHandler = null
+      }
     }
-    this.element.style.cursor = ""
+    this.element.style.cursor = this.lineMode ? "crosshair" : ""
   }
 
   setLabels(labels) {
@@ -243,7 +251,102 @@ export default class extends Controller {
     this.chart.timeScale().setVisibleLogicalRange({ from, to: from + visible })
   }
 
+  // --- Line mode ---
+
+  enterLineMode() {
+    if (!this.chart) return
+    this.lineMode = true
+    this._ensureChartSubscriptions()
+    this.element.style.cursor = "crosshair"
+  }
+
+  exitLineMode() {
+    this.lineMode = false
+    this._lineDrawState = null
+    this._removeLabelTooltip()
+    this._removeLinePreview()
+    // Only clean up subscriptions if label mode is also off
+    if (!this.labelMode) {
+      if (this._crosshairHandler) {
+        this.chart?.unsubscribeCrosshairMove(this._crosshairHandler)
+        this._crosshairHandler = null
+      }
+    }
+    this.element.style.cursor = this.labelMode ? "crosshair" : ""
+  }
+
+  setLines(lines) {
+    this._storedLines = lines || []
+    this._detachAllLinePrimitives()
+    if (!lines || lines.length === 0) return
+    for (const line of lines) {
+      this._attachLinePrimitive(line)
+    }
+  }
+
+  scrollToLine(time) {
+    if (!this.chart) return
+    const t = typeof time === "number" ? time : (time?.time || 0)
+    this.scrollToLabel(t)
+  }
+
+  _ensureChartSubscriptions() {
+    if (!this._clickHandler) {
+      this._clickHandler = (param) => this._onChartClick(param)
+      this.chart.subscribeClick(this._clickHandler)
+    }
+    if (!this._crosshairHandler) {
+      this._crosshairHandler = (param) => this._onCrosshairMove(param)
+      this.chart.subscribeCrosshairMove(this._crosshairHandler)
+    }
+  }
+
+  _attachLinePrimitive(line) {
+    const series = this._findVisibleSeriesForMarkers(line.overlayId)
+    if (!series) return
+    const primitive = new TrendLinePrimitive(line.p1, line.p2, {
+      color: line.color || "#2196f3",
+      width: line.width || 2,
+    })
+    series.attachPrimitive(primitive)
+    this._linePrimitives.push({ id: line.id, primitive, seriesRef: series })
+  }
+
+  _detachAllLinePrimitives() {
+    for (const entry of this._linePrimitives) {
+      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch {}
+    }
+    this._linePrimitives = []
+  }
+
+  _removeLinePreview() {
+    if (this._linePreviewPrimitive && this._linePreviewSeriesRef) {
+      try { this._linePreviewSeriesRef.detachPrimitive(this._linePreviewPrimitive) } catch {}
+    }
+    this._linePreviewPrimitive = null
+    this._linePreviewSeriesRef = null
+  }
+
+  _showLinePreview(p1, currentPoint, series) {
+    if (!this._linePreviewPrimitive) {
+      this._linePreviewPrimitive = new TrendLinePrimitive(p1, currentPoint, {
+        color: "#2196f3",
+        width: 2,
+        dash: [5, 4],
+      })
+      series.attachPrimitive(this._linePreviewPrimitive)
+      this._linePreviewSeriesRef = series
+    } else {
+      this._linePreviewPrimitive.updatePoints(p1, currentPoint)
+    }
+  }
+
   _onChartClick(param) {
+    // Line mode takes priority
+    if (this.lineMode) {
+      this._onLineClick(param)
+      return
+    }
     if (!this.labelMode) return
     if (!param.point) return
 
@@ -262,7 +365,8 @@ export default class extends Controller {
   }
 
   _onCrosshairMove(param) {
-    if (!this.labelMode || !param.point) {
+    const anyMode = this.labelMode || this.lineMode
+    if (!anyMode || !param.point) {
       this._removeLabelTooltip()
       return
     }
@@ -276,6 +380,73 @@ export default class extends Controller {
 
     const text = `${target.ov.symbol || "?"} ${this._overlayModeStr(target.ov)}`
     this._showLabelTooltip(param.point.x, param.point.y, text)
+
+    // Line preview: show dashed line from p1 to cursor position
+    // Always use the locked series from the first click for consistent coordinates
+    if (this.lineMode && this._lineDrawState?.step === "second") {
+      const lockedSeries = this._lineDrawState.series
+      const price = lockedSeries.coordinateToPrice(param.point.y)
+      if (price !== null && Number.isFinite(price)) {
+        this._showLinePreview(
+          this._lineDrawState.p1,
+          { time, price },
+          lockedSeries,
+        )
+      }
+    }
+  }
+
+  _onLineClick(param) {
+    if (!param.point) return
+    const time = param.time
+    if (!time) return
+
+    const target = this._findNearestSeries(param)
+    if (!target) return
+
+    const price = target.series.coordinateToPrice(param.point.y)
+    if (price === null || !Number.isFinite(price)) return
+
+    const modeDetail = this._overlayModeStr(target.ov)
+
+    if (!this._lineDrawState) {
+      // First click — save p1 and lock the series reference
+      this._lineDrawState = {
+        step: "second",
+        p1: { time, price },
+        overlayId: target.id,
+        symbol: target.ov.symbol || "",
+        mode: target.ov.mode || "price",
+        modeDetail,
+        series: target.series,
+      }
+      this._removeLabelTooltip()
+      return
+    }
+
+    // Second click — compute p2 price through the SAME series as p1
+    const state = this._lineDrawState
+    const p1 = state.p1
+    const p2Price = state.series.coordinateToPrice(param.point.y)
+    if (p2Price === null || !Number.isFinite(p2Price)) return
+    const p2 = { time, price: p2Price }
+
+    this._removeLinePreview()
+    this._lineDrawState = null
+    this._removeLabelTooltip()
+
+    this.element.dispatchEvent(new CustomEvent("line:created", {
+      detail: {
+        p1, p2,
+        color: "#2196f3",
+        width: 2,
+        overlayId: state.overlayId,
+        symbol: state.symbol,
+        mode: state.mode,
+        modeDetail: state.modeDetail,
+      },
+      bubbles: true,
+    }))
   }
 
   _overlayModeStr(ov) {

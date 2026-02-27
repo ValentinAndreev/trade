@@ -9,7 +9,7 @@ export default class TabRenderer {
     this.sidebar = new SidebarRenderer(sidebarEl, controllerName)
   }
 
-  render(tabs, activeTabId, selectedPanelId, selectedOverlayId, symbols, timeframes, labelFn, indicators, labelModeActive) {
+  render(tabs, activeTabId, selectedPanelId, selectedOverlayId, symbols, timeframes, labelFn, indicators, labelModeActive, lineModeActive) {
     this._renderTabBar(tabs, activeTabId, labelFn)
     this.panels.render(tabs, activeTabId, selectedPanelId)
 
@@ -18,7 +18,7 @@ export default class TabRenderer {
       panel = tab.panels.find(p => p.id === selectedPanelId)
       if (panel) break
     }
-    this.sidebar.render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive)
+    this.sidebar.render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive, lineModeActive)
   }
 
   // --- Tab Bar ---

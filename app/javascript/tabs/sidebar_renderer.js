@@ -11,9 +11,10 @@ export default class SidebarRenderer {
     this.indicatorFilter = "all"
     this.chartsCollapsed = false
     this.labelsCollapsed = false
+    this.linesCollapsed = false
   }
 
-  render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive) {
+  render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive, lineModeActive) {
     this.indicators = indicators || []
 
     if (!panel) {
@@ -216,13 +217,21 @@ export default class SidebarRenderer {
             <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
                   data-action="click->${this.controllerName}#toggleLabelsSection">Labels</span>
           </div>
-          <button data-action="click->${this.controllerName}#toggleLabelMode"
-                  class="text-sm px-2 py-1 rounded cursor-pointer ${labelModeActive ? activeBtnClass : inactiveBtnClass}">
-            Text
-          </button>
+          <span class="flex gap-1">
+            <button data-action="click->${this.controllerName}#toggleLabelMode"
+                    class="text-sm px-2 py-1 rounded cursor-pointer ${labelModeActive ? activeBtnClass : inactiveBtnClass}">
+              Text
+            </button>
+            <button data-action="click->${this.controllerName}#toggleLineMode"
+                    class="text-sm px-2 py-1 rounded cursor-pointer ${lineModeActive ? activeBtnClass : inactiveBtnClass}">
+              Line
+            </button>
+          </span>
         </div>
 
         ${this.labelsCollapsed ? "" : this._labelListHTML(panel.labels || [])}
+
+        ${this.labelsCollapsed ? "" : this._lineListHTML(panel.lines || [])}
       </div>
     `
   }
@@ -249,6 +258,54 @@ export default class SidebarRenderer {
             <span data-action="click->${this.controllerName}#removeLabel"
                   data-remove-label="${label.id}"
                   title="Remove label"
+                  class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
+          </div>
+        `}).join("")}
+      </div>
+    `
+  }
+
+  _lineListHTML(lines) {
+    if (lines.length === 0) return ""
+    return `
+      <div class="flex flex-col gap-0.5 mt-1">
+        ${lines.map(line => {
+          const symbol = line.symbol || ""
+          const modeStr = line.modeDetail || (line.mode === "volume" ? "Vol" : "Price")
+          const p1Str = line.p1?.price != null ? this._formatPrice(line.p1.price) : "?"
+          const p2Str = line.p2?.price != null ? this._formatPrice(line.p2.price) : "?"
+          const anchor = `${symbol} ${modeStr} ${p1Str} \u2192 ${p2Str}`
+          const t1 = this._formatLabelTime(line.p1?.time)
+          const t2 = this._formatLabelTime(line.p2?.time)
+          const timeRange = `${t1} \u2014 ${t2}`
+          const color = line.color || "#2196f3"
+          const width = line.width || 2
+          return `
+          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-[15px] text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
+               data-action="click->${this.controllerName}#selectLine dblclick->${this.controllerName}#startLineRename"
+               data-line-id="${line.id}">
+            <span class="shrink-0 w-4 flex items-center justify-center" title="Color">
+              <span class="block rounded-sm border border-black/20" style="background:${this._escapeHTML(color)};width:${width * 4}px;height:${width * 2}px"></span>
+            </span>
+            <div class="flex-1 min-w-0 flex flex-col">
+              <span class="truncate" data-line-name="${line.id}">${this._escapeHTML(line.name || line.id)}</span>
+              <span class="text-[13px] text-gray-500 truncate">${this._escapeHTML(anchor)}</span>
+              <span class="text-[13px] text-gray-600 truncate">${this._escapeHTML(timeRange)}</span>
+            </div>
+            <input type="color" value="${this._escapeHTML(color)}"
+                   data-action="change->${this.controllerName}#changeLineColor"
+                   data-line-id="${line.id}"
+                   class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer shrink-0 opacity-0 group-hover:opacity-100"
+                   title="Change color">
+            <select data-action="change->${this.controllerName}#changeLineWidth"
+                    data-line-id="${line.id}"
+                    class="hidden group-hover:block w-10 text-xs bg-[#2a2a3e] text-gray-300 border border-[#3a3a4e] rounded cursor-pointer shrink-0"
+                    title="Line width">
+              ${[1,2,3,4,5].map(w => `<option value="${w}"${w === width ? " selected" : ""}>${w}px</option>`).join("")}
+            </select>
+            <span data-action="click->${this.controllerName}#removeLine"
+                  data-remove-line="${line.id}"
+                  title="Remove line"
                   class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
           </div>
         `}).join("")}

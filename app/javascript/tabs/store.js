@@ -8,6 +8,7 @@ export default class TabStore {
     this._nextPanelId = calcNextId(this.tabs, "p")
     this._nextOverlayId = calcNextId(this.tabs, "o")
     this._nextLabelId = this._calcNextLabelId()
+    this._nextLineId = this._calcNextLineId()
 
     const savedTabId = loadActiveTabId()
     const savedTab = savedTabId && this.tabs.find(t => t.id === savedTabId)
@@ -367,6 +368,52 @@ export default class TabStore {
     Object.assign(label, updates)
     this._save()
     return true
+  }
+
+  // --- Lines ---
+
+  addLine(panelId, line) {
+    const panel = this._findPanel(panelId)
+    if (!panel) return null
+    if (!panel.lines) panel.lines = []
+    const newLine = { id: `ln-${this._nextLineId++}`, ...line }
+    panel.lines.push(newLine)
+    this._save()
+    return newLine
+  }
+
+  removeLine(panelId, lineId) {
+    const panel = this._findPanel(panelId)
+    if (!panel || !panel.lines) return false
+    const idx = panel.lines.findIndex(l => l.id === lineId)
+    if (idx === -1) return false
+    panel.lines.splice(idx, 1)
+    this._save()
+    return true
+  }
+
+  updateLine(panelId, lineId, updates) {
+    const panel = this._findPanel(panelId)
+    if (!panel || !panel.lines) return false
+    const line = panel.lines.find(l => l.id === lineId)
+    if (!line) return false
+    Object.assign(line, updates)
+    this._save()
+    return true
+  }
+
+  _calcNextLineId() {
+    let max = 0
+    for (const tab of this.tabs) {
+      for (const panel of tab.panels) {
+        if (!panel.lines) continue
+        for (const line of panel.lines) {
+          const num = parseInt(line.id.split("-")[1])
+          if (num > max) max = num
+        }
+      }
+    }
+    return max + 1
   }
 
   _calcNextLabelId() {
