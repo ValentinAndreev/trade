@@ -392,6 +392,16 @@ export default class TabStore {
     return true
   }
 
+  // --- Volume Profile ---
+
+  setVolumeProfile(panelId, settings) {
+    const panel = this._findPanel(panelId)
+    if (!panel) return false
+    panel.volumeProfile = { ...(panel.volumeProfile || {}), ...settings }
+    this._save()
+    return true
+  }
+
   updateLine(panelId, lineId, updates) {
     const panel = this._findPanel(panelId)
     if (!panel || !panel.lines) return false

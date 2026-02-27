@@ -14,6 +14,7 @@ import {
   toSeriesData, toUpdatePoint, indicatorFieldColors,
 } from "../chart/series_factory"
 import { TrendLinePrimitive } from "../chart/trend_line"
+import { VolumeProfilePrimitive } from "../chart/volume_profile"
 
 export default class extends Controller {
   static values = {
@@ -36,6 +37,13 @@ export default class extends Controller {
     this._linePrimitives = []    // [{ id, primitive, seriesRef }]
     this._linePreviewPrimitive = null
     this._linePreviewSeriesRef = null
+
+    this._vpEnabled = false
+    this._vpOpacity = 0.3
+    this._vpPrimitive = null
+    this._vpSeriesRef = null
+    this._vpRangeHandler = null
+    this._vpRafId = null
 
     const configs = this._parseOverlays()
     if (configs.length === 0 || configs.every(c => !c.symbol)) return
@@ -80,6 +88,7 @@ export default class extends Controller {
     this._removeLabelTooltip()
     this._removeLinePreview()
     this._detachAllLinePrimitives()
+    this._detachVolumeProfile()
     this.scrollbar?.destroy()
     this.chart?.remove()
     this.chartWrapperEl?.remove()
@@ -288,6 +297,126 @@ export default class extends Controller {
     if (!this.chart) return
     const t = typeof time === "number" ? time : (time?.time || 0)
     this.scrollToLabel(t)
+  }
+
+  // --- Volume Profile ---
+
+  enableVolumeProfile(opacity) {
+    if (!this.chart) return
+    if (typeof opacity === "number") this._vpOpacity = opacity
+
+    // Find first price series to attach to
+    const series = this._findFirstPriceSeries()
+    if (!series) return
+
+    this._vpPrimitive = new VolumeProfilePrimitive({ opacity: this._vpOpacity })
+    series.attachPrimitive(this._vpPrimitive)
+    this._vpSeriesRef = series
+    this._vpEnabled = true
+
+    this._vpRangeHandler = () => this._scheduleVpUpdate()
+    this.chart.timeScale().subscribeVisibleLogicalRangeChange(this._vpRangeHandler)
+    this._updateVolumeProfile()
+  }
+
+  disableVolumeProfile() {
+    this._detachVolumeProfile()
+  }
+
+  setVolumeProfileOpacity(opacity) {
+    this._vpOpacity = opacity
+    if (this._vpPrimitive) this._vpPrimitive.setOpacity(opacity)
+  }
+
+  _detachVolumeProfile() {
+    if (this._vpRangeHandler && this.chart) {
+      this.chart.timeScale().unsubscribeVisibleLogicalRangeChange(this._vpRangeHandler)
+    }
+    if (this._vpPrimitive && this._vpSeriesRef) {
+      try { this._vpSeriesRef.detachPrimitive(this._vpPrimitive) } catch {}
+    }
+    if (this._vpRafId) cancelAnimationFrame(this._vpRafId)
+    this._vpPrimitive = null
+    this._vpSeriesRef = null
+    this._vpRangeHandler = null
+    this._vpRafId = null
+    this._vpEnabled = false
+  }
+
+  _findFirstPriceSeries() {
+    for (const [, ov] of this.overlayMap) {
+      if (ov.mode !== "indicator" && ov.series && ov.visible) return ov.series
+    }
+    return null
+  }
+
+  _scheduleVpUpdate() {
+    if (this._vpRafId) return
+    this._vpRafId = requestAnimationFrame(() => {
+      this._vpRafId = null
+      this._updateVolumeProfile()
+    })
+  }
+
+  _updateVolumeProfile() {
+    if (!this._vpPrimitive || !this.chart) return
+
+    const range = this.chart.timeScale().getVisibleLogicalRange()
+    if (!range) return
+
+    const from = Math.max(0, Math.floor(range.from))
+    const to = Math.ceil(range.to)
+
+    // Find first overlay with candles
+    let candles = null
+    for (const [, ov] of this.overlayMap) {
+      if (ov.mode !== "indicator" && ov.loader?.candles?.length > 0) {
+        candles = ov.loader.candles
+        break
+      }
+    }
+    if (!candles || candles.length === 0) return
+
+    const sliceFrom = Math.max(0, from)
+    const sliceTo = Math.min(candles.length, to)
+    if (sliceFrom >= sliceTo) return
+
+    const visible = candles.slice(sliceFrom, sliceTo)
+    const rows = this._computeVolumeProfile(visible, 50)
+    this._vpPrimitive.setData(rows)
+  }
+
+  _computeVolumeProfile(candles, numRows) {
+    if (!candles || candles.length === 0) return []
+
+    let minLow = Infinity, maxHigh = -Infinity
+    for (const c of candles) {
+      if (c.low < minLow) minLow = c.low
+      if (c.high > maxHigh) maxHigh = c.high
+    }
+    if (minLow >= maxHigh) return []
+
+    const binSize = (maxHigh - minLow) / numRows
+    const bins = new Array(numRows).fill(0)
+
+    for (const c of candles) {
+      const vol = c.volume || 0
+      if (vol === 0) continue
+      const lo = Math.max(0, Math.floor((c.low - minLow) / binSize))
+      const hi = Math.min(numRows - 1, Math.floor((c.high - minLow) / binSize))
+      const numBins = hi - lo + 1
+      const perBin = vol / numBins
+      for (let i = lo; i <= hi; i++) {
+        bins[i] += perBin
+      }
+    }
+
+    const rows = []
+    for (let i = 0; i < numRows; i++) {
+      if (bins[i] === 0) continue
+      rows.push({ price: minLow + (i + 0.5) * binSize, volume: bins[i] })
+    }
+    return rows
   }
 
   _ensureChartSubscriptions() {

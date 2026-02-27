@@ -14,7 +14,7 @@ export default class SidebarRenderer {
     this.linesCollapsed = false
   }
 
-  render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive, lineModeActive) {
+  render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive, lineModeActive, vpEnabled, vpOpacity) {
     this.indicators = indicators || []
 
     if (!panel) {
@@ -204,6 +204,34 @@ export default class SidebarRenderer {
             class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
           >Apply</button>
         `}
+
+        <hr class="border-[#3a3a4e]">
+
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-gray-500 uppercase tracking-wide">Volume Profile</span>
+          <button data-action="click->${this.controllerName}#toggleVolumeProfile"
+                  class="text-sm px-2 py-1 rounded cursor-pointer ${vpEnabled ? activeBtnClass : inactiveBtnClass}">
+            VP
+          </button>
+        </div>
+
+        ${vpEnabled ? `
+          <label class="flex flex-col gap-1 text-sm text-gray-400">
+            <span class="flex items-center justify-between">
+              <span>VP Opacity</span>
+              <span data-vp-opacity-value class="text-gray-400">${Math.round((vpOpacity ?? 0.3) * 100)}%</span>
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value="${Math.round((vpOpacity ?? 0.3) * 100)}"
+              data-action="input->${this.controllerName}#adjustVpOpacity change->${this.controllerName}#adjustVpOpacity"
+              class="w-full accent-blue-500 cursor-pointer"
+            >
+          </label>
+        ` : ""}
 
         <hr class="border-[#3a3a4e]">
 

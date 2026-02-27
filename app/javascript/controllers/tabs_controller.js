@@ -412,6 +412,45 @@ export default class extends Controller {
     chartCtrl.setLines(panel.lines || [])
   }
 
+  // --- Volume Profile ---
+
+  toggleVolumeProfile() {
+    const panel = this.store.selectedPanel
+    if (!panel) return
+    const vp = panel.volumeProfile || {}
+    const newEnabled = !vp.enabled
+    this.store.setVolumeProfile(panel.id, { enabled: newEnabled })
+
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) {
+      if (newEnabled) {
+        chartCtrl.enableVolumeProfile(vp.opacity ?? 0.3)
+      } else {
+        chartCtrl.disableVolumeProfile()
+      }
+    }
+    this.render()
+  }
+
+  adjustVpOpacity(e) {
+    const percent = parseInt(e.currentTarget.value, 10)
+    if (!Number.isFinite(percent)) return
+    const opacity = Math.max(0, Math.min(100, percent)) / 100
+
+    const panel = this.store.selectedPanel
+    if (!panel) return
+
+    this.store.setVolumeProfile(panel.id, { opacity })
+
+    const chartCtrl = this._chartCtrlForPanel(panel.id)
+    if (chartCtrl) chartCtrl.setVolumeProfileOpacity(opacity)
+
+    const valueEl = this.sidebarTarget.querySelector("[data-vp-opacity-value]")
+    if (valueEl) valueEl.textContent = `${Math.round(opacity * 100)}%`
+
+    if (e.type === "change") this.render()
+  }
+
   // --- Settings (sidebar) ---
 
   applySettings() {
@@ -715,6 +754,13 @@ export default class extends Controller {
     if (this._lineMode) {
       chartCtrl.enterLineMode()
     }
+    // Sync volume profile state
+    const vp = panel.volumeProfile || {}
+    if (vp.enabled && !chartCtrl._vpEnabled) {
+      chartCtrl.enableVolumeProfile(vp.opacity ?? 0.3)
+    } else if (!vp.enabled && chartCtrl._vpEnabled) {
+      chartCtrl.disableVolumeProfile()
+    }
   }
 
   // --- Open symbol from Main page ---
@@ -729,6 +775,8 @@ export default class extends Controller {
   // --- Render ---
 
   render() {
+    const panel = this.store.selectedPanel
+    const vp = panel?.volumeProfile || {}
     this.renderer.render(
       this.store.tabs,
       this.store.activeTabId,
@@ -740,6 +788,8 @@ export default class extends Controller {
       this.config.indicators,
       this._labelMode,
       this._lineMode,
+      !!vp.enabled,
+      vp.opacity ?? 0.3,
     )
     this._syncSelectedOverlayScale()
     requestAnimationFrame(() => {
