@@ -1,3 +1,5 @@
+import { formatDateShort } from "../utils/format"
+
 export default class Scrollbar {
   constructor(container, { getVisibleRange, setVisibleRange, getTotalBars, getTimeRange, onGoStart, onGoEnd, onGoToDate }) {
     this.getVisibleRange = getVisibleRange
@@ -98,23 +100,17 @@ export default class Scrollbar {
 
   _updateButtonLabels() {
     const tr = this.getTimeRange?.()
-    const dateStart = tr?.first ? this._formatDate(tr.first) : "..."
-    const dateEnd = tr?.last ? this._formatDate(tr.last) : "..."
+    const dateStart = tr?.first ? formatDateShort(tr.first) : "..."
+    const dateEnd = tr?.last ? formatDateShort(tr.last) : "..."
     this.btnStart.innerHTML = `<small style="opacity:0.6">Oldest</small><br>${dateStart}`
     this.btnEnd.innerHTML = `<small style="opacity:0.6">Latest</small><br>${dateEnd}`
-  }
-
-  _formatDate(ts) {
-    const d = new Date(ts * 1000)
-    const dd = String(d.getDate()).padStart(2, "0")
-    const mm = String(d.getMonth() + 1).padStart(2, "0")
-    const yy = String(d.getFullYear()).slice(2)
-    return `${dd}.${mm}.${yy}`
   }
 
   destroy() {
     document.removeEventListener("mousemove", this._onMouseMove)
     document.removeEventListener("mouseup", this._onMouseUp)
+    this.el.removeEventListener("click", this._onTrackClick)
+    this.thumb.removeEventListener("mousedown", this._onThumbDown)
     this.wrapper.remove()
   }
 

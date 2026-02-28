@@ -1,6 +1,8 @@
 // Volume Profile Series Primitive — draws horizontal volume bars on the left side of the chart
 // Uses lightweight-charts ISeriesPrimitive API (v5.x)
 
+import { withAlpha } from "../utils/color"
+
 class VolumeProfileRenderer {
   constructor() {
     this._rows = []    // [{ y, height, width }]
@@ -81,7 +83,7 @@ export class VolumeProfilePrimitive {
     this._opacity = options.opacity ?? 0.3
     this._baseColor = options.color || "#2962FF"
     this._numRows = options.rows || 50
-    this._color = this._computeColor()
+    this._color = withAlpha(this._baseColor, this._opacity)
     this._data = []    // [{ price, volume }]
     this._chart = null
     this._series = null
@@ -116,16 +118,7 @@ export class VolumeProfilePrimitive {
 
   setOpacity(opacity) {
     this._opacity = opacity
-    this._color = this._computeColor()
+    this._color = withAlpha(this._baseColor, this._opacity)
     if (this._requestUpdate) this._requestUpdate()
-  }
-
-  _computeColor() {
-    // Parse hex color and apply opacity
-    const hex = this._baseColor.replace("#", "")
-    const r = parseInt(hex.substring(0, 2), 16)
-    const g = parseInt(hex.substring(2, 4), 16)
-    const b = parseInt(hex.substring(4, 6), 16)
-    return `rgba(${r}, ${g}, ${b}, ${this._opacity})`
   }
 }

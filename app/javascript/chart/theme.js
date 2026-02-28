@@ -55,6 +55,8 @@ export const VOLUME_SERIES_TYPES = {
 // Distinct colors for multiple overlays on one chart
 export const OVERLAY_COLORS = [
   { up: "#26a69a", down: "#ef5350", line: "#26a69a" },  // teal/red (default)
+  { up: "#42a5f5", down: "#42a5f5", line: "#42a5f5" },  // all blue
+  { up: "#ef5350", down: "#ef5350", line: "#ef5350" },  // all red
   { up: "#42a5f5", down: "#ff7043", line: "#42a5f5" },  // blue/orange
   { up: "#ab47bc", down: "#ffa726", line: "#ab47bc" },  // purple/amber
   { up: "#66bb6a", down: "#ec407a", line: "#66bb6a" },  // green/pink
@@ -63,6 +65,3 @@ export const OVERLAY_COLORS = [
   { up: "#ff8a65", down: "#5c6bc0", line: "#ff8a65" },  // deep orange/indigo
   { up: "#26c6da", down: "#d4e157", line: "#26c6da" },  // cyan/lime
 ]
-
-// For backwards compat
-export const CANDLE_STYLE = PRICE_SERIES_TYPES.Candlestick.options

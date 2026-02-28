@@ -2,9 +2,8 @@ import { LineSeries, HistogramSeries } from "lightweight-charts"
 import IndicatorLoader from "./indicator_loader"
 import { OVERLAY_COLORS } from "./theme"
 import { INDICATOR_META } from "./indicators"
-import {
-  normalizeColorScheme, normalizeOpacity, indicatorFieldColors,
-} from "./series_factory"
+import { indicatorFieldColors } from "./series_factory"
+import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 
 export default class IndicatorManager {
   constructor(chart, overlayMap, timeframe, { onScaleSync }) {

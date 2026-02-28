@@ -1,8 +1,14 @@
 import { OVERLAY_COLORS } from "../chart/theme"
 import { INDICATOR_META } from "../chart/indicators"
+import { formatPrice, formatDateTime } from "../utils/format"
+import { escapeHTML } from "../utils/dom"
+import { drawingListHTML } from "./drawing_list_renderer"
 
 const INDICATOR_FILTERS = ["all", "client", "server"]
 const INDICATOR_FILTER_LABELS = { all: "All", client: "\u26A1 Client", server: "\uD83C\uDF10 Server" }
+
+const LINE_COLOR_INDICATOR = (item, color, width) =>
+  `<span class="block rounded-sm border border-black/20" style="background:${escapeHTML(color)};width:${width * 4}px;height:${width * 2}px"></span>`
 
 export default class SidebarRenderer {
   constructor(sidebarEl, controllerName) {
@@ -11,7 +17,6 @@ export default class SidebarRenderer {
     this.indicatorFilter = "all"
     this.chartsCollapsed = false
     this.labelsCollapsed = false
-    this.linesCollapsed = false
     this.textCollapsed = false
     this.trendLinesCollapsed = false
     this.hlinesCollapsed = false
@@ -286,240 +291,79 @@ export default class SidebarRenderer {
   }
 
   _labelListHTML(labels) {
-    if (labels.length === 0) return ""
-    return `
-      <div class="flex flex-col gap-0.5">
-        <div class="flex items-center gap-1 px-2.5 select-none">
-          <span class="text-blue-400 hover:text-blue-300 text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
-                data-action="click->${this.controllerName}#toggleTextSublist">${this.textCollapsed ? "&#9656;" : "&#9662;"}</span>
-          <span class="text-[13px] text-gray-500 uppercase tracking-wide cursor-pointer flex-1"
-                data-action="click->${this.controllerName}#toggleTextSublist">Text
-            <span class="normal-case tracking-normal">(${labels.length})</span>
-          </span>
-          <button data-action="click->${this.controllerName}#clearAllText"
-                title="Clear all text labels"
-                class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300">Clear</button>
-        </div>
-        ${this.textCollapsed ? "" : labels.map(label => {
-          const symbol = label.symbol || ""
-          const modeStr = label.modeDetail || (label.mode === "volume" ? "Vol" : label.mode === "indicator" ? "Ind" : "Price")
-          const priceStr = label.price != null ? this._formatPrice(label.price) : ""
-          const anchor = [symbol, modeStr, priceStr].filter(Boolean).join(" ")
-          const timeStr = this._formatLabelTime(label.time)
-          const color = label.color || "#ffffff"
-          const fontSize = label.fontSize || 1
-          return `
-          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-[15px] text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
-               data-action="click->${this.controllerName}#selectLabel dblclick->${this.controllerName}#startLabelRename"
-               data-label-id="${label.id}">
-            <span class="shrink-0 w-4 flex items-center justify-center" title="Color">
-              <span class="block w-2.5 h-2.5 rounded-full border border-black/20" style="background:${this._escapeHTML(color)}"></span>
-            </span>
-            <div class="flex-1 min-w-0 flex flex-col">
-              <span class="truncate" data-label-text="${label.id}">${this._escapeHTML(label.text)}</span>
-              <span class="text-[13px] text-gray-500 truncate">${this._escapeHTML(anchor)}</span>
-              <span class="text-[13px] text-gray-600 truncate">${this._escapeHTML(timeStr)}</span>
-            </div>
-            <input type="color" value="${this._escapeHTML(color)}"
-                   data-action="change->${this.controllerName}#changeLabelColor"
-                   data-label-id="${label.id}"
-                   class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer shrink-0 opacity-0 group-hover:opacity-100"
-                   title="Change color">
-            <select data-action="change->${this.controllerName}#changeLabelFontSize"
-                    data-label-id="${label.id}"
-                    class="hidden group-hover:block w-12 text-xs bg-[#2a2a3e] text-gray-300 border border-[#3a3a4e] rounded cursor-pointer shrink-0"
-                    title="Font size">
-              ${[["1","S"],["2","M"],["3","L"],["4","XL"],["5","XXL"]].map(([v,l]) => `<option value="${v}"${parseInt(v)===fontSize ? " selected" : ""}>${l}</option>`).join("")}
-            </select>
-            <span data-action="click->${this.controllerName}#removeLabel"
-                  data-remove-label="${label.id}"
-                  title="Remove label"
-                  class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
-          </div>
-        `}).join("")}
-      </div>
-    `
+    return drawingListHTML({
+      items: labels, kind: "labels", controllerName: this.controllerName,
+      collapsed: this.textCollapsed, toggleAction: "toggleTextSublist",
+      clearAction: "clearAllText", headerLabel: "Text",
+      nameFn: (l) => l.text,
+      subtextFn: (l) => {
+        const symbol = l.symbol || ""
+        const modeStr = l.modeDetail || (l.mode === "volume" ? "Vol" : l.mode === "indicator" ? "Ind" : "Price")
+        const priceStr = l.price != null ? formatPrice(l.price) : ""
+        const tf = l.timeframe || ""
+        return [symbol, modeStr, priceStr, tf].filter(Boolean).join(" ")
+      },
+      timeFn: (l) => formatDateTime(l.time),
+      defaultColor: "#ffffff", defaultWidth: 1,
+      hasWidthPicker: false, hasFontSizePicker: true,
+    })
   }
 
   _lineListHTML(lines) {
-    if (lines.length === 0) return ""
-    return `
-      <div class="flex flex-col gap-0.5 mt-1">
-        <div class="flex items-center gap-1 px-2.5 select-none">
-          <span class="text-blue-400 hover:text-blue-300 text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
-                data-action="click->${this.controllerName}#toggleTrendLinesSublist">${this.trendLinesCollapsed ? "&#9656;" : "&#9662;"}</span>
-          <span class="text-[13px] text-gray-500 uppercase tracking-wide cursor-pointer flex-1"
-                data-action="click->${this.controllerName}#toggleTrendLinesSublist">Lines
-            <span class="normal-case tracking-normal">(${lines.length})</span>
-          </span>
-          <button data-action="click->${this.controllerName}#clearAllLines"
-                title="Clear all lines"
-                class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300">Clear</button>
-        </div>
-        ${this.trendLinesCollapsed ? "" : lines.map(line => {
-          const symbol = line.symbol || ""
-          const modeStr = line.modeDetail || (line.mode === "volume" ? "Vol" : "Price")
-          const p1Str = line.p1?.price != null ? this._formatPrice(line.p1.price) : "?"
-          const p2Str = line.p2?.price != null ? this._formatPrice(line.p2.price) : "?"
-          const anchor = `${symbol} ${modeStr} ${p1Str} \u2192 ${p2Str}`
-          const t1 = this._formatLabelTime(line.p1?.time)
-          const t2 = this._formatLabelTime(line.p2?.time)
-          const timeRange = `${t1} \u2014 ${t2}`
-          const color = line.color || "#2196f3"
-          const width = line.width || 2
-          return `
-          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-[15px] text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
-               data-action="click->${this.controllerName}#selectLine dblclick->${this.controllerName}#startLineRename"
-               data-line-id="${line.id}">
-            <span class="shrink-0 w-4 flex items-center justify-center" title="Color">
-              <span class="block rounded-sm border border-black/20" style="background:${this._escapeHTML(color)};width:${width * 4}px;height:${width * 2}px"></span>
-            </span>
-            <div class="flex-1 min-w-0 flex flex-col">
-              <span class="truncate" data-line-name="${line.id}">${this._escapeHTML(line.name || line.id)}</span>
-              <span class="text-[13px] text-gray-500 truncate">${this._escapeHTML(anchor)}</span>
-              <span class="text-[13px] text-gray-600 truncate">${this._escapeHTML(timeRange)}</span>
-            </div>
-            <input type="color" value="${this._escapeHTML(color)}"
-                   data-action="change->${this.controllerName}#changeLineColor"
-                   data-line-id="${line.id}"
-                   class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer shrink-0 opacity-0 group-hover:opacity-100"
-                   title="Change color">
-            <select data-action="change->${this.controllerName}#changeLineWidth"
-                    data-line-id="${line.id}"
-                    class="hidden group-hover:block w-10 text-xs bg-[#2a2a3e] text-gray-300 border border-[#3a3a4e] rounded cursor-pointer shrink-0"
-                    title="Line width">
-              ${[1,2,3,4,5].map(w => `<option value="${w}"${w === width ? " selected" : ""}>${w}px</option>`).join("")}
-            </select>
-            <span data-action="click->${this.controllerName}#removeLine"
-                  data-remove-line="${line.id}"
-                  title="Remove line"
-                  class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
-          </div>
-        `}).join("")}
-      </div>
-    `
+    return drawingListHTML({
+      items: lines, kind: "lines", controllerName: this.controllerName,
+      collapsed: this.trendLinesCollapsed, toggleAction: "toggleTrendLinesSublist",
+      clearAction: "clearAllLines", headerLabel: "Lines", mt: true,
+      nameFn: (l) => l.name || l.id,
+      subtextFn: (l) => {
+        const symbol = l.symbol || ""
+        const modeStr = l.modeDetail || (l.mode === "volume" ? "Vol" : "Price")
+        const p1Str = l.p1?.price != null ? formatPrice(l.p1.price) : "?"
+        const p2Str = l.p2?.price != null ? formatPrice(l.p2.price) : "?"
+        const tf = l.timeframe || ""
+        return [symbol, modeStr, `${p1Str} \u2192 ${p2Str}`, tf].filter(Boolean).join(" ")
+      },
+      timeFn: (l) => `${formatDateTime(l.p1?.time)} \u2014 ${formatDateTime(l.p2?.time)}`,
+      defaultColor: "#2196f3", defaultWidth: 2,
+      hasWidthPicker: true, hasFontSizePicker: false,
+      colorIndicatorFn: LINE_COLOR_INDICATOR,
+    })
   }
 
   _hlineListHTML(hlines) {
-    if (hlines.length === 0) return ""
-    return `
-      <div class="flex flex-col gap-0.5 mt-1">
-        <div class="flex items-center gap-1 px-2.5 select-none">
-          <span class="text-blue-400 hover:text-blue-300 text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
-                data-action="click->${this.controllerName}#toggleHLinesSublist">${this.hlinesCollapsed ? "&#9656;" : "&#9662;"}</span>
-          <span class="text-[13px] text-gray-500 uppercase tracking-wide cursor-pointer flex-1"
-                data-action="click->${this.controllerName}#toggleHLinesSublist">Horizontal
-            <span class="normal-case tracking-normal">(${hlines.length})</span>
-          </span>
-          <button data-action="click->${this.controllerName}#clearAllHLines"
-                title="Clear all horizontal lines"
-                class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300">Clear</button>
-        </div>
-        ${this.hlinesCollapsed ? "" : hlines.map(hl => {
-          const symbol = hl.symbol || ""
-          const modeStr = hl.modeDetail || "Price"
-          const priceStr = hl.price != null ? this._formatPrice(hl.price) : "?"
-          const anchor = `${symbol} ${modeStr} ${priceStr}`
-          const color = hl.color || "#ff9800"
-          const width = hl.width || 1
-          return `
-          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-[15px] text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
-               data-action="dblclick->${this.controllerName}#startHLineRename"
-               data-hline-id="${hl.id}">
-            <span class="shrink-0 w-4 flex items-center justify-center" title="Color">
-              <span class="block rounded-sm border border-black/20" style="background:${this._escapeHTML(color)};width:${width * 4}px;height:${width * 2}px"></span>
-            </span>
-            <div class="flex-1 min-w-0 flex flex-col">
-              <span class="truncate" data-hline-name="${hl.id}">${this._escapeHTML(hl.name || hl.id)}</span>
-              <span class="text-[13px] text-gray-500 truncate">${this._escapeHTML(anchor)}</span>
-            </div>
-            <input type="color" value="${this._escapeHTML(color)}"
-                   data-action="change->${this.controllerName}#changeHLineColor"
-                   data-hline-id="${hl.id}"
-                   class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer shrink-0 opacity-0 group-hover:opacity-100"
-                   title="Change color">
-            <select data-action="change->${this.controllerName}#changeHLineWidth"
-                    data-hline-id="${hl.id}"
-                    class="hidden group-hover:block w-10 text-xs bg-[#2a2a3e] text-gray-300 border border-[#3a3a4e] rounded cursor-pointer shrink-0"
-                    title="Line width">
-              ${[1,2,3,4,5].map(w => `<option value="${w}"${w === width ? " selected" : ""}>${w}px</option>`).join("")}
-            </select>
-            <span data-action="click->${this.controllerName}#removeHLine"
-                  data-remove-hline="${hl.id}"
-                  title="Remove horizontal line"
-                  class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
-          </div>
-        `}).join("")}
-      </div>
-    `
+    return drawingListHTML({
+      items: hlines, kind: "hlines", controllerName: this.controllerName,
+      collapsed: this.hlinesCollapsed, toggleAction: "toggleHLinesSublist",
+      clearAction: "clearAllHLines", headerLabel: "Horizontal", mt: true,
+      hasSelect: false,
+      nameFn: (hl) => hl.name || hl.id,
+      subtextFn: (hl) => {
+        const symbol = hl.symbol || ""
+        const modeStr = hl.modeDetail || "Price"
+        const priceStr = hl.price != null ? formatPrice(hl.price) : "?"
+        const tf = hl.timeframe || ""
+        return [symbol, modeStr, priceStr, tf].filter(Boolean).join(" ")
+      },
+      defaultColor: "#ff9800", defaultWidth: 1,
+      hasWidthPicker: true, hasFontSizePicker: false,
+      colorIndicatorFn: LINE_COLOR_INDICATOR,
+    })
   }
 
   _vlineListHTML(vlines) {
-    if (vlines.length === 0) return ""
-    return `
-      <div class="flex flex-col gap-0.5 mt-1">
-        <div class="flex items-center gap-1 px-2.5 select-none">
-          <span class="text-blue-400 hover:text-blue-300 text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
-                data-action="click->${this.controllerName}#toggleVLinesSublist">${this.vlinesCollapsed ? "&#9656;" : "&#9662;"}</span>
-          <span class="text-[13px] text-gray-500 uppercase tracking-wide cursor-pointer flex-1"
-                data-action="click->${this.controllerName}#toggleVLinesSublist">Vertical
-            <span class="normal-case tracking-normal">(${vlines.length})</span>
-          </span>
-          <button data-action="click->${this.controllerName}#clearAllVLines"
-                title="Clear all vertical lines"
-                class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300">Clear</button>
-        </div>
-        ${this.vlinesCollapsed ? "" : vlines.map(vl => {
-          const timeStr = this._formatLabelTime(vl.time)
-          const color = vl.color || "#ff9800"
-          const width = vl.width || 1
-          return `
-          <div class="group flex items-center gap-2 px-2.5 py-1.5 rounded text-[15px] text-gray-400 hover:bg-[#2a2a3e] cursor-pointer"
-               data-action="click->${this.controllerName}#selectVLine dblclick->${this.controllerName}#startVLineRename"
-               data-vline-id="${vl.id}">
-            <span class="shrink-0 w-4 flex items-center justify-center" title="Color">
-              <span class="block rounded-sm border border-black/20" style="background:${this._escapeHTML(color)};width:${width * 4}px;height:${width * 2}px"></span>
-            </span>
-            <div class="flex-1 min-w-0 flex flex-col">
-              <span class="truncate" data-vline-name="${vl.id}">${this._escapeHTML(vl.name || vl.id)}</span>
-              <span class="text-[13px] text-gray-500 truncate">${this._escapeHTML(timeStr)}</span>
-            </div>
-            <input type="color" value="${this._escapeHTML(color)}"
-                   data-action="change->${this.controllerName}#changeVLineColor"
-                   data-vline-id="${vl.id}"
-                   class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer shrink-0 opacity-0 group-hover:opacity-100"
-                   title="Change color">
-            <select data-action="change->${this.controllerName}#changeVLineWidth"
-                    data-vline-id="${vl.id}"
-                    class="hidden group-hover:block w-10 text-xs bg-[#2a2a3e] text-gray-300 border border-[#3a3a4e] rounded cursor-pointer shrink-0"
-                    title="Line width">
-              ${[1,2,3,4,5].map(w => `<option value="${w}"${w === width ? " selected" : ""}>${w}px</option>`).join("")}
-            </select>
-            <span data-action="click->${this.controllerName}#removeVLine"
-                  data-remove-vline="${vl.id}"
-                  title="Remove vertical line"
-                  class="hidden group-hover:inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
-          </div>
-        `}).join("")}
-      </div>
-    `
-  }
-
-  _formatPrice(price) {
-    if (price >= 1000) return price.toFixed(0)
-    if (price >= 1) return price.toFixed(2)
-    return price.toPrecision(4)
-  }
-
-  _formatLabelTime(time) {
-    if (!time) return ""
-    const d = new Date(time * 1000)
-    const year = d.getFullYear()
-    const month = String(d.getMonth() + 1).padStart(2, "0")
-    const day = String(d.getDate()).padStart(2, "0")
-    const hours = String(d.getHours()).padStart(2, "0")
-    const minutes = String(d.getMinutes()).padStart(2, "0")
-    return `${year}-${month}-${day} ${hours}:${minutes}`
+    return drawingListHTML({
+      items: vlines, kind: "vlines", controllerName: this.controllerName,
+      collapsed: this.vlinesCollapsed, toggleAction: "toggleVLinesSublist",
+      clearAction: "clearAllVLines", headerLabel: "Vertical", mt: true,
+      nameFn: (vl) => vl.name || vl.id,
+      timeFn: (vl) => {
+        const tf = vl.timeframe || ""
+        return [formatDateTime(vl.time), tf].filter(Boolean).join(" ")
+      },
+      defaultColor: "#ff9800", defaultWidth: 1,
+      hasWidthPicker: true, hasFontSizePicker: false,
+      colorIndicatorFn: LINE_COLOR_INDICATOR,
+    })
   }
 
   _indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) {
@@ -553,7 +397,7 @@ export default class SidebarRenderer {
         const label = meta.paramLabels?.[key] || key
         return `
           <label class="flex flex-col gap-1 text-sm text-gray-400">
-            ${this._escapeHTML(label)}
+            ${escapeHTML(label)}
             <input
               type="number"
               data-indicator-param="${key}"
@@ -570,12 +414,13 @@ export default class SidebarRenderer {
     const requires = meta?.requires || "values"
     const pinTargets = panel.overlays.filter(o => {
       if (o.id === selectedOverlay?.id || !o.symbol) return false
+      if (o.mode === "indicator") return false
       if (requires === "values") return true
       return o.mode === "price"
     })
     const sourceOpts = pinTargets.map(o => {
       const modeLabel = o.mode === "volume" ? "Vol" : (o.mode === "indicator" ? (o.indicatorType || "").toUpperCase() : "Price")
-      return `<option value="${o.id}"${o.id === pinnedTo ? " selected" : ""}>${this._escapeHTML(o.symbol)} ${modeLabel}</option>`
+      return `<option value="${o.id}"${o.id === pinnedTo ? " selected" : ""}>${escapeHTML(o.symbol)} ${modeLabel}</option>`
     }).join("")
 
     const sourceHTML = `
@@ -675,9 +520,7 @@ export default class SidebarRenderer {
       ? "Enter timeframe manually, for example: 1m, 5m, 1h, 1D"
       : "Enter symbol manually, for example: BTCUSD"
     const inputPlaceholder = isTimeframe ? "1m, 5m, 1h..." : "BTCUSD"
-    const toggleTitle = isTimeframe
-      ? (inList ? "Current mode: list selection" : "Current mode: manual input")
-      : (inList ? "Current mode: list selection" : "Current mode: manual input")
+    const toggleTitle = inList ? "Current mode: list selection" : "Current mode: manual input"
     const toggleLabel = inList ? "List" : "Manual"
     return `
       <span data-combo class="flex items-center gap-1">
@@ -703,12 +546,4 @@ export default class SidebarRenderer {
       </span>`
   }
 
-  _escapeHTML(value) {
-    return String(value)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll("\"", "&quot;")
-      .replaceAll("'", "&#39;")
-  }
 }

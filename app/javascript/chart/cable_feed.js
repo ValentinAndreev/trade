@@ -1,16 +1,15 @@
-import { createConsumer } from "@rails/actioncable"
+import { consumer } from "./cable_consumer"
 
 export default class CableFeed {
   constructor(symbol, timeframe, onCandle) {
     this.symbol = symbol
     this.timeframe = timeframe
     this.onCandle = onCandle
-    this.consumer = createConsumer()
     this.subscription = null
   }
 
   connect() {
-    this.subscription = this.consumer.subscriptions.create(
+    this.subscription = consumer.subscriptions.create(
       {
         channel: "CandlesChannel",
         symbol: this.symbol,
@@ -26,6 +25,5 @@ export default class CableFeed {
 
   disconnect() {
     this.subscription?.unsubscribe()
-    this.consumer?.disconnect()
   }
 }

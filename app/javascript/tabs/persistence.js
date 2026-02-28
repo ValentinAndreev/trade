@@ -1,4 +1,4 @@
-import { OVERLAY_COLORS } from "../chart/theme"
+import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 
 const STORAGE_KEY = "chart-tabs"
 const ACTIVE_TAB_KEY = "chart-active-tab"
@@ -64,20 +64,6 @@ export function calcNextId(tabs, prefix) {
   return max + 1
 }
 
-function _normalizeColorScheme(colorScheme) {
-  const num = parseInt(colorScheme, 10)
-  if (Number.isNaN(num) || num < 0) return 0
-  return num % OVERLAY_COLORS.length
-}
-
-function _normalizeOpacity(opacity) {
-  const value = parseFloat(opacity)
-  if (Number.isNaN(value)) return 1
-  if (value < 0) return 0
-  if (value > 1) return 1
-  return Math.round(value * 100) / 100
-}
-
 function _migrateTab(t) {
   // Very old format: { id, symbol, timeframe, mode, name } (no panels)
   if (!t.panels) {
@@ -119,8 +105,8 @@ function _migratePanel(p) {
         mode: o.mode || "price",
         chartType: o.chartType || "Candlestick",
         visible: o.visible !== false,
-        colorScheme: _normalizeColorScheme(o.colorScheme ?? idx),
-        opacity: _normalizeOpacity(o.opacity),
+        colorScheme: normalizeColorScheme(o.colorScheme ?? idx),
+        opacity: normalizeOpacity(o.opacity),
         indicatorType: o.indicatorType ?? null,
         indicatorParams: o.indicatorParams ?? null,
         pinnedTo: o.pinnedTo ?? null,

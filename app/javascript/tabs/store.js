@@ -1,5 +1,8 @@
 import { OVERLAY_COLORS } from "../chart/theme"
+import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import { loadTabs, saveTabs, calcNextId, loadActiveTabId, saveActiveTabId } from "./persistence"
+
+const DRAWING_PREFIX = { labels: "lbl", lines: "ln", hlines: "hl", vlines: "vl" }
 
 export default class TabStore {
   constructor() {
@@ -7,10 +10,10 @@ export default class TabStore {
     this._nextTabId = Math.max(...this.tabs.map(t => parseInt(t.id.split("-")[1]))) + 1
     this._nextPanelId = calcNextId(this.tabs, "p")
     this._nextOverlayId = calcNextId(this.tabs, "o")
-    this._nextLabelId = this._calcNextLabelId()
-    this._nextLineId = this._calcNextLineId()
-    this._nextHLineId = this._calcNextIdFor("hl")
-    this._nextVLineId = this._calcNextIdFor("vl")
+    this._nextDrawingId = {}
+    for (const kind of Object.keys(DRAWING_PREFIX)) {
+      this._nextDrawingId[kind] = this._calcNextDrawingId(kind)
+    }
 
     const savedTabId = loadActiveTabId()
     const savedTab = savedTabId && this.tabs.find(t => t.id === savedTabId)
@@ -228,12 +231,12 @@ export default class TabStore {
         overlay.indicatorType = "sma"
         overlay.indicatorParams = { period: 20 }
       }
-      // Auto-pin to first overlay with symbol on same panel
+      // Auto-pin to source overlay on same panel
       if (!overlay.pinnedTo) {
         const panel = this._findPanelForOverlay(overlayId)
         if (panel) {
           const source = panel.overlays.find(o => o.id !== overlayId && o.symbol)
-          if (source) overlay.pinnedTo = source.id
+          overlay.pinnedTo = source ? source.id : (overlay.symbol ? overlayId : null)
         }
       }
     } else {
@@ -288,7 +291,7 @@ export default class TabStore {
   setOverlayColorScheme(overlayId, colorScheme) {
     const overlay = this._findOverlay(overlayId)
     if (!overlay) return false
-    const normalized = this._normalizeColorScheme(colorScheme)
+    const normalized = normalizeColorScheme(colorScheme)
     if (overlay.colorScheme === normalized) return false
     overlay.colorScheme = normalized
     this._save()
@@ -298,7 +301,7 @@ export default class TabStore {
   setOverlayOpacity(overlayId, opacity) {
     const overlay = this._findOverlay(overlayId)
     if (!overlay) return false
-    const normalized = this._normalizeOpacity(opacity)
+    const normalized = normalizeOpacity(opacity)
     if (overlay.opacity === normalized) return false
     overlay.opacity = normalized
     this._save()
@@ -340,58 +343,51 @@ export default class TabStore {
     return null
   }
 
-  // --- Labels ---
+  // --- Generic drawing CRUD ---
 
-  addLabel(panelId, label) {
+  addDrawing(panelId, kind, data) {
     const panel = this._findPanel(panelId)
     if (!panel) return null
-    if (!panel.labels) panel.labels = []
-    const newLabel = { id: `lbl-${this._nextLabelId++}`, ...label }
-    panel.labels.push(newLabel)
+    if (!panel[kind]) panel[kind] = []
+    const prefix = DRAWING_PREFIX[kind]
+    const item = { id: `${prefix}-${this._nextDrawingId[kind]++}`, ...data }
+    panel[kind].push(item)
     this._save()
-    return newLabel
+    return item
   }
 
-  removeLabel(panelId, labelId) {
+  removeDrawing(panelId, kind, itemId) {
     const panel = this._findPanel(panelId)
-    if (!panel || !panel.labels) return false
-    const idx = panel.labels.findIndex(l => l.id === labelId)
+    if (!panel || !panel[kind]) return false
+    const idx = panel[kind].findIndex(i => i.id === itemId)
     if (idx === -1) return false
-    panel.labels.splice(idx, 1)
+    panel[kind].splice(idx, 1)
     this._save()
     return true
   }
 
-  updateLabel(panelId, labelId, updates) {
+  updateDrawing(panelId, kind, itemId, updates) {
     const panel = this._findPanel(panelId)
-    if (!panel || !panel.labels) return false
-    const label = panel.labels.find(l => l.id === labelId)
-    if (!label) return false
-    Object.assign(label, updates)
+    if (!panel || !panel[kind]) return false
+    const item = panel[kind].find(i => i.id === itemId)
+    if (!item) return false
+    Object.assign(item, updates)
     this._save()
     return true
   }
 
-  // --- Lines ---
-
-  addLine(panelId, line) {
+  clearDrawings(panelId, kind) {
     const panel = this._findPanel(panelId)
-    if (!panel) return null
-    if (!panel.lines) panel.lines = []
-    const newLine = { id: `ln-${this._nextLineId++}`, ...line }
-    panel.lines.push(newLine)
+    if (!panel) return
+    panel[kind] = []
     this._save()
-    return newLine
   }
 
-  removeLine(panelId, lineId) {
+  clearAllDrawings(panelId) {
     const panel = this._findPanel(panelId)
-    if (!panel || !panel.lines) return false
-    const idx = panel.lines.findIndex(l => l.id === lineId)
-    if (idx === -1) return false
-    panel.lines.splice(idx, 1)
+    if (!panel) return
+    for (const kind of Object.keys(DRAWING_PREFIX)) panel[kind] = []
     this._save()
-    return true
   }
 
   // --- Volume Profile ---
@@ -404,118 +400,6 @@ export default class TabStore {
     return true
   }
 
-  // --- HLines ---
-
-  addHLine(panelId, hline) {
-    const panel = this._findPanel(panelId)
-    if (!panel) return null
-    if (!panel.hlines) panel.hlines = []
-    const newHLine = { id: `hl-${this._nextHLineId++}`, ...hline }
-    panel.hlines.push(newHLine)
-    this._save()
-    return newHLine
-  }
-
-  removeHLine(panelId, hlineId) {
-    const panel = this._findPanel(panelId)
-    if (!panel || !panel.hlines) return false
-    const idx = panel.hlines.findIndex(l => l.id === hlineId)
-    if (idx === -1) return false
-    panel.hlines.splice(idx, 1)
-    this._save()
-    return true
-  }
-
-  updateHLine(panelId, hlineId, updates) {
-    const panel = this._findPanel(panelId)
-    if (!panel || !panel.hlines) return false
-    const hl = panel.hlines.find(l => l.id === hlineId)
-    if (!hl) return false
-    Object.assign(hl, updates)
-    this._save()
-    return true
-  }
-
-  // --- VLines ---
-
-  addVLine(panelId, vline) {
-    const panel = this._findPanel(panelId)
-    if (!panel) return null
-    if (!panel.vlines) panel.vlines = []
-    const newVLine = { id: `vl-${this._nextVLineId++}`, ...vline }
-    panel.vlines.push(newVLine)
-    this._save()
-    return newVLine
-  }
-
-  removeVLine(panelId, vlineId) {
-    const panel = this._findPanel(panelId)
-    if (!panel || !panel.vlines) return false
-    const idx = panel.vlines.findIndex(l => l.id === vlineId)
-    if (idx === -1) return false
-    panel.vlines.splice(idx, 1)
-    this._save()
-    return true
-  }
-
-  updateVLine(panelId, vlineId, updates) {
-    const panel = this._findPanel(panelId)
-    if (!panel || !panel.vlines) return false
-    const vl = panel.vlines.find(l => l.id === vlineId)
-    if (!vl) return false
-    Object.assign(vl, updates)
-    this._save()
-    return true
-  }
-
-  clearAllDrawings(panelId) {
-    const panel = this._findPanel(panelId)
-    if (!panel) return
-    panel.labels = []
-    panel.lines = []
-    panel.hlines = []
-    panel.vlines = []
-    this._save()
-  }
-
-  updateLine(panelId, lineId, updates) {
-    const panel = this._findPanel(panelId)
-    if (!panel || !panel.lines) return false
-    const line = panel.lines.find(l => l.id === lineId)
-    if (!line) return false
-    Object.assign(line, updates)
-    this._save()
-    return true
-  }
-
-  _calcNextLineId() {
-    let max = 0
-    for (const tab of this.tabs) {
-      for (const panel of tab.panels) {
-        if (!panel.lines) continue
-        for (const line of panel.lines) {
-          const num = parseInt(line.id.split("-")[1])
-          if (num > max) max = num
-        }
-      }
-    }
-    return max + 1
-  }
-
-  _calcNextLabelId() {
-    let max = 0
-    for (const tab of this.tabs) {
-      for (const panel of tab.panels) {
-        if (!panel.labels) continue
-        for (const label of panel.labels) {
-          const num = parseInt(label.id.split("-")[1])
-          if (num > max) max = num
-        }
-      }
-    }
-    return max + 1
-  }
-
   _newOverlay(id, symbol = null, colorScheme = 0) {
     return {
       id,
@@ -523,7 +407,7 @@ export default class TabStore {
       mode: "price",
       chartType: "Candlestick",
       visible: true,
-      colorScheme: this._normalizeColorScheme(colorScheme),
+      colorScheme: normalizeColorScheme(colorScheme),
       opacity: 1,
       indicatorType: null,
       indicatorParams: null,
@@ -531,11 +415,11 @@ export default class TabStore {
     }
   }
 
-  _calcNextIdFor(prefix) {
+  _calcNextDrawingId(kind) {
     let max = 0
     for (const tab of this.tabs) {
       for (const panel of tab.panels) {
-        const arr = prefix === "hl" ? panel.hlines : panel.vlines
+        const arr = panel[kind]
         if (!arr) continue
         for (const item of arr) {
           const num = parseInt(item.id.split("-")[1])
@@ -560,20 +444,6 @@ export default class TabStore {
       if (!Number.isNaN(num) && num > max) max = num
     }
     return max + 1
-  }
-
-  _normalizeColorScheme(colorScheme) {
-    const num = parseInt(colorScheme, 10)
-    if (Number.isNaN(num) || num < 0) return 0
-    return num % OVERLAY_COLORS.length
-  }
-
-  _normalizeOpacity(opacity) {
-    const value = parseFloat(opacity)
-    if (Number.isNaN(value)) return 1
-    if (value < 0) return 0
-    if (value > 1) return 1
-    return Math.round(value * 100) / 100
   }
 
   _save() {

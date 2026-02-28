@@ -52,6 +52,16 @@ export default class DataLoader {
     }
   }
 
+  prependCandles(newCandles) {
+    if (!newCandles || newCandles.length === 0) return
+    const filtered = this.oldestTime
+      ? newCandles.filter(c => c.time < this.oldestTime)
+      : newCandles
+    if (filtered.length === 0) return
+    this.candles = [...filtered, ...this.candles]
+    this.oldestTime = this.candles[0].time
+  }
+
   updateCandle(candle) {
     const idx = this.candles.findIndex(c => c.time === candle.time)
     if (idx !== -1) {

@@ -1,4 +1,5 @@
 import { OVERLAY_COLORS } from "../chart/theme"
+import { escapeHTML } from "../utils/dom"
 
 export default class PanelRenderer {
   constructor(panelsEl, controllerName) {
@@ -151,12 +152,7 @@ export default class PanelRenderer {
 
   _overlaysJson(panel) {
     return JSON.stringify(panel.overlays.filter(o => o.symbol).map(o => {
-      const base = { id: o.id, symbol: o.symbol, mode: o.mode, chartType: o.chartType }
-      if (o.mode === "indicator") {
-        base.indicatorType = o.indicatorType
-        base.indicatorParams = o.indicatorParams
-        base.pinnedTo = o.pinnedTo
-      }
+      const base = { id: o.id, symbol: o.symbol, chartType: o.chartType }
       return base
     }))
   }
@@ -171,7 +167,7 @@ export default class PanelRenderer {
         let modeLabel
         if (o.mode === "indicator" && o.indicatorType) {
           const sourceOverlay = o.pinnedTo ? panel.overlays.find(s => s.id === o.pinnedTo) : null
-          const sourceSymbol = this._escapeHTML(sourceOverlay ? sourceOverlay.symbol : o.symbol)
+          const sourceSymbol = escapeHTML(sourceOverlay ? sourceOverlay.symbol : o.symbol)
           const sourceMode = sourceOverlay ? (sourceOverlay.mode === "volume" ? "Volume" : "Price") : "Price"
           const paramsStr = o.indicatorParams
             ? Object.values(o.indicatorParams).join(",")
@@ -179,7 +175,7 @@ export default class PanelRenderer {
           modeLabel = `${(o.indicatorType || "").toUpperCase()}${paramsStr ? `(${paramsStr})` : ""}`
           return `<div class="flex items-center gap-1.5 truncate">${swatches} ${sourceSymbol} ${sourceMode} ${modeLabel} ${timeframe}</div>`
         }
-        const symbol = this._escapeHTML(o.symbol)
+        const symbol = escapeHTML(o.symbol)
         modeLabel = o.mode === "volume" ? "Volume" : "Price"
         return `<div class="flex items-center gap-1.5 truncate">${swatches} ${symbol} ${modeLabel} ${timeframe}</div>`
       })
@@ -260,12 +256,4 @@ export default class PanelRenderer {
     `
   }
 
-  _escapeHTML(value) {
-    return String(value)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll("\"", "&quot;")
-      .replaceAll("'", "&#39;")
-  }
 }
