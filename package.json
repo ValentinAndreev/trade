@@ -11,7 +11,9 @@
   "dependencies": {
     "@hotwired/stimulus": "^3.2.2",
     "@hotwired/turbo-rails": "^8.0.23",
+    "@parcel/watcher-darwin-arm64": "^2.5.6",
     "@tailwindcss/cli": "^4.2.0",
+    "lightningcss-darwin-arm64": "^1.31.1",
     "lightweight-charts": "^5.1.0",
     "tailwindcss": "^4.2.0",
     "technicalindicators": "^3.1.0"
