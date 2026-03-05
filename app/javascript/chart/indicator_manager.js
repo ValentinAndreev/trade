@@ -48,15 +48,14 @@ export default class IndicatorManager {
 
   async loadData(id, ov) {
     const meta = INDICATOR_META[ov.indicatorType]
-    if (!meta) return
+    if (!meta) { this._restorePriceIfEmpty(ov); return }
 
-    // overlay indicators share source's scale, oscillators get their own
     const scaleId = meta.overlay ? this.resolveScaleId(ov) : ov.basePriceScaleId
 
     try {
       const sourceData = this._resolveSourceData(ov)
       const data = await this._compute(ov, sourceData)
-      if (!data || data.length === 0) return
+      if (!data || data.length === 0) { this._restorePriceIfEmpty(ov); return }
 
       const fieldColors = indicatorFieldColors(ov.colors, meta.fields.length, ov.opacity)
       ov.indicatorSeries = meta.fields.map((field, i) => {
@@ -77,6 +76,13 @@ export default class IndicatorManager {
       this._onScaleSync()
     } catch (error) {
       console.error(`Failed to load indicator ${ov.indicatorType} for overlay ${id}:`, error)
+      this._restorePriceIfEmpty(ov)
+    }
+  }
+
+  _restorePriceIfEmpty(ov) {
+    if (!ov.indicatorSeries?.length && ov.series) {
+      ov.series.applyOptions({ visible: ov.visible !== false })
     }
   }
 

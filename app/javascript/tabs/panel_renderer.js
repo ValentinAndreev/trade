@@ -85,12 +85,24 @@ export default class PanelRenderer {
         const hasChart = !!chartEl
         const needsChart = hasSymbols
 
-        const settingsChanged = hasChart && needsChart && (
-          chartEl.dataset.chartTimeframeValue !== panel.timeframe ||
-          chartEl.dataset.chartOverlaysValue !== overlaysJson
-        )
+        const newKey = this._structuralKey(panel)
+        const timeframeChanged = hasChart && chartEl.dataset.chartTimeframeValue !== panel.timeframe
+        let structureChanged = false
+        if (hasChart && needsChart) {
+          if (chartEl.dataset.chartStructuralKey) {
+            structureChanged = chartEl.dataset.chartStructuralKey !== newKey
+          } else {
+            chartEl.dataset.chartStructuralKey = newKey
+          }
+        }
+        const needsRecreate = timeframeChanged || structureChanged
 
-        if (settingsChanged || hasChart !== needsChart) {
+        if (hasChart && !needsRecreate) {
+          chartEl.dataset.chartOverlaysValue = overlaysJson
+          chartEl.dataset.chartStructuralKey = newKey
+        }
+
+        if (needsRecreate || hasChart !== needsChart) {
           const placeholder = document.createElement("template")
           placeholder.innerHTML = this._panelHTML(panel, selectedPanelId, isFirst, isLast)
           const newEl = placeholder.content.firstElementChild
@@ -151,11 +163,28 @@ export default class PanelRenderer {
   }
 
   _overlaysJson(panel) {
-    return JSON.stringify(panel.overlays.filter(o => o.symbol).map(o => {
-      const base = { id: o.id, symbol: o.symbol, chartType: o.chartType }
-      return base
-    }))
+    return JSON.stringify(panel.overlays.filter(o => o.symbol).map(o => ({
+      id: o.id,
+      symbol: o.symbol,
+      mode: o.mode || "price",
+      chartType: o.chartType,
+      colorScheme: o.colorScheme ?? 0,
+      opacity: o.opacity ?? 1,
+      visible: o.visible !== false,
+      indicatorType: o.indicatorType || null,
+      indicatorSource: o.indicatorSource || null,
+      indicatorParams: o.indicatorParams || null,
+      pinnedTo: o.pinnedTo || null,
+    })))
   }
+
+  _structuralKey(panel) {
+    return panel.overlays
+      .filter(o => o.symbol && o.mode !== "indicator")
+      .map(o => `${o.id}:${o.symbol}:${o.chartType}`)
+      .join("|")
+  }
+
 
   _panelLegendHTML(panel) {
     const timeframe = panel.timeframe || "1m"
@@ -249,6 +278,7 @@ export default class PanelRenderer {
           data-controller="chart"
           data-chart-timeframe-value="${panel.timeframe}"
           data-chart-overlays-value='${overlaysJson.replace(/'/g, "&#39;")}'
+          data-chart-structural-key="${this._structuralKey(panel)}"
           class="absolute inset-0"
         ></div>
         ${panelLegend}

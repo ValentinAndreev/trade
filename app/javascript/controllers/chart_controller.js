@@ -80,6 +80,10 @@ export default class extends Controller {
 
   // --- Public API for tabs_controller ---
 
+  hasOverlay(id) {
+    return this.overlayMap.has(id)
+  }
+
   addOverlay(config) {
     if (!this.chart) this._initChart()
     if (config.mode === "indicator") {
@@ -100,10 +104,9 @@ export default class extends Controller {
     if (!ov) return
     ov.bfxFeed?.disconnect()
     ov.cableFeed?.disconnect()
-    if (ov.indicatorSeries) {
-      this.indicators.removeSeriesFor(ov)
-    } else if (ov.series) {
-      this.chart.removeSeries(ov.series)
+    if (ov.indicatorSeries) this.indicators.removeSeriesFor(ov)
+    if (ov.series) {
+      try { this.chart.removeSeries(ov.series) } catch {}
     }
     this.overlayMap.delete(id)
     if (this.selectedOverlayId === id) this.selectedOverlayId = null

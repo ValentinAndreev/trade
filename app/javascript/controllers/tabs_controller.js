@@ -368,17 +368,24 @@ export default class extends Controller {
       this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
       indicatorChanged = true
 
-      if (!timeframeChanged && !symbolChanged) {
-        const chartCtrl = this._chartCtrlForPanel(panel.id)
-        if (chartCtrl) chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo, source)
+      const chartCtrl = this._chartCtrlForPanel(panel.id)
+      if (chartCtrl) {
+        if (chartCtrl.hasOverlay(overlay.id)) {
+          if (!timeframeChanged && !symbolChanged) {
+            chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo, source)
+          }
+        } else {
+          chartCtrl.addOverlay(overlay)
+        }
       }
     } else {
-      if (timeframeChanged || !connectionMonitor.isOnline) {
-        if (!connectionMonitor.requireOnline("change symbol/timeframe")) return
-      }
       const symbolEl = this.sidebarTarget.querySelector("[data-field='symbol']:not(.hidden)")
       const symbol = symbolEl?.value?.trim().toUpperCase()
-      if (symbol) {
+      const willChangeSymbol = symbol && symbol !== overlay.symbol
+
+      if ((timeframeChanged || willChangeSymbol) && !connectionMonitor.requireOnline("change symbol/timeframe")) return
+
+      if (willChangeSymbol) {
         symbolChanged = this.store.updateOverlaySymbol(overlay.id, symbol)
       }
     }
@@ -478,7 +485,13 @@ export default class extends Controller {
 
     const panel = this.store.selectedPanel
     const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-    if (chartCtrl) chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo, source)
+    if (chartCtrl) {
+      if (chartCtrl.hasOverlay(overlay.id)) {
+        chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo, source)
+      } else {
+        chartCtrl.addOverlay(overlay)
+      }
+    }
     this.render()
   }
 
