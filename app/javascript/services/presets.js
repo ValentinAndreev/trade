@@ -1,14 +1,7 @@
 import { loadTabs, saveTabs, loadActiveTabId, saveActiveTabId } from "../tabs/persistence"
+import { jsonHeaders } from "../utils/api_helpers"
 
 const ACTIVE_PRESET_KEY = "active-preset"
-
-function csrf() {
-  return document.querySelector("meta[name='csrf-token']")?.content || ""
-}
-
-function headers() {
-  return { "Content-Type": "application/json", "X-CSRF-Token": csrf() }
-}
 
 export function getActivePreset() {
   try {
@@ -25,13 +18,13 @@ export function setActivePreset(preset) {
 }
 
 export async function listPresets() {
-  const resp = await fetch("/api/presets", { headers: headers() })
+  const resp = await fetch("/api/presets", { headers: jsonHeaders() })
   if (!resp.ok) return []
   return resp.json()
 }
 
 export async function loadPreset(id) {
-  const resp = await fetch(`/api/presets/${id}`, { headers: headers() })
+  const resp = await fetch(`/api/presets/${id}`, { headers: jsonHeaders() })
   if (!resp.ok) throw new Error("Failed to load preset")
   return resp.json()
 }
@@ -41,7 +34,7 @@ export async function savePreset(id, name, payload, isDefault = false) {
   const url = id ? `/api/presets/${id}` : "/api/presets"
   const resp = await fetch(url, {
     method,
-    headers: headers(),
+    headers: jsonHeaders(),
     body: JSON.stringify({ name, payload, is_default: isDefault }),
   })
   const data = await resp.json()
@@ -50,7 +43,7 @@ export async function savePreset(id, name, payload, isDefault = false) {
 }
 
 export async function deletePreset(id) {
-  await fetch(`/api/presets/${id}`, { method: "DELETE", headers: headers() })
+  await fetch(`/api/presets/${id}`, { method: "DELETE", headers: jsonHeaders() })
   const active = getActivePreset()
   if (active && active.id === id) setActivePreset(null)
 }
@@ -62,7 +55,7 @@ export async function resetState() {
   setActivePreset(null)
 
   try {
-    await fetch("/api/presets/reset_state", { method: "POST", headers: headers() })
+    await fetch("/api/presets/reset_state", { method: "POST", headers: jsonHeaders() })
   } catch { /* offline */ }
 }
 
@@ -74,7 +67,7 @@ export async function collectState() {
   let dashboardSymbols = null
   let marketsSymbols = null
   try {
-    const resp = await fetch("/api/presets/state", { headers: headers() })
+    const resp = await fetch("/api/presets/state", { headers: jsonHeaders() })
     if (resp.ok) {
       const serverState = await resp.json()
       dashboardSymbols = serverState.dashboardSymbols
@@ -90,13 +83,12 @@ export async function applyState(payload) {
 
   if (payload.tabs) saveTabs(payload.tabs)
   if (payload.activeTabId) saveActiveTabId(payload.activeTabId)
-  if (payload.navPage) localStorage.setItem("nav-active-page", payload.navPage)
 
   if (payload.dashboardSymbols || payload.marketsSymbols) {
     try {
       await fetch("/api/presets/apply_state", {
         method: "POST",
-        headers: headers(),
+        headers: jsonHeaders(),
         body: JSON.stringify({
           dashboardSymbols: payload.dashboardSymbols,
           marketsSymbols: payload.marketsSymbols,

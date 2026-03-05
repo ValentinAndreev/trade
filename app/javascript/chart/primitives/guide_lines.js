@@ -1,11 +1,10 @@
-// Horizontal and Vertical guide line primitives
-// Uses lightweight-charts ISeriesPrimitive API (v5.x)
+import { DEFAULT_LINE_COLOR } from "../../config/constants"
 
 function createLineRenderer(drawLine) {
   return class {
     constructor() {
       this._coord = null
-      this._color = "#2196f3"
+      this._color = DEFAULT_LINE_COLOR
       this._width = 1
     }
 
@@ -56,7 +55,7 @@ function createLinePrimitive({ valueKey, getCoord, drawLine }) {
   return class {
     constructor(value, options = {}) {
       this[valueKey] = value
-      this._color = options.color || "#2196f3"
+      this._color = options.color || DEFAULT_LINE_COLOR
       this._width = options.width || 1
       this._chart = null
       this._series = null

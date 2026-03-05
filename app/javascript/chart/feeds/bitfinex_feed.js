@@ -1,4 +1,5 @@
-import connectionMonitor from "../services/connection_monitor"
+import connectionMonitor from "../../services/connection_monitor"
+import { RECONNECT_DELAY_MS } from "../../config/constants"
 
 function bfxTimeframe(tf) {
   return tf.replace(/([dw])$/i, (ch) => ch.toUpperCase())
@@ -18,6 +19,7 @@ export default class BitfinexFeed {
     this.reconnect = true
     window.addEventListener("connection:change", this._onConnectionChange)
 
+    // Bitfinex is a public WebSocket — only needs internet, not our backend
     if (!connectionMonitor.internetOnline) return
 
     this._openSocket()
@@ -51,7 +53,7 @@ export default class BitfinexFeed {
 
     ws.onclose = () => {
       if (this.reconnect && connectionMonitor.internetOnline) {
-        setTimeout(() => this._openSocket(), 3000)
+        setTimeout(() => this._openSocket(), RECONNECT_DELAY_MS)
       }
     }
     ws.onerror = () => ws.close()

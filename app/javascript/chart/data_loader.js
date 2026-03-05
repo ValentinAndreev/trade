@@ -1,4 +1,5 @@
 import { apiFetch } from "../services/api_fetch"
+import { HISTORY_LOAD_LIMIT } from "../config/constants"
 
 export default class DataLoader {
   constructor(baseUrl) {
@@ -28,7 +29,7 @@ export default class DataLoader {
       const endTime = new Date(this.oldestTime * 1000).toISOString()
       const url = new URL(this.baseUrl, window.location.origin)
       url.searchParams.set("end_time", endTime)
-      url.searchParams.set("limit", "500")
+      url.searchParams.set("limit", String(HISTORY_LOAD_LIMIT))
 
       const response = await apiFetch(url, {}, { silent: true })
       if (!response) return null

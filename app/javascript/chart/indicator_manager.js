@@ -1,8 +1,9 @@
 import { LineSeries, HistogramSeries } from "lightweight-charts"
 import IndicatorLoader from "./indicator_loader"
-import { OVERLAY_COLORS } from "./theme"
-import { INDICATOR_META } from "./indicators"
+import { OVERLAY_COLORS } from "../config/theme"
+import { INDICATOR_META } from "../config/indicators"
 import { indicatorFieldColors } from "./series_factory"
+import { RECOMPUTE_DEBOUNCE_MS } from "../config/constants"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import connectionMonitor from "../services/connection_monitor"
 
@@ -56,6 +57,8 @@ export default class IndicatorManager {
       const sourceData = this._resolveSourceData(ov)
       const data = await this._compute(ov, sourceData)
       if (!data || data.length === 0) { this._restorePriceIfEmpty(ov); return }
+
+      this.removeSeriesFor(ov)
 
       const fieldColors = indicatorFieldColors(ov.colors, meta.fields.length, ov.opacity)
       ov.indicatorSeries = meta.fields.map((field, i) => {
@@ -152,7 +155,7 @@ export default class IndicatorManager {
 
   removeSeriesFor(ov) {
     if (ov.indicatorSeries) {
-      ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch {} })
+      ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch (e) { console.warn("[indicator] cleanup:", e) } })
       ov.indicatorSeries = []
     }
   }
@@ -164,7 +167,7 @@ export default class IndicatorManager {
     this._recomputeTimers.set(id, setTimeout(() => {
       this._recomputeTimers.delete(id)
       this._recompute(ov)
-    }, 500))
+    }, RECOMPUTE_DEBOUNCE_MS))
   }
 
   async _recompute(ov) {

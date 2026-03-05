@@ -1,3 +1,5 @@
+import { csrfToken, jsonHeaders } from "../utils/api_helpers"
+
 const AUTH_EVENT = "auth:change"
 
 class AuthService {
@@ -25,7 +27,7 @@ class AuthService {
   async login(username, password) {
     const resp = await fetch("/api/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": this._csrf() },
+      headers: jsonHeaders(),
       body: JSON.stringify({ username, password }),
     })
     const data = await resp.json()
@@ -38,7 +40,7 @@ class AuthService {
   async register(username, password) {
     const resp = await fetch("/api/registration", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": this._csrf() },
+      headers: jsonHeaders(),
       body: JSON.stringify({ username, password }),
     })
     const data = await resp.json()
@@ -51,14 +53,10 @@ class AuthService {
   async logout() {
     await fetch("/api/session", {
       method: "DELETE",
-      headers: { "X-CSRF-Token": this._csrf() },
+      headers: { "X-CSRF-Token": csrfToken() },
     })
     this.user = null
     this._emit()
-  }
-
-  _csrf() {
-    return document.querySelector("meta[name='csrf-token']")?.content || ""
   }
 
   _emit() {

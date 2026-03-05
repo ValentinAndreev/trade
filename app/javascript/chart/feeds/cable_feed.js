@@ -1,5 +1,5 @@
 import { consumer } from "./cable_consumer"
-import connectionMonitor from "../services/connection_monitor"
+import connectionMonitor from "../../services/connection_monitor"
 
 export default class CableFeed {
   constructor(symbol, timeframe, onCandle) {
@@ -15,6 +15,7 @@ export default class CableFeed {
     this._active = true
     window.addEventListener("connection:change", this._onConnectionChange)
 
+    // Cable requires our backend (Action Cable server)
     if (!connectionMonitor.backendOnline) return
 
     this._subscribe()

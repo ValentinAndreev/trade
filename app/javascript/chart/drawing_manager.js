@@ -1,8 +1,8 @@
-// Manages all drawing primitives on the chart (labels, lines, hlines, vlines)
-
-import { TrendLinePrimitive } from "./trend_line"
-import { HLinePrimitive, VLinePrimitive } from "./guide_lines"
-import { TextLabelsPrimitive } from "./text_labels"
+import { TrendLinePrimitive } from "./primitives/trend_line"
+import { HLinePrimitive, VLinePrimitive } from "./primitives/guide_lines"
+import { TextLabelsPrimitive } from "./primitives/text_labels"
+import { findFirstPriceSeries } from "./overlay_utils"
+import { DEFAULT_LINE_COLOR, DEFAULT_GUIDE_COLOR, DEFAULT_TREND_WIDTH, DEFAULT_VISIBLE_BARS } from "../config/constants"
 
 export default class DrawingManager {
   constructor(chart, overlayMap) {
@@ -37,7 +37,7 @@ export default class DrawingManager {
     let idx = candles.findIndex(c => c.time >= time)
     if (idx === -1) idx = candles.length - 1
     const range = this.chart.timeScale().getVisibleLogicalRange()
-    const visible = range ? range.to - range.from : 100
+    const visible = range ? range.to - range.from : DEFAULT_VISIBLE_BARS
     const from = Math.max(0, idx - Math.floor(visible / 2))
     this.chart.timeScale().setVisibleLogicalRange({ from, to: from + visible })
   }
@@ -45,7 +45,7 @@ export default class DrawingManager {
   _renderLabelMarkers() {
     if (this._labelMarkersPrimitives) {
       for (const entry of this._labelMarkersPrimitives) {
-        try { entry.seriesRef.detachPrimitive(entry.primitive) } catch {}
+        try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
       }
     }
     this._labelMarkersPrimitives = []
@@ -89,8 +89,8 @@ export default class DrawingManager {
     const series = this._findVisibleSeriesForMarkers(line.overlayId)
     if (!series) return
     const primitive = new TrendLinePrimitive(line.p1, line.p2, {
-      color: line.color || "#2196f3",
-      width: line.width || 2,
+      color: line.color || DEFAULT_LINE_COLOR,
+      width: line.width || DEFAULT_TREND_WIDTH,
     })
     series.attachPrimitive(primitive)
     this._linePrimitives.push({ id: line.id, primitive, seriesRef: series })
@@ -98,7 +98,7 @@ export default class DrawingManager {
 
   _detachAllLinePrimitives() {
     for (const entry of this._linePrimitives) {
-      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch {}
+      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
     }
     this._linePrimitives = []
   }
@@ -118,7 +118,7 @@ export default class DrawingManager {
     const series = this._findVisibleSeriesForMarkers(hl.overlayId)
     if (!series) return
     const primitive = new HLinePrimitive(hl.price, {
-      color: hl.color || "#ff9800",
+      color: hl.color || DEFAULT_GUIDE_COLOR,
       width: hl.width || 1,
     })
     series.attachPrimitive(primitive)
@@ -127,7 +127,7 @@ export default class DrawingManager {
 
   _detachAllHLinePrimitives() {
     for (const entry of this._hlinePrimitives) {
-      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch {}
+      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
     }
     this._hlinePrimitives = []
   }
@@ -147,7 +147,7 @@ export default class DrawingManager {
     const series = this._findVisibleSeriesForMarkers(vl.overlayId) || this._findFirstPriceSeries()
     if (!series) return
     const primitive = new VLinePrimitive(vl.time, {
-      color: vl.color || "#ff9800",
+      color: vl.color || DEFAULT_GUIDE_COLOR,
       width: vl.width || 1,
     })
     series.attachPrimitive(primitive)
@@ -156,7 +156,7 @@ export default class DrawingManager {
 
   _detachAllVLinePrimitives() {
     for (const entry of this._vlinePrimitives) {
-      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch {}
+      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
     }
     this._vlinePrimitives = []
   }
@@ -171,10 +171,7 @@ export default class DrawingManager {
   }
 
   _findFirstPriceSeries() {
-    for (const [, ov] of this.overlayMap) {
-      if (ov.mode !== "indicator" && ov.series && ov.visible) return ov.series
-    }
-    return null
+    return findFirstPriceSeries(this.overlayMap)
   }
 
   // --- Re-render on visibility change ---
@@ -200,7 +197,7 @@ export default class DrawingManager {
     this._detachAllVLinePrimitives()
     if (this._labelMarkersPrimitives) {
       for (const entry of this._labelMarkersPrimitives) {
-        try { entry.seriesRef.detachPrimitive(entry.primitive) } catch {}
+        try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
       }
     }
     this._labelMarkersPrimitives = []

@@ -1,6 +1,6 @@
 // Shared color utilities
 
-import { OVERLAY_COLORS } from "../chart/theme"
+import { OVERLAY_COLORS } from "../config/theme"
 
 export function withAlpha(color, alpha = 1) {
   const a = Math.max(0, Math.min(1, alpha))

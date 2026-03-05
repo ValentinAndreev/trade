@@ -1,11 +1,12 @@
-import { OVERLAY_COLORS } from "../chart/theme"
-import { INDICATOR_META } from "../chart/indicators"
 import { formatPrice, formatDateTime } from "../utils/format"
 import { escapeHTML } from "../utils/dom"
-import { drawingListHTML } from "./drawing_list_renderer"
-
-const INDICATOR_FILTERS = ["all", "client", "server"]
-const INDICATOR_FILTER_LABELS = { all: "All", client: "\u26A1 Client", server: "\uD83C\uDF10 Server" }
+import { drawingListHTML } from "../templates/drawing_templates"
+import { DEFAULT_LINE_COLOR, DEFAULT_GUIDE_COLOR, DEFAULT_LABEL_COLOR } from "../config/constants"
+import {
+  collapseBtnHTML, modeBtnHTML, toggleBtnHTML, opacitySliderHTML,
+  chartTypeOptsHTML, colorSchemeDropdownHTML, comboHTML,
+  overlayItemHTML, indicatorSettingsHTML,
+} from "../templates/sidebar_templates"
 
 const LINE_COLOR_INDICATOR = (item, color, width) =>
   `<span class="block rounded-sm border border-black/20" style="background:${escapeHTML(color)};width:${width * 4}px;height:${width * 2}px"></span>`
@@ -13,7 +14,7 @@ const LINE_COLOR_INDICATOR = (item, color, width) =>
 export default class SidebarRenderer {
   constructor(sidebarEl, controllerName) {
     this.sidebarEl = sidebarEl
-    this.controllerName = controllerName
+    this.ctrl = controllerName
     this.indicatorFilter = "all"
     this.chartsCollapsed = false
     this.labelsCollapsed = false
@@ -31,10 +32,75 @@ export default class SidebarRenderer {
       return
     }
 
-    const currentTimeframe = panel.timeframe || "1m"
     const selectedOverlay = panel.overlays.find(o => o.id === selectedOverlayId) || panel.overlays[0]
-    const currentSymbol = selectedOverlay?.symbol || ""
     const mode = selectedOverlay?.mode || "price"
+
+    this.sidebarEl.innerHTML = `
+      <div class="flex flex-col gap-4 text-base">
+        ${this._panelHeaderHTML(panel.timeframe || "1m", timeframes)}
+
+        <hr class="border-[#3a3a4e]">
+
+        ${this._chartsSectionHTML(panel, selectedOverlay, symbols, mode)}
+
+        <hr class="border-[#3a3a4e]">
+
+        ${this._volumeProfileHTML(vpEnabled, vpOpacity)}
+
+        <hr class="border-[#3a3a4e]">
+
+        ${this._drawingSectionHTML(panel, labelModeActive, lineModeActive, hlModeActive, vlModeActive)}
+      </div>
+    `
+  }
+
+  _panelHeaderHTML(currentTimeframe, timeframes) {
+    return `
+      <div class="flex items-center justify-between">
+        <span class="text-sm text-gray-500 uppercase tracking-wide">Panel Settings</span>
+        <button
+          data-action="click->${this.ctrl}#addPanel"
+          class="text-sm text-gray-400 hover:text-white cursor-pointer"
+          title="Add panel below"
+        >+ Panel</button>
+      </div>
+
+      <label class="flex flex-col gap-1 text-sm text-gray-400">
+        Timeframe
+        ${comboHTML(this.ctrl, "timeframe", timeframes, currentTimeframe, "w-full")}
+      </label>
+    `
+  }
+
+  _chartsSectionHTML(panel, selectedOverlay, symbols, mode) {
+    const overlayList = panel.overlays
+      .map(o => overlayItemHTML(this.ctrl, o, o.id === selectedOverlay?.id, panel))
+      .join("")
+
+    return `
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-1.5">
+          ${collapseBtnHTML(this.ctrl, "toggleChartsSection", this.chartsCollapsed)}
+          <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
+                data-action="click->${this.ctrl}#toggleChartsSection">Charts</span>
+        </div>
+        <button
+          data-action="click->${this.ctrl}#addOverlay"
+          class="text-sm text-gray-400 hover:text-white cursor-pointer"
+          title="Add chart"
+        >+ Chart</button>
+      </div>
+
+      ${this.chartsCollapsed ? "" : `
+        <div class="flex flex-col gap-0.5">${overlayList}</div>
+        <hr class="border-[#3a3a4e]">
+        ${this._selectedChartHTML(panel, selectedOverlay, symbols, mode)}
+      `}
+    `
+  }
+
+  _selectedChartHTML(panel, selectedOverlay, symbols, mode) {
+    const currentSymbol = selectedOverlay?.symbol || ""
     const chartType = selectedOverlay?.chartType || "Candlestick"
     const colorScheme = selectedOverlay?.colorScheme ?? 0
     const opacity = typeof selectedOverlay?.opacity === "number" ? selectedOverlay.opacity : 1
@@ -43,257 +109,114 @@ export default class SidebarRenderer {
     const priceActive = mode === "price"
     const volumeActive = mode === "volume"
     const indicatorActive = mode === "indicator"
-    const activeBtnClass = "text-white bg-blue-600"
-    const inactiveBtnClass = "text-gray-400 bg-[#2a2a3e] hover:bg-[#3a3a4e]"
-
     const indicatorType = selectedOverlay?.indicatorType || "sma"
     const indicatorParams = selectedOverlay?.indicatorParams || {}
 
     const chartTypeOptions = priceActive
-      ? this._chartTypeOpts([
+      ? chartTypeOptsHTML([
           ["Candlestick", "Candles"], ["Bar", "Bars"], ["Line", "Line"],
           ["Area", "Area"], ["Baseline", "Baseline"],
         ], chartType)
-      : this._chartTypeOpts([
+      : chartTypeOptsHTML([
           ["Histogram", "Bars"], ["Line", "Line"], ["Area", "Area"],
         ], chartType)
-    const colorSchemeDropdown = this._colorSchemeDropdown(colorScheme)
 
-    // Overlay list
-    const overlayList = panel.overlays.map(o => {
-      const isSelected = o.id === (selectedOverlay?.id)
-      let label, modeLabel
-      if (o.mode === "indicator") {
-        const sourceOverlay = o.pinnedTo ? panel.overlays.find(s => s.id === o.pinnedTo) : null
-        const sourceSymbol = sourceOverlay ? sourceOverlay.symbol : o.symbol
-        const sourceMode = sourceOverlay ? (sourceOverlay.mode === "volume" ? "Vol" : "Price") : "Price"
-        label = `${sourceSymbol || o.symbol || "Empty"} ${sourceMode}`
-        const paramsStr = o.indicatorParams
-          ? Object.values(o.indicatorParams).join(", ")
-          : ""
-        const srcIcon = o.indicatorSource === "server" ? "\uD83C\uDF10" : "\u26A1"
-        modeLabel = srcIcon + " " + (o.indicatorType || "ind").toUpperCase() + (paramsStr ? ` ${paramsStr}` : "")
-      } else {
-        label = o.symbol || "Empty"
-        modeLabel = !o.symbol ? "" : (o.mode === "volume" ? "Volume" : "Price")
-      }
-      const visibilityClass = o.visible === false ? "bg-gray-600" : "bg-emerald-400"
-      const visibilityTitle = o.visible === false ? "Hidden" : "Visible"
-      return `
-        <div class="flex items-center gap-2 px-2.5 py-1.5 rounded cursor-pointer text-sm
-                    ${isSelected ? "bg-blue-600/30 text-white" : "text-gray-400 hover:bg-[#2a2a3e]"}"
-             data-overlay-id="${o.id}"
-             data-action="click->${this.controllerName}#selectOverlay">
-          <div class="flex-1 min-w-0 flex items-center gap-1.5">
-            <span class="truncate">${label}</span>
-            ${modeLabel ? `<span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded border text-xs leading-none
-                         ${isSelected ? "text-blue-200 border-blue-300/40 bg-blue-500/10" : "text-gray-400 border-gray-500/40 bg-[#2a2a3e]"}">${modeLabel}</span>` : ""}
-          </div>
-          <button
-            type="button"
-            data-action="click->${this.controllerName}#toggleOverlayVisibility"
-            data-overlay-id="${o.id}"
-            data-toggle-overlay-visibility
-            class="inline-flex w-6 h-6 items-center justify-center rounded shrink-0 hover:bg-[#2a2a3e] cursor-pointer"
-            title="Toggle visibility"
-            aria-label="Toggle visibility"
-          >
-            <span class="w-2.5 h-2.5 rounded-full ${visibilityClass}" title="${visibilityTitle}" aria-hidden="true"></span>
-          </button>
-          ${panel.overlays.length > 1 ? `
-            <span data-action="click->${this.controllerName}#removeOverlay"
-                  data-remove-overlay="${o.id}"
-                  title="Remove chart"
-                  class="inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none">&times;</span>
-          ` : ""}
-        </div>
-      `
-    }).join("")
+    return `
+      <div class="text-sm text-gray-500 uppercase tracking-wide">Selected Chart</div>
 
-    this.sidebarEl.innerHTML = `
-      <div class="flex flex-col gap-4 text-base">
-        <div class="flex items-center justify-between">
-          <span class="text-sm text-gray-500 uppercase tracking-wide">Panel Settings</span>
-          <button
-            data-action="click->${this.controllerName}#addPanel"
-            class="text-sm text-gray-400 hover:text-white cursor-pointer"
-            title="Add panel below"
-          >+ Panel</button>
-        </div>
-
+      ${!indicatorActive ? `
         <label class="flex flex-col gap-1 text-sm text-gray-400">
-          Timeframe
-          ${this._comboHTML("timeframe", timeframes, currentTimeframe, "w-full")}
+          Symbol
+          ${comboHTML(this.ctrl, "symbol", symbols, currentSymbol, "w-full")}
         </label>
+      ` : ""}
 
-        <hr class="border-[#3a3a4e]">
-
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-1.5">
-            <button
-              data-action="click->${this.controllerName}#toggleChartsSection"
-              class="text-blue-400 hover:text-blue-300 text-base cursor-pointer select-none w-6 h-6 flex items-center justify-center"
-              title="${this.chartsCollapsed ? "Expand" : "Collapse"}"
-            >${this.chartsCollapsed ? "&#9656;" : "&#9662;"}</button>
-            <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
-                  data-action="click->${this.controllerName}#toggleChartsSection">Charts</span>
-          </div>
-          <button
-            data-action="click->${this.controllerName}#addOverlay"
-            class="text-sm text-gray-400 hover:text-white cursor-pointer"
-            title="Add chart"
-          >+ Chart</button>
-        </div>
-
-        ${this.chartsCollapsed ? "" : `
-          <div class="flex flex-col gap-0.5">${overlayList}</div>
-
-          <hr class="border-[#3a3a4e]">
-
-          <div class="text-sm text-gray-500 uppercase tracking-wide">Selected Chart</div>
-
-          ${!indicatorActive ? `
-            <label class="flex flex-col gap-1 text-sm text-gray-400">
-              Symbol
-              ${this._comboHTML("symbol", symbols, currentSymbol, "w-full")}
-            </label>
-          ` : ""}
-
-          <div class="flex flex-col gap-1 text-sm text-gray-400">
-            <span>Color scheme</span>
-            ${colorSchemeDropdown}
-          </div>
-
-          <label class="flex flex-col gap-1 text-sm text-gray-400">
-            <span class="flex items-center justify-between">
-              <span>Opacity</span>
-              <span data-opacity-value class="text-gray-400">${opacityPercent}%</span>
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value="${opacityPercent}"
-              data-action="input->${this.controllerName}#adjustOverlayOpacity change->${this.controllerName}#adjustOverlayOpacity"
-              class="w-full accent-blue-500 cursor-pointer"
-            >
-          </label>
-
-          <div class="flex gap-1">
-            <button
-              data-action="click->${this.controllerName}#setMode"
-              data-mode="price"
-              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${priceActive ? activeBtnClass : inactiveBtnClass}"
-            >Price</button>
-            <button
-              data-action="click->${this.controllerName}#setMode"
-              data-mode="volume"
-              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${volumeActive ? activeBtnClass : inactiveBtnClass}"
-            >Volume</button>
-            <button
-              data-action="click->${this.controllerName}#setMode"
-              data-mode="indicator"
-              class="flex-1 px-2 py-2 text-sm rounded cursor-pointer ${indicatorActive ? activeBtnClass : inactiveBtnClass}"
-            >Indicator</button>
-          </div>
-
-          ${indicatorActive ? this._indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) : `
-            <label class="flex flex-col gap-1 text-sm text-gray-400">
-              Chart type
-              <select
-                data-field="chartType"
-                data-action="change->${this.controllerName}#switchChartType"
-                class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-              >${chartTypeOptions}</select>
-            </label>
-          `}
-
-          <button
-            data-action="click->${this.controllerName}#applySettings"
-            class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
-          >Apply</button>
-        `}
-
-        <hr class="border-[#3a3a4e]">
-
-        <div class="flex items-center justify-between">
-          <span class="text-sm text-gray-500 uppercase tracking-wide">Volume Profile</span>
-          <button data-action="click->${this.controllerName}#toggleVolumeProfile"
-                  class="text-sm px-2 py-1 rounded cursor-pointer ${vpEnabled ? activeBtnClass : inactiveBtnClass}">
-            ${vpEnabled ? "On" : "Off"}
-          </button>
-        </div>
-
-        ${vpEnabled ? `
-          <label class="flex flex-col gap-1 text-sm text-gray-400">
-            <span class="flex items-center justify-between">
-              <span>VP Opacity</span>
-              <span data-vp-opacity-value class="text-gray-400">${Math.round((vpOpacity ?? 0.3) * 100)}%</span>
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value="${Math.round((vpOpacity ?? 0.3) * 100)}"
-              data-action="input->${this.controllerName}#adjustVpOpacity change->${this.controllerName}#adjustVpOpacity"
-              class="w-full accent-blue-500 cursor-pointer"
-            >
-          </label>
-        ` : ""}
-
-        <hr class="border-[#3a3a4e]">
-
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-1.5">
-            <button
-              data-action="click->${this.controllerName}#toggleLabelsSection"
-              class="text-blue-400 hover:text-blue-300 text-base cursor-pointer select-none w-6 h-6 flex items-center justify-center"
-              title="${this.labelsCollapsed ? "Expand" : "Collapse"}"
-            >${this.labelsCollapsed ? "&#9656;" : "&#9662;"}</button>
-            <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
-                  data-action="click->${this.controllerName}#toggleLabelsSection">Labels</span>
-          </div>
-          <span class="flex gap-1">
-            <button data-action="click->${this.controllerName}#toggleLabelMode"
-                    class="text-sm px-2 py-1 rounded cursor-pointer ${labelModeActive ? activeBtnClass : inactiveBtnClass}">
-              Text
-            </button>
-            <button data-action="click->${this.controllerName}#toggleLineMode"
-                    class="text-sm px-2 py-1 rounded cursor-pointer ${lineModeActive ? activeBtnClass : inactiveBtnClass}">
-              Line
-            </button>
-            <button data-action="click->${this.controllerName}#toggleHLineMode"
-                    class="text-sm px-2 py-1 rounded cursor-pointer ${hlModeActive ? activeBtnClass : inactiveBtnClass}">
-              HL
-            </button>
-            <button data-action="click->${this.controllerName}#toggleVLineMode"
-                    class="text-sm px-2 py-1 rounded cursor-pointer ${vlModeActive ? activeBtnClass : inactiveBtnClass}">
-              VL
-            </button>
-            <button data-action="click->${this.controllerName}#clearAllLabels"
-                    class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300"
-                    title="Clear all labels, lines, HL, VL on this panel">
-              Clear
-            </button>
-          </span>
-        </div>
-
-        ${this.labelsCollapsed ? "" : this._labelListHTML(panel.labels || [])}
-
-        ${this.labelsCollapsed ? "" : this._lineListHTML(panel.lines || [])}
-
-        ${this.labelsCollapsed ? "" : this._hlineListHTML(panel.hlines || [])}
-
-        ${this.labelsCollapsed ? "" : this._vlineListHTML(panel.vlines || [])}
+      <div class="flex flex-col gap-1 text-sm text-gray-400">
+        <span>Color scheme</span>
+        ${colorSchemeDropdownHTML(this.ctrl, colorScheme)}
       </div>
+
+      ${opacitySliderHTML(opacityPercent, `${this.ctrl}#adjustOverlayOpacity`, "Opacity", "data-opacity-value")}
+
+      <div class="flex gap-1">
+        ${modeBtnHTML(this.ctrl, "price", "Price", priceActive)}
+        ${modeBtnHTML(this.ctrl, "volume", "Volume", volumeActive)}
+        ${modeBtnHTML(this.ctrl, "indicator", "Indicator", indicatorActive)}
+      </div>
+
+      ${indicatorActive ? indicatorSettingsHTML(this.ctrl, indicatorType, indicatorParams, selectedOverlay, panel, this.indicators, this.indicatorFilter) : `
+        <label class="flex flex-col gap-1 text-sm text-gray-400">
+          Chart type
+          <select
+            data-field="chartType"
+            data-action="change->${this.ctrl}#switchChartType"
+            class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
+          >${chartTypeOptions}</select>
+        </label>
+      `}
+
+      <button
+        data-action="click->${this.ctrl}#applySettings"
+        class="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer"
+      >Apply</button>
+    `
+  }
+
+  _volumeProfileHTML(vpEnabled, vpOpacity) {
+    return `
+      <div class="flex items-center justify-between">
+        <span class="text-sm text-gray-500 uppercase tracking-wide">Volume Profile</span>
+        ${toggleBtnHTML(this.ctrl, "toggleVolumeProfile", vpEnabled ? "On" : "Off", vpEnabled)}
+      </div>
+
+      ${vpEnabled ? opacitySliderHTML(
+        Math.round((vpOpacity ?? 0.3) * 100),
+        `${this.ctrl}#adjustVpOpacity`,
+        "VP Opacity",
+        "data-vp-opacity-value"
+      ) : ""}
+    `
+  }
+
+  _drawingSectionHTML(panel, labelModeActive, lineModeActive, hlModeActive, vlModeActive) {
+    const toolButtons = [
+      ["toggleLabelMode", "Text", labelModeActive],
+      ["toggleLineMode", "Line", lineModeActive],
+      ["toggleHLineMode", "HL", hlModeActive],
+      ["toggleVLineMode", "VL", vlModeActive],
+    ].map(([action, label, isActive]) =>
+      toggleBtnHTML(this.ctrl, action, label, isActive)
+    ).join("")
+
+    return `
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-1.5">
+          ${collapseBtnHTML(this.ctrl, "toggleLabelsSection", this.labelsCollapsed)}
+          <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
+                data-action="click->${this.ctrl}#toggleLabelsSection">Labels</span>
+        </div>
+        <span class="flex gap-1">
+          ${toolButtons}
+          <button data-action="click->${this.ctrl}#clearAllLabels"
+                  class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300"
+                  title="Clear all labels, lines, HL, VL on this panel">
+            Clear
+          </button>
+        </span>
+      </div>
+
+      ${this.labelsCollapsed ? "" : [
+        this._labelListHTML(panel.labels || []),
+        this._lineListHTML(panel.lines || []),
+        this._hlineListHTML(panel.hlines || []),
+        this._vlineListHTML(panel.vlines || []),
+      ].join("")}
     `
   }
 
   _labelListHTML(labels) {
     return drawingListHTML({
-      items: labels, kind: "labels", controllerName: this.controllerName,
+      items: labels, kind: "labels", controllerName: this.ctrl,
       collapsed: this.textCollapsed, toggleAction: "toggleTextSublist",
       clearAction: "clearAllText", headerLabel: "Text",
       nameFn: (l) => l.text,
@@ -305,14 +228,14 @@ export default class SidebarRenderer {
         return [symbol, modeStr, priceStr, tf].filter(Boolean).join(" ")
       },
       timeFn: (l) => formatDateTime(l.time),
-      defaultColor: "#ffffff", defaultWidth: 1,
+      defaultColor: DEFAULT_LABEL_COLOR, defaultWidth: 1,
       hasWidthPicker: false, hasFontSizePicker: true,
     })
   }
 
   _lineListHTML(lines) {
     return drawingListHTML({
-      items: lines, kind: "lines", controllerName: this.controllerName,
+      items: lines, kind: "lines", controllerName: this.ctrl,
       collapsed: this.trendLinesCollapsed, toggleAction: "toggleTrendLinesSublist",
       clearAction: "clearAllLines", headerLabel: "Lines", mt: true,
       nameFn: (l) => l.name || l.id,
@@ -325,7 +248,7 @@ export default class SidebarRenderer {
         return [symbol, modeStr, `${p1Str} \u2192 ${p2Str}`, tf].filter(Boolean).join(" ")
       },
       timeFn: (l) => `${formatDateTime(l.p1?.time)} \u2014 ${formatDateTime(l.p2?.time)}`,
-      defaultColor: "#2196f3", defaultWidth: 2,
+      defaultColor: DEFAULT_LINE_COLOR, defaultWidth: 2,
       hasWidthPicker: true, hasFontSizePicker: false,
       colorIndicatorFn: LINE_COLOR_INDICATOR,
     })
@@ -333,7 +256,7 @@ export default class SidebarRenderer {
 
   _hlineListHTML(hlines) {
     return drawingListHTML({
-      items: hlines, kind: "hlines", controllerName: this.controllerName,
+      items: hlines, kind: "hlines", controllerName: this.ctrl,
       collapsed: this.hlinesCollapsed, toggleAction: "toggleHLinesSublist",
       clearAction: "clearAllHLines", headerLabel: "Horizontal", mt: true,
       hasSelect: false,
@@ -345,7 +268,7 @@ export default class SidebarRenderer {
         const tf = hl.timeframe || ""
         return [symbol, modeStr, priceStr, tf].filter(Boolean).join(" ")
       },
-      defaultColor: "#ff9800", defaultWidth: 1,
+      defaultColor: DEFAULT_GUIDE_COLOR, defaultWidth: 1,
       hasWidthPicker: true, hasFontSizePicker: false,
       colorIndicatorFn: LINE_COLOR_INDICATOR,
     })
@@ -353,7 +276,7 @@ export default class SidebarRenderer {
 
   _vlineListHTML(vlines) {
     return drawingListHTML({
-      items: vlines, kind: "vlines", controllerName: this.controllerName,
+      items: vlines, kind: "vlines", controllerName: this.ctrl,
       collapsed: this.vlinesCollapsed, toggleAction: "toggleVLinesSublist",
       clearAction: "clearAllVLines", headerLabel: "Vertical", mt: true,
       nameFn: (vl) => vl.name || vl.id,
@@ -361,214 +284,9 @@ export default class SidebarRenderer {
         const tf = vl.timeframe || ""
         return [formatDateTime(vl.time), tf].filter(Boolean).join(" ")
       },
-      defaultColor: "#ff9800", defaultWidth: 1,
+      defaultColor: DEFAULT_GUIDE_COLOR, defaultWidth: 1,
       hasWidthPicker: true, hasFontSizePicker: false,
       colorIndicatorFn: LINE_COLOR_INDICATOR,
     })
   }
-
-  _indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) {
-    const indicators = this.indicators || []
-    const meta = INDICATOR_META[indicatorType]
-    const currentSource = selectedOverlay?.indicatorSource || (meta?.lib ? "client" : "server")
-
-    const serverKeys = new Set(indicators.map(i => String(i.key)))
-    const clientKeys = new Set(
-      Object.keys(INDICATOR_META).filter(k => !!INDICATOR_META[k]?.lib)
-    )
-    const allEntries = []
-    const seen = new Set()
-
-    for (const key of Object.keys(INDICATOR_META)) {
-      const hasClient = clientKeys.has(key)
-      const hasServer = serverKeys.has(key)
-      if (hasClient && hasServer) {
-        allEntries.push({ key, source: "client" })
-        allEntries.push({ key, source: "server" })
-      } else if (hasClient) {
-        allEntries.push({ key, source: "client" })
-      } else if (hasServer) {
-        allEntries.push({ key, source: "server" })
-      } else {
-        allEntries.push({ key, source: "server" })
-      }
-      seen.add(key)
-    }
-    for (const key of serverKeys) {
-      if (!seen.has(key)) allEntries.push({ key, source: "server" })
-    }
-
-    const filtered = allEntries.filter(({ source }) => {
-      if (this.indicatorFilter === "all") return true
-      return this.indicatorFilter === source
-    })
-
-    const indicatorOpts = filtered.map(({ key, source }) => {
-      const m = INDICATOR_META[key]
-      const label = m?.label || key.toUpperCase()
-      const icon = source === "client" ? "\u26A1" : "\uD83C\uDF10"
-      const val = `${key}|${source}`
-      const selected = key === indicatorType && source === currentSource
-      return `<option value="${val}"${selected ? " selected" : ""}>${icon} ${label}</option>`
-    }).join("")
-
-    const filterLabel = INDICATOR_FILTER_LABELS[this.indicatorFilter]
-
-    let paramInputs = ""
-    if (meta && meta.defaults) {
-      const params = { ...meta.defaults, ...indicatorParams }
-      paramInputs = Object.entries(meta.defaults).map(([key, defaultVal]) => {
-        const value = params[key] ?? defaultVal
-        const label = meta.paramLabels?.[key] || key
-        return `
-          <label class="flex flex-col gap-1 text-sm text-gray-400">
-            ${escapeHTML(label)}
-            <input
-              type="number"
-              data-indicator-param="${key}"
-              value="${value}"
-              data-action="keydown->${this.controllerName}#applyIndicatorOnEnter"
-              class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-            >
-          </label>
-        `
-      }).join("")
-    }
-
-    const pinnedTo = selectedOverlay?.pinnedTo || null
-    const requires = meta?.requires || "values"
-    const pinTargets = panel.overlays.filter(o => {
-      if (o.id === selectedOverlay?.id || !o.symbol) return false
-      if (o.mode === "indicator") return false
-      if (requires === "values") return true
-      return o.mode === "price"
-    })
-    const sourceOpts = pinTargets.map(o => {
-      const modeLabel = o.mode === "volume" ? "Vol" : (o.mode === "indicator" ? (o.indicatorType || "").toUpperCase() : "Price")
-      return `<option value="${o.id}"${o.id === pinnedTo ? " selected" : ""}>${escapeHTML(o.symbol)} ${modeLabel}</option>`
-    }).join("")
-
-    const sourceHTML = `
-      <label class="flex flex-col gap-1 text-sm text-gray-400">
-        Source
-        <select
-          data-field="pinnedTo"
-          data-action="change->${this.controllerName}#changePinnedTo"
-          class="px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-        >${pinTargets.length > 0 ? sourceOpts : '<option value="" disabled selected>No charts on panel</option>'}</select>
-      </label>
-    `
-
-    return `
-      <div class="flex flex-col gap-1 text-sm text-gray-400">
-        <span>Indicator</span>
-        <div class="flex gap-1 items-stretch">
-          <select
-            data-field="indicatorType"
-            data-action="change->${this.controllerName}#switchIndicatorType"
-            class="flex-1 min-w-0 px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-          >${indicatorOpts}</select>
-          <button
-            data-action="click->${this.controllerName}#cycleIndicatorFilter"
-            class="min-w-[5.5rem] px-2 py-2 text-xs text-gray-300 bg-[#2a2a3e] border border-[#3a3a4e] rounded hover:bg-[#3a3a4e] whitespace-nowrap text-center"
-            title="Filter: ${filterLabel}"
-          >${filterLabel}</button>
-        </div>
-      </div>
-      ${paramInputs}
-      ${sourceHTML}
-    `
-  }
-
-  _chartTypeOpts(pairs, selected) {
-    return pairs.map(([val, label]) =>
-      `<option value="${val}"${val === selected ? " selected" : ""}>${label}</option>`
-    ).join("")
-  }
-
-  _colorSchemeDropdown(selected) {
-    const selectedScheme = OVERLAY_COLORS[selected] || OVERLAY_COLORS[0]
-
-    const items = OVERLAY_COLORS.map((scheme, idx) => {
-      const active = idx === selected
-      return `
-        <button
-          type="button"
-          data-color-scheme="${idx}"
-          data-action="click->${this.controllerName}#switchColorScheme"
-          class="w-full flex items-center justify-between px-2 py-2 rounded text-sm cursor-pointer
-                 ${active ? "bg-blue-600/20 text-white" : "text-gray-300 hover:bg-[#2a2a3e]"}"
-        >
-          <span class="inline-flex items-center gap-1.5">
-            <span class="w-3 h-3 rounded-sm border border-black/20" style="background:${scheme.up}"></span>
-            <span class="text-xs uppercase tracking-wide">Up</span>
-          </span>
-          <span class="inline-flex items-center gap-1.5">
-            <span class="w-3 h-3 rounded-sm border border-black/20" style="background:${scheme.down}"></span>
-            <span class="text-xs uppercase tracking-wide">Down</span>
-          </span>
-        </button>
-      `
-    }).join("")
-
-    return `
-      <details class="relative">
-        <summary class="list-none flex items-center justify-between gap-2 px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded cursor-pointer select-none">
-          <span class="inline-flex items-center gap-2">
-            <span class="inline-flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-sm border border-black/20" style="background:${selectedScheme.up}"></span>
-              <span class="text-xs uppercase tracking-wide text-gray-300">Up</span>
-            </span>
-            <span class="inline-flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-sm border border-black/20" style="background:${selectedScheme.down}"></span>
-              <span class="text-xs uppercase tracking-wide text-gray-300">Down</span>
-            </span>
-          </span>
-          <span class="text-xs text-gray-400">▼</span>
-        </summary>
-        <div class="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-[#1a1a2e] border border-[#3a3a4e] rounded p-1">
-          ${items}
-        </div>
-      </details>
-    `
-  }
-
-  _comboHTML(field, list, current, width) {
-    const values = current && !list.includes(current) ? [current, ...list] : list
-    const opts = values.map(v => `<option value="${v}"${v === current ? " selected" : ""}>${v}</option>`).join("")
-    const inList = !current || list.includes(current)
-    const isTimeframe = field === "timeframe"
-    const selectTitle = isTimeframe
-      ? "Choose timeframe from list"
-      : "Choose symbol from list"
-    const inputTitle = isTimeframe
-      ? "Enter timeframe manually, for example: 1m, 5m, 1h, 1D"
-      : "Enter symbol manually, for example: BTCUSD"
-    const inputPlaceholder = isTimeframe ? "1m, 5m, 1h..." : "BTCUSD"
-    const toggleTitle = inList ? "Current mode: list selection" : "Current mode: manual input"
-    const toggleLabel = inList ? "List" : "Manual"
-    return `
-      <span data-combo class="flex items-center gap-1">
-        <select
-          data-field="${field}"
-          data-action="change->${this.controllerName}#applySettings"
-          title="${selectTitle}"
-          class="${inList ? "" : "hidden "}${width} px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-        >${opts}</select>
-        <input
-          data-field="${field}"
-          data-action="keydown->${this.controllerName}#applySettingsOnEnter"
-          value="${current}"
-          title="${inputTitle}"
-          placeholder="${inputPlaceholder}"
-          class="${inList ? "hidden " : ""}${width} px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-        >
-        <button
-          data-action="click->${this.controllerName}#toggleCustomInput"
-          class="min-w-[72px] px-3 py-2 text-sm font-medium text-blue-200 bg-[#23233d] border border-[#4a4a66] hover:bg-[#2f2f4d] hover:text-white rounded cursor-pointer shrink-0"
-          title="${toggleTitle}"
-        >${toggleLabel}</button>
-      </span>`
-  }
-
 }

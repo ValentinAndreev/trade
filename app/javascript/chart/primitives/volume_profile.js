@@ -1,12 +1,13 @@
 // Volume Profile Series Primitive — draws horizontal volume bars on the left side of the chart
 // Uses lightweight-charts ISeriesPrimitive API (v5.x)
 
-import { withAlpha } from "../utils/color"
+import { withAlpha } from "../../utils/color"
+import { VP_BASE_COLOR, VP_DEFAULT_BIN_PX, VP_BAR_WIDTH_RATIO } from "../../config/constants"
 
 class VolumeProfileRenderer {
   constructor() {
     this._rows = []    // [{ y, height, width }]
-    this._color = "rgba(41, 98, 255, 0.3)"
+    this._color = withAlpha(VP_BASE_COLOR, 0.3)
   }
 
   update(rows, color) {
@@ -48,10 +49,10 @@ class VolumeProfilePaneView {
     if (maxVolume === 0) { this._rows = []; return }
 
     const chartWidth = s._chart.timeScale().width()
-    const maxBarWidth = chartWidth * 0.25
+    const maxBarWidth = chartWidth * VP_BAR_WIDTH_RATIO
 
     // Compute pixel height from adjacent bins
-    let binPixelHeight = 4
+    let binPixelHeight = VP_DEFAULT_BIN_PX
     if (data.length >= 2) {
       const y0 = s._series.priceToCoordinate(data[0].price)
       const y1 = s._series.priceToCoordinate(data[1].price)
@@ -81,7 +82,7 @@ class VolumeProfilePaneView {
 export class VolumeProfilePrimitive {
   constructor(options = {}) {
     this._opacity = options.opacity ?? 0.3
-    this._baseColor = options.color || "#2962FF"
+    this._baseColor = options.color || VP_BASE_COLOR
     this._numRows = options.rows || 50
     this._color = withAlpha(this._baseColor, this._opacity)
     this._data = []    // [{ price, volume }]

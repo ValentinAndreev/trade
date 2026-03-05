@@ -1,13 +1,17 @@
 import { Controller } from "@hotwired/stimulus"
 import { createChart } from "lightweight-charts"
 
-import { CHART_THEME, OVERLAY_COLORS } from "../chart/theme"
+import { CHART_THEME, OVERLAY_COLORS } from "../config/theme"
 import DataLoader from "../chart/data_loader"
-import BitfinexFeed from "../chart/bitfinex_feed"
-import CableFeed from "../chart/cable_feed"
+import BitfinexFeed from "../chart/feeds/bitfinex_feed"
+import CableFeed from "../chart/feeds/cable_feed"
 import Scrollbar from "../chart/scrollbar"
-import { INDICATOR_META } from "../chart/indicators"
+import { INDICATOR_META } from "../config/indicators"
 import IndicatorManager from "../chart/indicator_manager"
+import {
+  CANDLE_LIMIT, LOAD_MORE_THRESHOLD,
+  DEFAULT_VISIBLE_BARS, CHART_SCALE_MARGIN,
+} from "../config/constants"
 import {
   createOverlaySeries, seriesStyleOverrides,
   toSeriesData, toUpdatePoint, indicatorFieldColors,
@@ -63,7 +67,7 @@ export default class extends Controller {
       ov.bfxFeed?.disconnect()
       ov.cableFeed?.disconnect()
       if (ov.indicatorSeries) {
-        ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch {} })
+        ov.indicatorSeries.forEach(s => { try { this.chart.removeSeries(s.series) } catch (e) { console.warn("[chart] cleanup:", e) } })
       }
     }
     if (this._scrollHandler) {
@@ -106,7 +110,7 @@ export default class extends Controller {
     ov.cableFeed?.disconnect()
     if (ov.indicatorSeries) this.indicators.removeSeriesFor(ov)
     if (ov.series) {
-      try { this.chart.removeSeries(ov.series) } catch {}
+      try { this.chart.removeSeries(ov.series) } catch (e) { console.warn("[chart] cleanup:", e) }
     }
     this.overlayMap.delete(id)
     if (this.selectedOverlayId === id) this.selectedOverlayId = null
@@ -244,7 +248,7 @@ export default class extends Controller {
       ...CHART_THEME, autoSize: true,
       timeScale: { timeVisible: true, secondsVisible: false },
       leftPriceScale: { visible: false },
-      rightPriceScale: { visible: true, scaleMargins: { top: 0.05, bottom: 0.05 } },
+      rightPriceScale: { visible: true, scaleMargins: { top: CHART_SCALE_MARGIN, bottom: CHART_SCALE_MARGIN } },
     })
 
     this.scrollbar = new Scrollbar(this.element, {
@@ -280,7 +284,7 @@ export default class extends Controller {
     const basePriceScaleId = `overlay-${config.id}`
 
     const series = createOverlaySeries(this.chart, mode, chartType, colors, basePriceScaleId, visible, opacity)
-    const url = `/api/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${encodeURIComponent(this.timeframeValue)}&limit=1500`
+    const url = `/api/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${encodeURIComponent(this.timeframeValue)}&limit=${CANDLE_LIMIT}`
     const loader = new DataLoader(url)
     const onCandle = (candle) => this._handleCandle(config.id, candle)
     const bfxFeed = new BitfinexFeed(config.symbol, this.timeframeValue, onCandle)
@@ -376,14 +380,16 @@ export default class extends Controller {
     this._scrollHandler = (range) => {
       if (!range) return
       this.scrollbar?.update()
-      if (range.from < 50) this._loadMoreHistory()
+      if (range.from < LOAD_MORE_THRESHOLD) this._loadMoreHistory()
     }
     this.chart.timeScale().subscribeVisibleLogicalRangeChange(this._scrollHandler)
     const range = this.chart.timeScale().getVisibleLogicalRange()
-    if (range && range.from < 50) this._loadMoreHistory()
+    if (range && range.from < LOAD_MORE_THRESHOLD) this._loadMoreHistory()
   }
 
   async _loadMoreHistory() {
+    if (this._loadingMore) return
+    this._loadingMore = true
     const scrollPos = this.chart.timeScale().scrollPosition()
     let maxAdded = 0
     for (const [, ov] of this.overlayMap) {
@@ -397,13 +403,14 @@ export default class extends Controller {
       this.chart.timeScale().scrollToPosition(scrollPos + maxAdded, false)
       this.indicators.refreshAll()
     }
+    this._loadingMore = false
   }
 
   _goToStart() {
     const total = this._maxBarsCount()
     if (total === 0) return
     const range = this.chart.timeScale().getVisibleLogicalRange()
-    const visible = range ? range.to - range.from : 100
+    const visible = range ? range.to - range.from : DEFAULT_VISIBLE_BARS
     this.chart.timeScale().setVisibleLogicalRange({ from: 0, to: visible })
     requestAnimationFrame(() => this.scrollbar?.update())
   }
@@ -414,7 +421,7 @@ export default class extends Controller {
       const startTime = new Date(targetTime * 1000).toISOString()
       const url = new URL(ov.loader.baseUrl, window.location.origin)
       url.searchParams.set("start_time", startTime)
-      url.searchParams.set("limit", "1500")
+      url.searchParams.set("limit", String(CANDLE_LIMIT))
       try {
         const resp = await apiFetch(url, {}, { silent: true })
         if (!resp) continue
@@ -430,7 +437,7 @@ export default class extends Controller {
     let idx = candles.findIndex(c => c.time >= targetTime)
     if (idx === -1) idx = candles.length - 1
     const range = this.chart.timeScale().getVisibleLogicalRange()
-    const visible = range ? range.to - range.from : 100
+    const visible = range ? range.to - range.from : DEFAULT_VISIBLE_BARS
     this.chart.timeScale().setVisibleLogicalRange({ from: idx, to: idx + visible })
     this.indicators.refreshAll()
     requestAnimationFrame(() => this.scrollbar?.update())

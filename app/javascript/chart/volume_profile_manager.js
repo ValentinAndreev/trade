@@ -1,13 +1,13 @@
-// Volume profile lifecycle and computation
-
-import { VolumeProfilePrimitive } from "./volume_profile"
+import { VolumeProfilePrimitive } from "./primitives/volume_profile"
+import { findFirstPriceSeries } from "./overlay_utils"
+import { VP_DEFAULT_OPACITY, VP_DEFAULT_ROWS } from "../config/constants"
 
 export default class VolumeProfileManager {
   constructor(chart, overlayMap) {
     this.chart = chart
     this.overlayMap = overlayMap
     this._vpEnabled = false
-    this._vpOpacity = 0.3
+    this._vpOpacity = VP_DEFAULT_OPACITY
     this._vpPrimitive = null
     this._vpSeriesRef = null
     this._vpRangeHandler = null
@@ -47,7 +47,7 @@ export default class VolumeProfileManager {
       this.chart.timeScale().unsubscribeVisibleLogicalRangeChange(this._vpRangeHandler)
     }
     if (this._vpPrimitive && this._vpSeriesRef) {
-      try { this._vpSeriesRef.detachPrimitive(this._vpPrimitive) } catch {}
+      try { this._vpSeriesRef.detachPrimitive(this._vpPrimitive) } catch (e) { console.warn("[vp] detach:", e) }
     }
     if (this._vpRafId) cancelAnimationFrame(this._vpRafId)
     this._vpPrimitive = null
@@ -58,10 +58,7 @@ export default class VolumeProfileManager {
   }
 
   _findFirstPriceSeries() {
-    for (const [, ov] of this.overlayMap) {
-      if (ov.mode !== "indicator" && ov.series && ov.visible) return ov.series
-    }
-    return null
+    return findFirstPriceSeries(this.overlayMap)
   }
 
   _scheduleVpUpdate() {
@@ -93,7 +90,7 @@ export default class VolumeProfileManager {
     if (sliceFrom >= sliceTo) return
 
     const visible = candles.slice(sliceFrom, sliceTo)
-    const rows = computeVolumeProfile(visible, 50)
+    const rows = computeVolumeProfile(visible, VP_DEFAULT_ROWS)
     this._vpPrimitive.setData(rows)
   }
 

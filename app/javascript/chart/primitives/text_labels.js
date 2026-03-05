@@ -1,7 +1,7 @@
-// TextLabels Series Primitive — draws text labels with configurable font size and color
-// Uses lightweight-charts ISeriesPrimitive API (v5.x)
-
-const FONT_SIZES = [0, 10, 13, 16, 20, 24] // index 1–5
+import {
+  DEFAULT_LABEL_COLOR, LABEL_FONT_SIZES,
+  LABEL_MARKER_RADIUS, LABEL_TEXT_OFFSET,
+} from "../../config/constants"
 
 class TextLabelsRenderer {
   constructor() {
@@ -27,7 +27,7 @@ class TextLabelsRenderer {
 
         // Small circle marker
         ctx.beginPath()
-        ctx.arc(x, y, 3 * r, 0, 2 * Math.PI)
+        ctx.arc(x, y, LABEL_MARKER_RADIUS * r, 0, 2 * Math.PI)
         ctx.fillStyle = label.color
         ctx.fill()
 
@@ -36,7 +36,7 @@ class TextLabelsRenderer {
         ctx.fillStyle = label.color
         ctx.textAlign = "center"
         ctx.textBaseline = "bottom"
-        ctx.fillText(label.text, x, y - 6 * vr)
+        ctx.fillText(label.text, x, y - LABEL_TEXT_OFFSET * vr)
       }
     })
   }
@@ -64,8 +64,8 @@ class TextLabelsPaneView {
       labels.push({
         x, y,
         text: label.text,
-        color: label.color || "#ffffff",
-        fontSize: FONT_SIZES[label.fontSize || 1] || 10,
+        color: label.color || DEFAULT_LABEL_COLOR,
+        fontSize: LABEL_FONT_SIZES[label.fontSize || 1] || 10,
       })
     }
 

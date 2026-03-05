@@ -1,14 +1,15 @@
-import { OVERLAY_COLORS } from "../chart/theme"
-import { escapeHTML } from "../utils/dom"
+import {
+  panelLegendHTML, controlButtonsHTML,
+  emptyPanelHTML, chartPanelHTML,
+} from "../templates/panel_templates"
 
 export default class PanelRenderer {
   constructor(panelsEl, controllerName) {
     this.panelsEl = panelsEl
-    this.controllerName = controllerName
+    this.ctrl = controllerName
   }
 
   render(tabs, activeTabId, selectedPanelId) {
-    // Remove tab wrappers for deleted tabs
     this.panelsEl.querySelectorAll("[data-tab-wrapper]").forEach(wrapper => {
       const tabId = wrapper.dataset.tabWrapper
       if (!tabs.find(t => t.id === tabId)) wrapper.remove()
@@ -43,6 +44,15 @@ export default class PanelRenderer {
       if (el.style.flex) savedFlex.set(id, el.style.flex)
     }
 
+    const removed = this._removeStale(existing, savedFlex, panels)
+    if (removed) this._normalizeFlex(existing, savedFlex)
+
+    this._reconcilePanels(wrapper, panels, existing, savedFlex, selectedPanelId)
+    this._applyCssOrder(wrapper, panels)
+    this._syncDividers(wrapper, panels)
+  }
+
+  _removeStale(existing, savedFlex, panels) {
     let removed = false
     for (const [id, el] of existing) {
       if (!panels.find(p => p.id === id)) {
@@ -52,75 +62,80 @@ export default class PanelRenderer {
         removed = true
       }
     }
+    return removed
+  }
 
-    // After removing panels, normalize flex on survivors so they fill the space
-    if (removed && savedFlex.size > 0) {
-      let total = 0
-      for (const flex of savedFlex.values()) {
-        const num = parseFloat(flex)
-        if (Number.isFinite(num) && num > 0) total += num
-      }
-      if (total > 0 && total !== 1) {
-        for (const [id, flex] of savedFlex) {
-          const num = parseFloat(flex)
-          if (Number.isFinite(num) && num > 0) {
-            const normalized = `${num / total}`
-            savedFlex.set(id, normalized)
-            const el = existing.get(id)
-            if (el) el.style.flex = normalized
-          }
-        }
+  _normalizeFlex(existing, savedFlex) {
+    if (savedFlex.size === 0) return
+    let total = 0
+    for (const flex of savedFlex.values()) {
+      const num = parseFloat(flex)
+      if (Number.isFinite(num) && num > 0) total += num
+    }
+    if (total <= 0 || total === 1) return
+    for (const [id, flex] of savedFlex) {
+      const num = parseFloat(flex)
+      if (Number.isFinite(num) && num > 0) {
+        const normalized = `${num / total}`
+        savedFlex.set(id, normalized)
+        const el = existing.get(id)
+        if (el) el.style.flex = normalized
       }
     }
+  }
 
+  _reconcilePanels(wrapper, panels, existing, savedFlex, selectedPanelId) {
     panels.forEach((panel, panelIdx) => {
       const el = existing.get(panel.id)
-      const overlaysJson = this._overlaysJson(panel)
-      const hasSymbols = panel.overlays.some(o => o.symbol)
       const isFirst = panelIdx === 0
       const isLast = panelIdx === panels.length - 1
 
       if (el) {
-        const chartEl = el.querySelector("[data-controller='chart']")
-        const hasChart = !!chartEl
-        const needsChart = hasSymbols
-
-        const newKey = this._structuralKey(panel)
-        const timeframeChanged = hasChart && chartEl.dataset.chartTimeframeValue !== panel.timeframe
-        let structureChanged = false
-        if (hasChart && needsChart) {
-          if (chartEl.dataset.chartStructuralKey) {
-            structureChanged = chartEl.dataset.chartStructuralKey !== newKey
-          } else {
-            chartEl.dataset.chartStructuralKey = newKey
-          }
-        }
-        const needsRecreate = timeframeChanged || structureChanged
-
-        if (hasChart && !needsRecreate) {
-          chartEl.dataset.chartOverlaysValue = overlaysJson
-          chartEl.dataset.chartStructuralKey = newKey
-        }
-
-        if (needsRecreate || hasChart !== needsChart) {
-          const placeholder = document.createElement("template")
-          placeholder.innerHTML = this._panelHTML(panel, selectedPanelId, isFirst, isLast)
-          const newEl = placeholder.content.firstElementChild
-          if (savedFlex.has(panel.id)) newEl.style.flex = savedFlex.get(panel.id)
-          el.replaceWith(newEl)
-          existing.delete(panel.id)
-        } else {
-          this._updatePanelBorder(el, panel.id === selectedPanelId)
-          this._updateMoveButtons(el, panel.id, isFirst, isLast)
-        }
+        this._updateExistingPanel(el, panel, existing, savedFlex, selectedPanelId, isFirst, isLast)
         return
       }
 
-      wrapper.insertAdjacentHTML("beforeend", this._panelHTML(panel, selectedPanelId, isFirst, isLast))
+      wrapper.insertAdjacentHTML("beforeend", this._buildPanelHTML(panel, selectedPanelId, isFirst, isLast))
     })
+  }
 
-    // Use CSS order to visually reorder without moving DOM nodes
-    // (moving nodes triggers Stimulus disconnect/connect and reloads charts)
+  _updateExistingPanel(el, panel, existing, savedFlex, selectedPanelId, isFirst, isLast) {
+    const chartEl = el.querySelector("[data-controller='chart']")
+    const hasChart = !!chartEl
+    const needsChart = panel.overlays.some(o => o.symbol)
+    const overlaysJson = this._overlaysJson(panel)
+
+    const newKey = this._structuralKey(panel)
+    const timeframeChanged = hasChart && chartEl.dataset.chartTimeframeValue !== panel.timeframe
+    let structureChanged = false
+    if (hasChart && needsChart) {
+      if (chartEl.dataset.chartStructuralKey) {
+        structureChanged = chartEl.dataset.chartStructuralKey !== newKey
+      } else {
+        chartEl.dataset.chartStructuralKey = newKey
+      }
+    }
+    const needsRecreate = timeframeChanged || structureChanged
+
+    if (hasChart && !needsRecreate) {
+      chartEl.dataset.chartOverlaysValue = overlaysJson
+      chartEl.dataset.chartStructuralKey = newKey
+    }
+
+    if (needsRecreate || hasChart !== needsChart) {
+      const placeholder = document.createElement("template")
+      placeholder.innerHTML = this._buildPanelHTML(panel, selectedPanelId, isFirst, isLast)
+      const newEl = placeholder.content.firstElementChild
+      if (savedFlex.has(panel.id)) newEl.style.flex = savedFlex.get(panel.id)
+      el.replaceWith(newEl)
+      existing.delete(panel.id)
+    } else {
+      this._updatePanelBorder(el, panel.id === selectedPanelId)
+      this._updateMoveButtons(el, panel.id, isFirst, isLast)
+    }
+  }
+
+  _applyCssOrder(wrapper, panels) {
     const panelElMap = new Map()
     wrapper.querySelectorAll(":scope > [data-panel-id]").forEach(el => {
       panelElMap.set(el.dataset.panelId, el)
@@ -129,8 +144,9 @@ export default class PanelRenderer {
       const el = panelElMap.get(panel.id)
       if (el) el.style.order = i * 2
     })
+  }
 
-    // Sync dividers based on store order
+  _syncDividers(wrapper, panels) {
     const orderedPairs = []
     for (let i = 0; i < panels.length - 1; i++) {
       orderedPairs.push({ above: panels[i].id, below: panels[i + 1].id })
@@ -148,7 +164,7 @@ export default class PanelRenderer {
         divider.dataset.above = orderedPairs[i].above
         divider.dataset.below = orderedPairs[i].below
         divider.className = "h-1.5 shrink-0 cursor-row-resize bg-[#2a2a3e] hover:bg-[#5a5a7e] transition-colors"
-        divider.dataset.action = `mousedown->${this.controllerName}#startResize`
+        divider.dataset.action = `mousedown->${this.ctrl}#startResize`
         divider.style.order = i * 2 + 1
         wrapper.appendChild(divider)
       }
@@ -185,105 +201,25 @@ export default class PanelRenderer {
       .join("|")
   }
 
-
-  _panelLegendHTML(panel) {
-    const timeframe = panel.timeframe || "1m"
-    const lines = panel.overlays
-      .filter(o => o.symbol)
-      .map(o => {
-        const colors = OVERLAY_COLORS[o.colorScheme] || OVERLAY_COLORS[0]
-        const swatches = `<span class="inline-flex items-center gap-0.5 shrink-0"><span class="w-3 h-3 rounded-sm border border-black/20" style="background:${colors.up}"></span><span class="w-3 h-3 rounded-sm border border-black/20" style="background:${colors.down}"></span></span>`
-        let modeLabel
-        if (o.mode === "indicator" && o.indicatorType) {
-          const sourceOverlay = o.pinnedTo ? panel.overlays.find(s => s.id === o.pinnedTo) : null
-          const sourceSymbol = escapeHTML(sourceOverlay ? sourceOverlay.symbol : o.symbol)
-          const sourceMode = sourceOverlay ? (sourceOverlay.mode === "volume" ? "Volume" : "Price") : "Price"
-          const paramsStr = o.indicatorParams
-            ? Object.values(o.indicatorParams).join(",")
-            : ""
-          modeLabel = `${(o.indicatorType || "").toUpperCase()}${paramsStr ? `(${paramsStr})` : ""}`
-          return `<div class="flex items-center gap-1.5 truncate">${swatches} ${sourceSymbol} ${sourceMode} ${modeLabel} ${timeframe}</div>`
-        }
-        const symbol = escapeHTML(o.symbol)
-        modeLabel = o.mode === "volume" ? "Volume" : "Price"
-        return `<div class="flex items-center gap-1.5 truncate">${swatches} ${symbol} ${modeLabel} ${timeframe}</div>`
-      })
-      .join("")
-
-    if (!lines) return ""
-
-    return `
-      <div class="absolute top-2 left-3 z-10 max-w-[72%] pointer-events-none flex flex-col gap-0.5 text-base font-medium text-gray-500 drop-shadow-[0_1px_1px_rgba(0,0,0,0.55)]">
-        ${lines}
-      </div>
-    `
-  }
-
   _updateMoveButtons(el, panelId, isFirst, isLast) {
     el.querySelectorAll(":scope > .absolute.top-1.right-1").forEach(c => c.remove())
-    const html = this._controlButtonsHTML(panelId, isFirst, isLast)
-    el.insertAdjacentHTML("afterbegin", html)
+    el.insertAdjacentHTML("afterbegin", controlButtonsHTML(this.ctrl, panelId, isFirst, isLast))
   }
 
-  _controlButtonsHTML(panelId, isFirst, isLast) {
-    const btnClass = "w-7 h-7 flex items-center justify-center text-gray-400 hover:text-white bg-[#1a1a2e]/85 hover:bg-[#2a2a3e] rounded text-base cursor-pointer"
-
-    const upBtn = isFirst ? "" : `
-      <button data-move-panel data-panel-id="${panelId}"
-              data-action="click->${this.controllerName}#movePanelUp"
-              class="${btnClass}" title="Move up">&#9650;</button>`
-
-    const downBtn = isLast ? "" : `
-      <button data-move-panel data-panel-id="${panelId}"
-              data-action="click->${this.controllerName}#movePanelDown"
-              class="${btnClass}" title="Move down">&#9660;</button>`
-
-    const closeBtn = `
-      <button data-close-panel="${panelId}"
-              data-action="click->${this.controllerName}#removePanel"
-              class="${btnClass} hover:!text-red-300" title="Remove panel">&times;</button>`
-
-    return `
-      <div class="absolute top-1 right-1 z-10 flex gap-0.5">
-        ${upBtn}${downBtn}${closeBtn}
-      </div>
-    `
-  }
-
-  _panelHTML(panel, selectedPanelId, isFirst = true, isLast = true) {
+  _buildPanelHTML(panel, selectedPanelId, isFirst, isLast) {
     const selected = panel.id === selectedPanelId
     const borderClass = selected ? "border-blue-500/50" : "border-[#2a2a3e]"
     const hasSymbols = panel.overlays.some(o => o.symbol)
-    const buttons = this._controlButtonsHTML(panel.id, isFirst, isLast)
+    const buttons = controlButtonsHTML(this.ctrl, panel.id, isFirst, isLast)
 
     if (!hasSymbols) {
-      return `
-        <div data-panel-id="${panel.id}"
-             data-action="click->${this.controllerName}#selectPanel"
-             class="relative flex-1 min-h-0 border ${borderClass} flex items-center justify-center cursor-pointer">
-          ${buttons}
-          <span class="text-gray-500 text-base">Select a symbol</span>
-        </div>
-      `
+      return emptyPanelHTML(this.ctrl, panel.id, borderClass, buttons)
     }
 
-    const overlaysJson = this._overlaysJson(panel)
-    const panelLegend = this._panelLegendHTML(panel)
-    return `
-      <div data-panel-id="${panel.id}"
-           data-action="click->${this.controllerName}#selectPanel"
-           class="relative flex-1 min-h-0 border ${borderClass} cursor-pointer">
-        ${buttons}
-        <div
-          data-controller="chart"
-          data-chart-timeframe-value="${panel.timeframe}"
-          data-chart-overlays-value='${overlaysJson.replace(/'/g, "&#39;")}'
-          data-chart-structural-key="${this._structuralKey(panel)}"
-          class="absolute inset-0"
-        ></div>
-        ${panelLegend}
-      </div>
-    `
+    return chartPanelHTML(
+      this.ctrl, panel.id, borderClass, buttons,
+      this._overlaysJson(panel), panel.timeframe,
+      this._structuralKey(panel), panelLegendHTML(panel),
+    )
   }
-
 }

@@ -1,6 +1,6 @@
 // Manages price scale assignment for overlays
 
-import { INDICATOR_META } from "./indicators"
+import { INDICATOR_META } from "../config/indicators"
 
 export default class ScaleManager {
   constructor(chart, overlayMap) {
@@ -75,12 +75,12 @@ export default class ScaleManager {
     })
 
     if (rightScaleChanged) {
-      try { this.chart.priceScale("right").applyOptions({ autoScale: true }) } catch {}
+      try { this.chart.priceScale("right").applyOptions({ autoScale: true }) } catch (e) { console.warn("[scale] autoScale:", e) }
     }
 
     for (const [, ov] of this.overlayMap) {
       if (ov.activePriceScaleId && ov.activePriceScaleId !== "right") {
-        try { this.chart.priceScale(ov.activePriceScaleId).applyOptions({ visible: false }) } catch {}
+        try { this.chart.priceScale(ov.activePriceScaleId).applyOptions({ visible: false }) } catch (e) { console.warn("[scale] hide:", e) }
       }
     }
   }

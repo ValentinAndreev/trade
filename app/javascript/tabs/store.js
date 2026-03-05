@@ -1,4 +1,4 @@
-import { OVERLAY_COLORS } from "../chart/theme"
+import { OVERLAY_COLORS } from "../config/theme"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import { loadTabs, saveTabs, calcNextId, loadActiveTabId, saveActiveTabId } from "./persistence"
 

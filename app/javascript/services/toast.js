@@ -1,3 +1,5 @@
+import { TOAST_DURATION_MS, TOAST_FADE_MS } from "../config/constants"
+
 let container = null
 
 function getContainer() {
@@ -17,6 +19,6 @@ export function showToast(message, type = "error") {
 
   setTimeout(() => {
     el.style.opacity = "0"
-    setTimeout(() => el.remove(), 300)
-  }, 3000)
+    setTimeout(() => el.remove(), TOAST_FADE_MS)
+  }, TOAST_DURATION_MS)
 }

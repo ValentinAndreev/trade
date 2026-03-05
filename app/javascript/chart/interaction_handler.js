@@ -1,6 +1,8 @@
-// Handles chart click/crosshair events and drawing modes
-
-import { TrendLinePrimitive } from "./trend_line"
+import { TrendLinePrimitive } from "./primitives/trend_line"
+import {
+  DEFAULT_LINE_COLOR, DEFAULT_GUIDE_COLOR, DEFAULT_LABEL_COLOR,
+  DEFAULT_TREND_WIDTH, TREND_PREVIEW_DASH, LABEL_BLUR_DELAY_MS,
+} from "../config/constants"
 
 export default class InteractionHandler {
   constructor(chart, overlayMap, element) {
@@ -167,7 +169,7 @@ export default class InteractionHandler {
     this._removeLabelTooltip()
 
     this.element.dispatchEvent(new CustomEvent("line:created", {
-      detail: { p1: state.p1, p2, color: "#2196f3", width: 2, overlayId: state.overlayId, symbol: state.symbol, mode: state.mode, modeDetail: state.modeDetail },
+      detail: { p1: state.p1, p2, color: DEFAULT_LINE_COLOR, width: DEFAULT_TREND_WIDTH, overlayId: state.overlayId, symbol: state.symbol, mode: state.mode, modeDetail: state.modeDetail },
       bubbles: true,
     }))
   }
@@ -180,7 +182,7 @@ export default class InteractionHandler {
     if (price === null || !Number.isFinite(price)) return
     this._removeLabelTooltip()
     this.element.dispatchEvent(new CustomEvent("hline:created", {
-      detail: { price, color: "#ff9800", width: 1, overlayId: target.id, symbol: target.ov.symbol || "", mode: target.ov.mode || "price", modeDetail: this._overlayModeStr(target.ov) },
+      detail: { price, color: DEFAULT_GUIDE_COLOR, width: 1, overlayId: target.id, symbol: target.ov.symbol || "", mode: target.ov.mode || "price", modeDetail: this._overlayModeStr(target.ov) },
       bubbles: true,
     }))
   }
@@ -191,7 +193,7 @@ export default class InteractionHandler {
     if (!target) return
     this._removeLabelTooltip()
     this.element.dispatchEvent(new CustomEvent("vline:created", {
-      detail: { time: param.time, color: "#ff9800", width: 1, overlayId: target.id, symbol: target.ov.symbol || "", mode: target.ov.mode || "price", modeDetail: this._overlayModeStr(target.ov) },
+      detail: { time: param.time, color: DEFAULT_GUIDE_COLOR, width: 1, overlayId: target.id, symbol: target.ov.symbol || "", mode: target.ov.mode || "price", modeDetail: this._overlayModeStr(target.ov) },
       bubbles: true,
     }))
   }
@@ -200,7 +202,7 @@ export default class InteractionHandler {
 
   _showLinePreview(p1, currentPoint, series) {
     if (!this._linePreviewPrimitive) {
-      this._linePreviewPrimitive = new TrendLinePrimitive(p1, currentPoint, { color: "#2196f3", width: 2, dash: [5, 4] })
+      this._linePreviewPrimitive = new TrendLinePrimitive(p1, currentPoint, { color: DEFAULT_LINE_COLOR, width: DEFAULT_TREND_WIDTH, dash: TREND_PREVIEW_DASH })
       series.attachPrimitive(this._linePreviewPrimitive)
       this._linePreviewSeriesRef = series
     } else {
@@ -210,7 +212,7 @@ export default class InteractionHandler {
 
   _removeLinePreview() {
     if (this._linePreviewPrimitive && this._linePreviewSeriesRef) {
-      try { this._linePreviewSeriesRef.detachPrimitive(this._linePreviewPrimitive) } catch {}
+      try { this._linePreviewSeriesRef.detachPrimitive(this._linePreviewPrimitive) } catch (e) { console.warn("[interaction] detach:", e) }
     }
     this._linePreviewPrimitive = null
     this._linePreviewSeriesRef = null
@@ -248,7 +250,7 @@ export default class InteractionHandler {
         const text = input.value.trim()
         if (text) {
           this.element.dispatchEvent(new CustomEvent("label:created", {
-            detail: { text, time, price, color: "#ffffff", overlayId, symbol, mode, modeDetail },
+            detail: { text, time, price, color: DEFAULT_LABEL_COLOR, overlayId, symbol, mode, modeDetail },
             bubbles: true,
           }))
         }
@@ -257,7 +259,7 @@ export default class InteractionHandler {
         this._removeLabelInput()
       }
     })
-    input.addEventListener("blur", () => { setTimeout(() => this._removeLabelInput(), 150) })
+    input.addEventListener("blur", () => { setTimeout(() => this._removeLabelInput(), LABEL_BLUR_DELAY_MS) })
     this.element.appendChild(input)
     this._labelInputEl = input
     requestAnimationFrame(() => input.focus())

@@ -2,7 +2,7 @@ import { Controller } from "@hotwired/stimulus"
 import TabStore from "../tabs/store"
 import TabRenderer from "../tabs/renderer"
 import { fetchConfig } from "../tabs/config"
-import { INDICATOR_META } from "../chart/indicators"
+import { INDICATOR_META } from "../config/indicators"
 import { startPanelResize } from "../tabs/panel_resizer"
 import DrawingActions from "../tabs/drawing_actions"
 import connectionMonitor from "../services/connection_monitor"
@@ -24,11 +24,29 @@ export default class extends Controller {
     )
     this.render()
 
-    this.element.addEventListener("label:created", (e) => this._onDrawingCreated("labels", e))
-    this.element.addEventListener("line:created", (e) => this._onLineCreated(e))
-    this.element.addEventListener("hline:created", (e) => this._onDrawingCreated("hlines", e, (d) => `${d.symbol || "HL"} HL`))
-    this.element.addEventListener("vline:created", (e) => this._onDrawingCreated("vlines", e, (d) => `${d.symbol || "VL"} VL`))
-    this.element.addEventListener("tabs:openSymbol", (e) => this._onOpenSymbol(e))
+    this._boundListeners = {
+      label:  (e) => this._onDrawingCreated("labels", e),
+      line:   (e) => this._onLineCreated(e),
+      hline:  (e) => this._onDrawingCreated("hlines", e, (d) => `${d.symbol || "HL"} HL`),
+      vline:  (e) => this._onDrawingCreated("vlines", e, (d) => `${d.symbol || "VL"} VL`),
+      open:   (e) => this._onOpenSymbol(e),
+    }
+    this.element.addEventListener("label:created", this._boundListeners.label)
+    this.element.addEventListener("line:created", this._boundListeners.line)
+    this.element.addEventListener("hline:created", this._boundListeners.hline)
+    this.element.addEventListener("vline:created", this._boundListeners.vline)
+    this.element.addEventListener("tabs:openSymbol", this._boundListeners.open)
+  }
+
+  disconnect() {
+    if (this._boundListeners) {
+      this.element.removeEventListener("label:created", this._boundListeners.label)
+      this.element.removeEventListener("line:created", this._boundListeners.line)
+      this.element.removeEventListener("hline:created", this._boundListeners.hline)
+      this.element.removeEventListener("vline:created", this._boundListeners.vline)
+      this.element.removeEventListener("tabs:openSymbol", this._boundListeners.open)
+      this._boundListeners = null
+    }
   }
 
   // --- Tab actions ---
@@ -40,7 +58,8 @@ export default class extends Controller {
 
   removeTab(e) {
     e.stopPropagation()
-    const tabId = e.currentTarget.closest("[data-tab-id]").dataset.tabId
+    const tabId = e.currentTarget.closest("[data-tab-id]")?.dataset.tabId
+    if (!tabId) return
     if (this.store.removeTab(tabId)) this.render()
   }
 
@@ -54,6 +73,7 @@ export default class extends Controller {
     e.stopPropagation()
     const labelEl = e.currentTarget
     const tabBtn = labelEl.closest("[data-tab-id]")
+    if (!tabBtn) return
     const tabId = tabBtn.dataset.tabId
 
     const input = document.createElement("input")
@@ -132,8 +152,7 @@ export default class extends Controller {
     const overlayId = e.currentTarget.dataset.removeOverlay
     const panel = this.store.selectedPanel
     if (!panel || !overlayId) return
-    const chartCtrl = this._chartCtrlForPanel(panel.id)
-    if (chartCtrl) chartCtrl.removeOverlay(overlayId)
+    this._withChartCtrl(c => c.removeOverlay(overlayId))
     if (this.store.removeOverlay(panel.id, overlayId)) this.render()
   }
 
@@ -160,45 +179,23 @@ export default class extends Controller {
     const changed = this.store.setOverlayVisible(overlayId, visible)
     if (!changed) return
 
-    const panel = this.store.selectedPanel
-    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-    if (chartCtrl?.setOverlayVisibility) {
-      chartCtrl.setOverlayVisibility(overlayId, visible)
-    }
+    this._withChartCtrl(c => c.setOverlayVisibility(overlayId, visible))
     this.render()
   }
 
   // --- Section collapse ---
 
-  toggleChartsSection() {
-    this.renderer.sidebar.chartsCollapsed = !this.renderer.sidebar.chartsCollapsed
+  _toggleSidebarSection(key) {
+    this.renderer.sidebar[key] = !this.renderer.sidebar[key]
     this.render()
   }
 
-  toggleLabelsSection() {
-    this.renderer.sidebar.labelsCollapsed = !this.renderer.sidebar.labelsCollapsed
-    this.render()
-  }
-
-  toggleTextSublist() {
-    this.renderer.sidebar.textCollapsed = !this.renderer.sidebar.textCollapsed
-    this.render()
-  }
-
-  toggleTrendLinesSublist() {
-    this.renderer.sidebar.trendLinesCollapsed = !this.renderer.sidebar.trendLinesCollapsed
-    this.render()
-  }
-
-  toggleHLinesSublist() {
-    this.renderer.sidebar.hlinesCollapsed = !this.renderer.sidebar.hlinesCollapsed
-    this.render()
-  }
-
-  toggleVLinesSublist() {
-    this.renderer.sidebar.vlinesCollapsed = !this.renderer.sidebar.vlinesCollapsed
-    this.render()
-  }
+  toggleChartsSection()     { this._toggleSidebarSection("chartsCollapsed") }
+  toggleLabelsSection()     { this._toggleSidebarSection("labelsCollapsed") }
+  toggleTextSublist()       { this._toggleSidebarSection("textCollapsed") }
+  toggleTrendLinesSublist() { this._toggleSidebarSection("trendLinesCollapsed") }
+  toggleHLinesSublist()     { this._toggleSidebarSection("hlinesCollapsed") }
+  toggleVLinesSublist()     { this._toggleSidebarSection("vlinesCollapsed") }
 
   // --- Clear all ---
 
@@ -206,13 +203,7 @@ export default class extends Controller {
     const panel = this.store.selectedPanel
     if (!panel) return
     this.store.clearAllDrawings(panel.id)
-    const chartCtrl = this._chartCtrlForPanel(panel.id)
-    if (chartCtrl) {
-      chartCtrl.setLabels([])
-      chartCtrl.setLines([])
-      chartCtrl.setHLines([])
-      chartCtrl.setVLines([])
-    }
+    this._withChartCtrl(c => { c.setLabels([]); c.setLines([]); c.setHLines([]); c.setVLines([]) })
     this.render()
   }
 
@@ -304,15 +295,7 @@ export default class extends Controller {
     const vp = panel.volumeProfile || {}
     const newEnabled = !vp.enabled
     this.store.setVolumeProfile(panel.id, { enabled: newEnabled })
-
-    const chartCtrl = this._chartCtrlForPanel(panel.id)
-    if (chartCtrl) {
-      if (newEnabled) {
-        chartCtrl.enableVolumeProfile(vp.opacity ?? 0.3)
-      } else {
-        chartCtrl.disableVolumeProfile()
-      }
-    }
+    this._withChartCtrl(c => newEnabled ? c.enableVolumeProfile(vp.opacity ?? 0.3) : c.disableVolumeProfile())
     this.render()
   }
 
@@ -325,9 +308,7 @@ export default class extends Controller {
     if (!panel) return
 
     this.store.setVolumeProfile(panel.id, { opacity })
-
-    const chartCtrl = this._chartCtrlForPanel(panel.id)
-    if (chartCtrl) chartCtrl.setVolumeProfileOpacity(opacity)
+    this._withChartCtrl(c => c.setVolumeProfileOpacity(opacity))
 
     const valueEl = this.sidebarTarget.querySelector("[data-vp-opacity-value]")
     if (valueEl) valueEl.textContent = `${Math.round(opacity * 100)}%`
@@ -347,50 +328,54 @@ export default class extends Controller {
     if (!timeframe) return
 
     const timeframeChanged = this.store.updatePanelTimeframe(panel.id, timeframe)
+
+    const changed = overlay.mode === "indicator"
+      ? this._applyIndicatorSettings(panel, overlay, timeframeChanged)
+      : this._applySymbolSettings(overlay, timeframeChanged)
+
+    if (changed === null) return
+    if (timeframeChanged || changed) this.render()
+  }
+
+  _applyIndicatorSettings(panel, overlay, timeframeChanged) {
+    const { type, source, params, pinnedTo } = this._readIndicatorInputs(overlay)
+
+    const needsBackend = timeframeChanged || source === "server"
+    if (needsBackend && !connectionMonitor.requireOnline("apply settings")) return null
+
     let symbolChanged = false
-    let indicatorChanged = false
-
-    if (overlay.mode === "indicator") {
-      const { type, source, params, pinnedTo } = this._readIndicatorInputs(overlay)
-
-      const needsBackend = timeframeChanged || source === "server"
-      if (needsBackend && !connectionMonitor.requireOnline("apply settings")) return
-
-      if (pinnedTo) {
-        const sourceOverlay = this.store.overlayById(pinnedTo)
-        if (sourceOverlay?.symbol) {
-          symbolChanged = this.store.updateOverlaySymbol(overlay.id, sourceOverlay.symbol)
-        }
-      }
-
-      this.store.setOverlayIndicatorType(overlay.id, type, source)
-      this.store.setOverlayIndicatorParams(overlay.id, params)
-      this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
-      indicatorChanged = true
-
-      const chartCtrl = this._chartCtrlForPanel(panel.id)
-      if (chartCtrl) {
-        if (chartCtrl.hasOverlay(overlay.id)) {
-          if (!timeframeChanged && !symbolChanged) {
-            chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo, source)
-          }
-        } else {
-          chartCtrl.addOverlay(overlay)
-        }
-      }
-    } else {
-      const symbolEl = this.sidebarTarget.querySelector("[data-field='symbol']:not(.hidden)")
-      const symbol = symbolEl?.value?.trim().toUpperCase()
-      const willChangeSymbol = symbol && symbol !== overlay.symbol
-
-      if ((timeframeChanged || willChangeSymbol) && !connectionMonitor.requireOnline("change symbol/timeframe")) return
-
-      if (willChangeSymbol) {
-        symbolChanged = this.store.updateOverlaySymbol(overlay.id, symbol)
+    if (pinnedTo) {
+      const sourceOverlay = this.store.overlayById(pinnedTo)
+      if (sourceOverlay?.symbol) {
+        symbolChanged = this.store.updateOverlaySymbol(overlay.id, sourceOverlay.symbol)
       }
     }
 
-    if (timeframeChanged || symbolChanged || indicatorChanged) this.render()
+    this.store.setOverlayIndicatorType(overlay.id, type, source)
+    this.store.setOverlayIndicatorParams(overlay.id, params)
+    this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
+
+    this._withChartCtrl(c => {
+      if (c.hasOverlay(overlay.id)) {
+        if (!timeframeChanged && !symbolChanged) c.updateIndicator(overlay.id, type, params, pinnedTo, source)
+      } else {
+        c.addOverlay(overlay)
+      }
+    })
+    return true
+  }
+
+  _applySymbolSettings(overlay, timeframeChanged) {
+    const symbolEl = this.sidebarTarget.querySelector("[data-field='symbol']:not(.hidden)")
+    const symbol = symbolEl?.value?.trim().toUpperCase()
+    const willChangeSymbol = symbol && symbol !== overlay.symbol
+
+    if ((timeframeChanged || willChangeSymbol) && !connectionMonitor.requireOnline("change symbol/timeframe")) return null
+
+    if (willChangeSymbol) {
+      return this.store.updateOverlaySymbol(overlay.id, symbol)
+    }
+    return false
   }
 
   applySettingsOnEnter(e) {
@@ -405,14 +390,12 @@ export default class extends Controller {
     if (!overlay || !mode) return
 
     if (this.store.setOverlayMode(overlay.id, mode)) {
-      const panel = this.store.selectedPanel
-      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-      if (chartCtrl) {
-        chartCtrl.showMode(overlay.id, mode)
+      this._withChartCtrl(c => {
+        c.showMode(overlay.id, mode)
         if (mode === "indicator") {
-          chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo, overlay.indicatorSource)
+          c.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo, overlay.indicatorSource)
         }
-      }
+      })
       this.render()
     }
   }
@@ -423,9 +406,7 @@ export default class extends Controller {
     if (!overlay) return
 
     if (this.store.setOverlayChartType(overlay.id, type)) {
-      const panel = this.store.selectedPanel
-      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-      if (chartCtrl) chartCtrl.switchChartType(overlay.id, type)
+      this._withChartCtrl(c => c.switchChartType(overlay.id, type))
     }
   }
 
@@ -435,12 +416,7 @@ export default class extends Controller {
 
     const pinnedTo = e.currentTarget.value || null
     this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
-
-    const panel = this.store.selectedPanel
-    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-    if (chartCtrl?.setPinnedTo) {
-      chartCtrl.setPinnedTo(overlay.id, pinnedTo)
-    }
+    this._withChartCtrl(c => c.setPinnedTo(overlay.id, pinnedTo))
   }
 
   cycleIndicatorFilter() {
@@ -483,15 +459,10 @@ export default class extends Controller {
     this.store.setOverlayIndicatorParams(overlay.id, params)
     this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
 
-    const panel = this.store.selectedPanel
-    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-    if (chartCtrl) {
-      if (chartCtrl.hasOverlay(overlay.id)) {
-        chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo, source)
-      } else {
-        chartCtrl.addOverlay(overlay)
-      }
-    }
+    this._withChartCtrl(c => {
+      if (c.hasOverlay(overlay.id)) c.updateIndicator(overlay.id, type, params, pinnedTo, source)
+      else c.addOverlay(overlay)
+    })
     this.render()
   }
 
@@ -507,9 +478,7 @@ export default class extends Controller {
     if (details) details.open = false
 
     if (this.store.setOverlayColorScheme(overlay.id, colorScheme)) {
-      const panel = this.store.selectedPanel
-      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-      if (chartCtrl?.setOverlayColorScheme) chartCtrl.setOverlayColorScheme(overlay.id, colorScheme)
+      this._withChartCtrl(c => c.setOverlayColorScheme(overlay.id, colorScheme))
       this.render()
     }
   }
@@ -523,10 +492,7 @@ export default class extends Controller {
     const opacity = Math.max(0, Math.min(100, percent)) / 100
 
     const changed = this.store.setOverlayOpacity(overlay.id, opacity)
-
-    const panel = this.store.selectedPanel
-    const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-    if (chartCtrl?.setOverlayOpacity) chartCtrl.setOverlayOpacity(overlay.id, opacity)
+    this._withChartCtrl(c => c.setOverlayOpacity(overlay.id, opacity))
 
     const valueEl = this.sidebarTarget.querySelector("[data-opacity-value]")
     if (valueEl) valueEl.textContent = `${Math.round(opacity * 100)}%`
@@ -536,6 +502,7 @@ export default class extends Controller {
 
   toggleCustomInput(e) {
     const wrapper = e.currentTarget.closest("[data-combo]")
+    if (!wrapper) return
     const select = wrapper.querySelector("select")
     const input = wrapper.querySelector("input")
     const button = e.currentTarget
@@ -592,6 +559,16 @@ export default class extends Controller {
     return this._panelById(panelEl.dataset.panelId) || this.store.selectedPanel
   }
 
+  _getSelectedChartCtrl() {
+    const panel = this.store.selectedPanel
+    return panel ? this._chartCtrlForPanel(panel.id) : null
+  }
+
+  _withChartCtrl(fn) {
+    const ctrl = this._getSelectedChartCtrl()
+    if (ctrl) fn(ctrl)
+  }
+
   _chartCtrlForPanel(panelId) {
     const panelEl = this.panelsTarget.querySelector(`[data-panel-id="${panelId}"]`)
     const chartEl = panelEl?.querySelector("[data-controller='chart']")
@@ -606,46 +583,48 @@ export default class extends Controller {
     this.panelsTarget.querySelectorAll("[data-panel-id]").forEach(panelEl => {
       const chartEl = panelEl.querySelector("[data-controller='chart']")
       if (!chartEl) return
-
       const chartCtrl = this.application.getControllerForElementAndIdentifier(chartEl, "chart")
       if (!chartCtrl?.setSelectedOverlayScale) return
 
       const panel = this._panelById(panelEl.dataset.panelId)
-      if (panel && chartCtrl.setOverlayVisibility) {
-        panel.overlays.forEach(overlay => {
-          chartCtrl.showMode(overlay.id, overlay.mode || "price")
-          if (overlay.mode === "indicator" && !chartCtrl.hasIndicatorSeries(overlay.id)) {
-            chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo, overlay.indicatorSource)
-          }
-          chartCtrl.setOverlayVisibility(overlay.id, overlay.visible !== false)
-          if (chartCtrl.setOverlayColorScheme) {
-            chartCtrl.setOverlayColorScheme(overlay.id, overlay.colorScheme)
-          }
-          if (chartCtrl.setOverlayOpacity) {
-            chartCtrl.setOverlayOpacity(overlay.id, overlay.opacity)
-          }
-        })
-      }
-
       if (panel) {
-        chartCtrl.setLabels(panel.labels || [])
-        chartCtrl.setLines(panel.lines || [])
-        chartCtrl.setHLines(panel.hlines || [])
-        chartCtrl.setVLines(panel.vlines || [])
-        const vp = panel.volumeProfile || {}
-        if (vp.enabled && !chartCtrl.vpEnabled) {
-          chartCtrl.enableVolumeProfile(vp.opacity ?? 0.3)
-        } else if (!vp.enabled && chartCtrl.vpEnabled) {
-          chartCtrl.disableVolumeProfile()
-        }
+        this._syncOverlaysToChart(chartCtrl, panel)
+        this._syncDrawingsToChart(chartCtrl, panel)
+        this._syncVpToChart(chartCtrl, panel)
       }
 
-      if (panelEl.dataset.panelId === selectedPanelId) {
-        chartCtrl.setSelectedOverlayScale(selectedOverlayId)
-      } else {
-        chartCtrl.setSelectedOverlayScale(null)
-      }
+      const isSelected = panelEl.dataset.panelId === selectedPanelId
+      chartCtrl.setSelectedOverlayScale(isSelected ? selectedOverlayId : null)
     })
+  }
+
+  _syncOverlaysToChart(chartCtrl, panel) {
+    if (!chartCtrl.setOverlayVisibility) return
+    panel.overlays.forEach(overlay => {
+      chartCtrl.showMode(overlay.id, overlay.mode || "price")
+      if (overlay.mode === "indicator" && !chartCtrl.hasIndicatorSeries(overlay.id)) {
+        chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo, overlay.indicatorSource)
+      }
+      chartCtrl.setOverlayVisibility(overlay.id, overlay.visible !== false)
+      if (chartCtrl.setOverlayColorScheme) chartCtrl.setOverlayColorScheme(overlay.id, overlay.colorScheme)
+      if (chartCtrl.setOverlayOpacity) chartCtrl.setOverlayOpacity(overlay.id, overlay.opacity)
+    })
+  }
+
+  _syncDrawingsToChart(chartCtrl, panel) {
+    chartCtrl.setLabels(panel.labels || [])
+    chartCtrl.setLines(panel.lines || [])
+    chartCtrl.setHLines(panel.hlines || [])
+    chartCtrl.setVLines(panel.vlines || [])
+  }
+
+  _syncVpToChart(chartCtrl, panel) {
+    const vp = panel.volumeProfile || {}
+    if (vp.enabled && !chartCtrl.vpEnabled) {
+      chartCtrl.enableVolumeProfile(vp.opacity ?? 0.3)
+    } else if (!vp.enabled && chartCtrl.vpEnabled) {
+      chartCtrl.disableVolumeProfile()
+    }
   }
 
   _panelById(panelId) {
@@ -668,27 +647,26 @@ export default class extends Controller {
   render() {
     const panel = this.store.selectedPanel
     const vp = panel?.volumeProfile || {}
-    this.renderer.render(
-      this.store.tabs,
-      this.store.activeTabId,
-      this.store.selectedPanelId,
-      this.store.selectedOverlayId,
-      this.config.symbols,
-      this.config.timeframes,
-      (tab) => this.store.tabLabel(tab),
-      this.config.indicators,
-      this.drawingActions.modes.labels,
-      this.drawingActions.modes.lines,
-      !!vp.enabled,
-      vp.opacity ?? 0.3,
-      this.drawingActions.modes.hlines,
-      this.drawingActions.modes.vlines,
-    )
+    this.renderer.render({
+      tabs: this.store.tabs,
+      activeTabId: this.store.activeTabId,
+      selectedPanelId: this.store.selectedPanelId,
+      selectedOverlayId: this.store.selectedOverlayId,
+      symbols: this.config.symbols,
+      timeframes: this.config.timeframes,
+      labelFn: (tab) => this.store.tabLabel(tab),
+      indicators: this.config.indicators,
+      labelModeActive: this.drawingActions.modes.labels,
+      lineModeActive: this.drawingActions.modes.lines,
+      vpEnabled: !!vp.enabled,
+      vpOpacity: vp.opacity ?? 0.3,
+      hlModeActive: this.drawingActions.modes.hlines,
+      vlModeActive: this.drawingActions.modes.vlines,
+    })
     this._syncSelectedOverlayScale()
     requestAnimationFrame(() => {
       this._syncSelectedOverlayScale()
-      const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-      this.drawingActions.syncAllModesToChart(chartCtrl)
+      this.drawingActions.syncAllModesToChart(this._getSelectedChartCtrl())
     })
   }
 }

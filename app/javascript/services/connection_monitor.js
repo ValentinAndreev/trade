@@ -1,14 +1,14 @@
 import { showToast } from "./toast"
-
-const PING_INTERVAL = 5000
-const PING_TIMEOUT = 3000
+import {
+  PING_INTERVAL_MS, PING_TIMEOUT_MS,
+  CONNECTION_ONLINE_COLOR, CONNECTION_OFFLINE_COLOR,
+} from "../config/constants"
 
 class ConnectionMonitor {
   constructor() {
     this.backendOnline = true
     this.internetOnline = navigator.onLine
     this._interval = null
-    this._baseTitle = null
     this._started = false
   }
 
@@ -24,7 +24,7 @@ class ConnectionMonitor {
     window.addEventListener("offline", this._onBrowserOffline)
 
     this._ping()
-    this._interval = setInterval(() => this._ping(), PING_INTERVAL)
+    this._interval = setInterval(() => this._ping(), PING_INTERVAL_MS)
     this._updateUI()
   }
 
@@ -65,7 +65,7 @@ class ConnectionMonitor {
     }
 
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), PING_TIMEOUT)
+    const timeout = setTimeout(() => controller.abort(), PING_TIMEOUT_MS)
 
     try {
       const resp = await fetch("/api/health", { signal: controller.signal })
@@ -91,7 +91,7 @@ class ConnectionMonitor {
   }
 
   _updateUI() {
-    const color = this.isOnline ? "#22c55e" : "#ef4444"
+    const color = this.isOnline ? CONNECTION_ONLINE_COLOR : CONNECTION_OFFLINE_COLOR
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="${color}"/></svg>`
     const url = `data:image/svg+xml,${encodeURIComponent(svg)}`
 

@@ -1,7 +1,7 @@
 import {
   PRICE_SERIES_TYPES, VOLUME_SERIES_TYPES,
-} from "./theme"
-import { withAlpha, normalizeColorScheme, normalizeOpacity } from "../utils/color"
+} from "../config/theme"
+import { withAlpha } from "../utils/color"
 
 export function createOverlaySeries(chart, mode, chartType, colors, priceScaleId, visible = true, opacity = 1) {
   const styleOverrides = seriesStyleOverrides(mode, chartType, colors, opacity)

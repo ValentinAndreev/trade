@@ -1,13 +1,12 @@
-// TrendLine Series Primitive — draws a straight line between two data points
-// Uses lightweight-charts ISeriesPrimitive API (v5.x)
+import { DEFAULT_LINE_COLOR, DEFAULT_TREND_WIDTH, ENDPOINT_RADIUS } from "../../config/constants"
 
 class TrendLineRenderer {
   constructor() {
     this._p1 = null
     this._p2 = null
-    this._color = "#2196f3"
-    this._width = 2
-    this._dash = null // null = solid, [5,4] = dashed (for preview)
+    this._color = DEFAULT_LINE_COLOR
+    this._width = DEFAULT_TREND_WIDTH
+    this._dash = null
   }
 
   update(p1, p2, color, width, dash) {
@@ -44,7 +43,7 @@ class TrendLineRenderer {
       // Draw small circles at endpoints
       for (const p of [p1, p2]) {
         ctx.beginPath()
-        ctx.arc(p.x * r, p.y * vr, 3 * r, 0, 2 * Math.PI)
+        ctx.arc(p.x * r, p.y * vr, ENDPOINT_RADIUS * r, 0, 2 * Math.PI)
         ctx.fillStyle = this._color
         ctx.fill()
       }
@@ -97,8 +96,8 @@ export class TrendLinePrimitive {
   constructor(p1, p2, options = {}) {
     this._p1 = p1   // { time, price }
     this._p2 = p2   // { time, price }
-    this._color = options.color || "#2196f3"
-    this._width = options.width || 2
+    this._color = options.color || DEFAULT_LINE_COLOR
+    this._width = options.width || DEFAULT_TREND_WIDTH
     this._dash = options.dash || null
     this._chart = null
     this._series = null

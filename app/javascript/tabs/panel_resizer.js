@@ -1,3 +1,5 @@
+import { PANEL_MIN_HEIGHT_PX } from "../config/constants"
+
 export function startPanelResize(e, controllerName) {
   e.preventDefault()
   const divider = e.currentTarget
@@ -14,7 +16,7 @@ export function startPanelResize(e, controllerName) {
   const aboveH = aboveEl.offsetHeight
   const belowH = belowEl.offsetHeight
   const totalH = aboveH + belowH
-  const minH = 40
+  const minH = PANEL_MIN_HEIGHT_PX
 
   divider.classList.add("bg-[#5a5a7e]")
 
