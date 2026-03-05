@@ -12,7 +12,7 @@ class Utils::SymbolStore
     end
 
     def save_dashboard_symbols(symbols)
-      write_yaml(DASHBOARD_PATH, 'symbols' => Array(symbols))
+      write_yaml(DASHBOARD_PATH, 'symbols' => Array(symbols).sort)
     end
 
     def add_dashboard_symbol(symbol)
@@ -41,7 +41,9 @@ class Utils::SymbolStore
     end
 
     def save_market_symbols(symbols)
-      write_yaml(MARKETS_PATH, 'symbols' => symbols)
+      sorted = symbols.transform_values { |v| Array(v).sort }
+                       .sort_by { |k, _| k }.to_h
+      write_yaml(MARKETS_PATH, 'symbols' => sorted)
     end
 
     def add_market_symbol(category, symbol)
