@@ -4,6 +4,7 @@ import { OVERLAY_COLORS } from "./theme"
 import { INDICATOR_META } from "./indicators"
 import { indicatorFieldColors } from "./series_factory"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
+import connectionMonitor from "../services/connection_monitor"
 
 export default class IndicatorManager {
   constructor(chart, overlayMap, timeframe, { onScaleSync }) {
@@ -83,6 +84,17 @@ export default class IndicatorManager {
     const ov = this.overlayMap.get(id)
     if (!ov) return
 
+    const effectiveSource = source ?? ov.indicatorSource
+    const isServer = effectiveSource === "server" || !INDICATOR_META[type]?.lib
+
+    if (isServer && !connectionMonitor.backendOnline) {
+      ov.indicatorType = type
+      ov.indicatorParams = params
+      if (pinnedTo !== undefined) ov.pinnedTo = pinnedTo || null
+      if (source !== undefined) ov.indicatorSource = source
+      return
+    }
+
     this.removeSeriesFor(ov)
     ov.indicatorType = type
     ov.indicatorParams = params
@@ -107,6 +119,10 @@ export default class IndicatorManager {
     for (const [id, ov] of this.overlayMap) {
       if (ov.mode !== "indicator") continue
       if (sourceId && ov.pinnedTo !== sourceId) continue
+
+      const isServer = ov.indicatorSource === "server" || !INDICATOR_META[ov.indicatorType]?.lib
+      if (isServer && !connectionMonitor.backendOnline) continue
+
       if (ov.indicatorSeries?.length) {
         this._scheduleRecompute(id, ov)
       } else if (INDICATOR_META[ov.indicatorType]) {
@@ -173,6 +189,8 @@ export default class IndicatorManager {
       const offset = sourceData.length - result.length
       return result.map((val, i) => ({ time: sourceData[i + offset].time, ...meta.lib.map(val) }))
     }
+
+    if (!connectionMonitor.backendOnline) return null
 
     const sourceKey = `${sourceData.length}:${sourceData[0].time}`
     if (ov._lastSourceKey === sourceKey) return null

@@ -1,3 +1,5 @@
+import { apiFetch } from "../services/api_fetch"
+
 export default class DataLoader {
   constructor(baseUrl) {
     this.baseUrl = baseUrl
@@ -8,7 +10,8 @@ export default class DataLoader {
   }
 
   async loadInitial() {
-    const response = await fetch(this.baseUrl)
+    const response = await apiFetch(this.baseUrl, {}, { silent: true })
+    if (!response) return this.candles
     const data = await response.json()
     this.candles = data
     if (data.length > 0) {
@@ -27,7 +30,8 @@ export default class DataLoader {
       url.searchParams.set("end_time", endTime)
       url.searchParams.set("limit", "500")
 
-      const response = await fetch(url)
+      const response = await apiFetch(url, {}, { silent: true })
+      if (!response) return null
       const newCandles = await response.json()
 
       if (newCandles.length === 0) {

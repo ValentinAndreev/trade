@@ -5,6 +5,7 @@ import { fetchConfig } from "../tabs/config"
 import { INDICATOR_META } from "../chart/indicators"
 import { startPanelResize } from "../tabs/panel_resizer"
 import DrawingActions from "../tabs/drawing_actions"
+import connectionMonitor from "../services/connection_monitor"
 
 export default class extends Controller {
   static targets = ["tabBar", "panels", "sidebar"]
@@ -352,6 +353,9 @@ export default class extends Controller {
     if (overlay.mode === "indicator") {
       const { type, source, params, pinnedTo } = this._readIndicatorInputs(overlay)
 
+      const needsBackend = timeframeChanged || source === "server"
+      if (needsBackend && !connectionMonitor.requireOnline("apply settings")) return
+
       if (pinnedTo) {
         const sourceOverlay = this.store.overlayById(pinnedTo)
         if (sourceOverlay?.symbol) {
@@ -369,6 +373,9 @@ export default class extends Controller {
         if (chartCtrl) chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo, source)
       }
     } else {
+      if (timeframeChanged || !connectionMonitor.isOnline) {
+        if (!connectionMonitor.requireOnline("change symbol/timeframe")) return
+      }
       const symbolEl = this.sidebarTarget.querySelector("[data-field='symbol']:not(.hidden)")
       const symbol = symbolEl?.value?.trim().toUpperCase()
       if (symbol) {
@@ -462,6 +469,8 @@ export default class extends Controller {
     if (!overlay || overlay.mode !== "indicator") return
 
     const { type, source, params, pinnedTo } = this._readIndicatorInputs(overlay)
+
+    if (source === "server" && !connectionMonitor.requireOnline("apply server indicator")) return
 
     this.store.setOverlayIndicatorType(overlay.id, type, source)
     this.store.setOverlayIndicatorParams(overlay.id, params)
@@ -591,9 +600,8 @@ export default class extends Controller {
       const panel = this._panelById(panelEl.dataset.panelId)
       if (panel && chartCtrl.setOverlayVisibility) {
         panel.overlays.forEach(overlay => {
-          // Sync mode (price/volume/indicator)
           chartCtrl.showMode(overlay.id, overlay.mode || "price")
-          if (overlay.mode === "indicator") {
+          if (overlay.mode === "indicator" && !chartCtrl.hasIndicatorSeries(overlay.id)) {
             chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo, overlay.indicatorSource)
           }
           chartCtrl.setOverlayVisibility(overlay.id, overlay.visible !== false)

@@ -17,6 +17,7 @@ import DrawingManager from "../chart/drawing_manager"
 import InteractionHandler from "../chart/interaction_handler"
 import ScaleManager from "../chart/scale_manager"
 import VolumeProfileManager from "../chart/volume_profile_manager"
+import { apiFetch } from "../services/api_fetch"
 
 export default class extends Controller {
   static values = {
@@ -28,6 +29,11 @@ export default class extends Controller {
     this.overlayMap = new Map()
     this._colorIndex = 0
     this.selectedOverlayId = null
+
+    this._onConnectionRestore = (e) => {
+      if (e.detail.online) this._reloadAllOverlays()
+    }
+    window.addEventListener("connection:change", this._onConnectionRestore)
 
     const configs = this._parseOverlays()
     if (configs.length === 0 || configs.every(c => !c.symbol)) return
@@ -52,6 +58,7 @@ export default class extends Controller {
   }
 
   disconnect() {
+    window.removeEventListener("connection:change", this._onConnectionRestore)
     for (const [, ov] of this.overlayMap) {
       ov.bfxFeed?.disconnect()
       ov.cableFeed?.disconnect()
@@ -179,6 +186,11 @@ export default class extends Controller {
 
   updateIndicator(id, type, params, pinnedTo, source) {
     this.indicators.updateIndicator(id, type, params, pinnedTo, source)
+  }
+
+  hasIndicatorSeries(id) {
+    const ov = this.overlayMap.get(id)
+    return ov?.indicatorSeries?.length > 0
   }
 
   setPinnedTo(id, pinnedTo) {
@@ -401,7 +413,8 @@ export default class extends Controller {
       url.searchParams.set("start_time", startTime)
       url.searchParams.set("limit", "1500")
       try {
-        const resp = await fetch(url)
+        const resp = await apiFetch(url, {}, { silent: true })
+        if (!resp) continue
         const newCandles = await resp.json()
         if (newCandles.length === 0) continue
         ov.loader.prependCandles(newCandles)
@@ -437,5 +450,19 @@ export default class extends Controller {
       if (ov.loader?.candles?.length > max) max = ov.loader.candles.length
     }
     return max
+  }
+
+  async _reloadAllOverlays() {
+    for (const [id, ov] of this.overlayMap) {
+      if (!ov.loader || !ov.series) continue
+      try {
+        const candles = await ov.loader.loadInitial()
+        if (candles.length > 0) ov.series.setData(toSeriesData(ov, candles))
+      } catch (e) {
+        console.error(`[reconnect] reload failed for overlay ${id}:`, e)
+      }
+    }
+    this.indicators.refreshAll()
+    requestAnimationFrame(() => this.scrollbar?.update())
   }
 }

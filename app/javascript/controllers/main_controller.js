@@ -1,4 +1,6 @@
 import { Controller } from "@hotwired/stimulus"
+import { apiFetch } from "../services/api_fetch"
+import connectionMonitor from "../services/connection_monitor"
 
 export default class extends Controller {
   static targets = ["grid"]
@@ -23,8 +25,8 @@ export default class extends Controller {
 
   async _fetchAndRender() {
     try {
-      const response = await fetch("/api/tickers")
-      if (!response.ok) return
+      const response = await apiFetch("/api/tickers", {}, { silent: true })
+      if (!response || !response.ok) return
       this._tickers = await response.json()
       this._renderTiles(this._tickers)
     } catch (e) {
@@ -95,13 +97,15 @@ export default class extends Controller {
 
   async removeTile(e) {
     e.stopPropagation()
+    if (!connectionMonitor.requireOnline("remove tile")) return
     const symbol = e.currentTarget.dataset.symbol
     try {
-      await fetch("/api/dashboard/remove", {
+      const resp = await apiFetch("/api/dashboard/remove", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol })
       })
+      if (!resp) return
       this._fetchAndRender()
     } catch (err) {
       console.error("Failed to remove tile:", err)
@@ -110,6 +114,7 @@ export default class extends Controller {
 
   async showAddDropdown(e) {
     e.stopPropagation()
+    if (!connectionMonitor.requireOnline("add tile")) return
     const existing = this.element.querySelector("[data-add-tile-dropdown]")
     if (existing) { existing.remove(); return }
 
@@ -117,8 +122,8 @@ export default class extends Controller {
     const displayedSymbols = (this._tickers || []).map(t => t.symbol)
 
     try {
-      const resp = await fetch("/api/configs")
-      if (!resp.ok) return
+      const resp = await apiFetch("/api/configs")
+      if (!resp || !resp.ok) return
       const config = await resp.json()
       const available = config.symbols.filter(s => !displayedSymbols.includes(s))
 
@@ -146,16 +151,18 @@ export default class extends Controller {
 
   async addSymbol(e) {
     e.stopPropagation()
+    if (!connectionMonitor.requireOnline("add symbol")) return
     const symbol = e.currentTarget.dataset.symbol
     const dd = this.element.querySelector("[data-add-tile-dropdown]")
     if (dd) dd.remove()
 
     try {
-      await fetch("/api/dashboard/add", {
+      const addResp = await apiFetch("/api/dashboard/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol })
       })
+      if (!addResp) return
       this._fetchAndRender()
     } catch (err) {
       console.error("Failed to add symbol:", err)

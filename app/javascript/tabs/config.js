@@ -1,9 +1,12 @@
+import { apiFetch } from "../services/api_fetch"
+
 export async function fetchConfig() {
   try {
     const [configResp, indicatorsResp] = await Promise.all([
-      fetch("/api/configs"),
-      fetch("/api/indicators").catch(() => null),
+      apiFetch("/api/configs", {}, { silent: true }),
+      apiFetch("/api/indicators", {}, { silent: true }).catch(() => null),
     ])
+    if (!configResp) return { symbols: [], timeframes: [], indicators: [] }
     const data = await configResp.json()
     let indicators = []
     if (indicatorsResp && indicatorsResp.ok) {

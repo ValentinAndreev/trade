@@ -1,3 +1,5 @@
+import { apiFetch } from "../services/api_fetch"
+
 export default class IndicatorLoader {
   constructor(indicatorType, params = {}) {
     this.indicatorType = indicatorType
@@ -7,14 +9,16 @@ export default class IndicatorLoader {
   async compute(symbol, timeframe, startTime) {
     const body = { symbol, timeframe, ...this.params }
     if (startTime) body.start_time = new Date(startTime * 1000).toISOString()
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/indicators/${encodeURIComponent(this.indicatorType)}/compute`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      }
+      },
+      { silent: true }
     )
+    if (!response) return null
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
       console.warn(`[indicator] ${this.indicatorType}: ${err.error || response.statusText}`)

@@ -88,8 +88,12 @@ if [[ -x "$TSDB_MOVE" ]]; then
   fi
 fi
 
-"${PG_BIN}/psql" -d postgres -tc "CREATE EXTENSION IF NOT EXISTS timescaledb;" &>/dev/null
-ok "extension available"
+if "${PG_BIN}/psql" -d postgres -tc "SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'" | grep -q 1; then
+  ok "extension available"
+else
+  fail "timescaledb extension not found in PostgreSQL — check linking"
+  exit 1
+fi
 
 # ── Node.js ───────────────────────────────────────────────────────
 
@@ -175,6 +179,71 @@ fi
 step "Migrations"
 bin/rails db:migrate
 ok "migrations up to date"
+
+# ── TimescaleDB objects (hypertable + continuous aggregates) ──
+
+step "TimescaleDB verification"
+
+HT_COUNT=$("${PG_BIN}/psql" -d "$DB_NAME" -tAc \
+  "SELECT count(*) FROM timescaledb_information.hypertables WHERE hypertable_name = 'candles'" 2>/dev/null || echo "0")
+
+if [[ "$HT_COUNT" -lt 1 ]]; then
+  warn "candles hypertable missing — recreating…"
+  "${PG_BIN}/psql" -d "$DB_NAME" -c \
+    "SELECT create_hypertable('candles', 'ts', chunk_time_interval => INTERVAL '3 months', migrate_data => true);"
+  "${PG_BIN}/psql" -d "$DB_NAME" -c \
+    "ALTER TABLE candles SET (timescaledb.compress, timescaledb.compress_segmentby = 'symbol,exchange', timescaledb.compress_orderby = 'ts DESC');"
+  "${PG_BIN}/psql" -d "$DB_NAME" -c \
+    "SELECT add_compression_policy('candles', INTERVAL '7 days');"
+  ok "hypertable created"
+else
+  ok "candles hypertable exists"
+fi
+
+CAGG_COUNT=$("${PG_BIN}/psql" -d "$DB_NAME" -tAc \
+  "SELECT count(*) FROM timescaledb_information.continuous_aggregates WHERE materialization_hypertable_schema = 'public'" 2>/dev/null || echo "0")
+
+if [[ "$CAGG_COUNT" -lt 5 ]]; then
+  warn "continuous aggregates missing ($CAGG_COUNT/5) — recreating…"
+
+  for TF_SPEC in "5m:5 minutes" "15m:15 minutes" "1h:1 hour" "4h:4 hours" "1d:1 day"; do
+    TF_NAME="${TF_SPEC%%:*}"
+    TF_BUCKET="${TF_SPEC#*:}"
+    VIEW="cagg_candles_${TF_NAME}"
+
+    "${PG_BIN}/psql" -d "$DB_NAME" -c "
+      CREATE MATERIALIZED VIEW IF NOT EXISTS ${VIEW}
+      WITH (timescaledb.continuous) AS
+      SELECT time_bucket('${TF_BUCKET}', ts) AS bucket, symbol, exchange,
+             FIRST(open, ts) AS open, MAX(high) AS high, MIN(low) AS low,
+             LAST(close, ts) AS close, SUM(volume) AS volume
+      FROM candles GROUP BY 1, symbol, exchange WITH NO DATA;"
+
+    "${PG_BIN}/psql" -d "$DB_NAME" -c "
+      CREATE INDEX IF NOT EXISTS idx_${VIEW}_composite
+      ON ${VIEW} (symbol, exchange, bucket DESC)
+      WITH (timescaledb.transaction_per_chunk);"
+  done
+
+  POLICIES='cagg_candles_5m:24 hours:5 minutes:1 minute
+cagg_candles_15m:48 hours:5 minutes:1 minute
+cagg_candles_1h:7 days:10 minutes:5 minutes
+cagg_candles_4h:21 days:10 minutes:10 minutes
+cagg_candles_1d:90 days:1 hour:30 minutes'
+
+  while IFS=: read -r PVIEW START_OFF END_OFF SCHED; do
+    "${PG_BIN}/psql" -d "$DB_NAME" -c \
+      "SELECT add_continuous_aggregate_policy('${PVIEW}', start_offset => INTERVAL '${START_OFF}', end_offset => INTERVAL '${END_OFF}', schedule_interval => INTERVAL '${SCHED}');" 2>/dev/null || true
+  done <<< "$POLICIES"
+
+  for TF_NAME in 5m 15m 1h 4h 1d; do
+    "${PG_BIN}/psql" -d "$DB_NAME" -c "CALL refresh_continuous_aggregate('cagg_candles_${TF_NAME}', NULL, NULL);"
+  done
+
+  ok "continuous aggregates created and refreshed"
+else
+  ok "continuous aggregates exist ($CAGG_COUNT/5)"
+fi
 
 # ── Verify ────────────────────────────────────────────────────────
 

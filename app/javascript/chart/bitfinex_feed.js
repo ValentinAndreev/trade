@@ -1,4 +1,5 @@
-// Map timeframes to Bitfinex format: 1d→1D, 1w→1W (minutes/hours stay lowercase)
+import connectionMonitor from "../services/connection_monitor"
+
 function bfxTimeframe(tf) {
   return tf.replace(/([dw])$/i, (ch) => ch.toUpperCase())
 }
@@ -10,12 +11,22 @@ export default class BitfinexFeed {
     this.onCandle = onCandle
     this.reconnect = true
     this.ws = null
+    this._onConnectionChange = this._onConnectionChange.bind(this)
   }
 
   connect() {
     this.reconnect = true
-    const key = `trade:${bfxTimeframe(this.timeframe)}:t${this.symbol}`
+    window.addEventListener("connection:change", this._onConnectionChange)
 
+    if (!connectionMonitor.internetOnline) return
+
+    this._openSocket()
+  }
+
+  _openSocket() {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return
+
+    const key = `trade:${bfxTimeframe(this.timeframe)}:t${this.symbol}`
     const ws = new WebSocket("wss://api-pub.bitfinex.com/ws/2")
 
     ws.onopen = () => {
@@ -39,7 +50,9 @@ export default class BitfinexFeed {
     }
 
     ws.onclose = () => {
-      if (this.reconnect) setTimeout(() => this.connect(), 3000)
+      if (this.reconnect && connectionMonitor.internetOnline) {
+        setTimeout(() => this._openSocket(), 3000)
+      }
     }
     ws.onerror = () => ws.close()
     this.ws = ws
@@ -47,6 +60,13 @@ export default class BitfinexFeed {
 
   disconnect() {
     this.reconnect = false
+    window.removeEventListener("connection:change", this._onConnectionChange)
     this.ws?.close()
+  }
+
+  _onConnectionChange(e) {
+    if (e.detail.online && this.reconnect) {
+      this._openSocket()
+    }
   }
 }
