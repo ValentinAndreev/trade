@@ -1,0 +1,9 @@
+class AppConfig < ApplicationConfig
+  def self.host: () -> String?
+  def self.port: () -> Integer
+  def self.ssl?: () -> bool
+
+  def host: () -> String?
+  def port: () -> Integer
+  def ssl?: () -> bool
+end

@@ -1,0 +1,5 @@
+module Api
+  class ConfigsController < ApplicationController
+    def show: () -> void
+  end
+end

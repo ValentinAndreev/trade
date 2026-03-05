@@ -1,0 +1,15 @@
+class Candle
+  class TickerQuery
+    SPARKLINE_POINTS: Integer
+
+    @symbols: Array[String]
+
+    def initialize: (Array[String] symbols) -> void
+    def call: () -> Array[ticker_data]
+
+    private
+
+    def build_ticker: (String symbol) -> ticker_data?
+    def sample_sparkline: (Array[Float] closes) -> Array[Float]
+  end
+end

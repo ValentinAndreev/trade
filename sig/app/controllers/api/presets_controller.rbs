@@ -1,0 +1,20 @@
+module Api
+  class PresetsController < ApplicationController
+    @preset: Preset
+
+    def index: () -> void
+    def show: () -> void
+    def create: () -> void
+    def update: () -> void
+    def destroy: () -> void
+    def state: () -> void
+    def reset_state: () -> void
+    def apply_state: () -> void
+
+    private
+
+    def set_preset: () -> void
+    def preset_params: () -> Hash[String, untyped]
+    def preset_json: (Preset preset, ?full: bool) -> preset_summary
+  end
+end

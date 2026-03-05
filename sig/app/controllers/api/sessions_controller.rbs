@@ -1,0 +1,7 @@
+module Api
+  class SessionsController < ApplicationController
+    def create: () -> void
+    def show: () -> void
+    def destroy: () -> void
+  end
+end

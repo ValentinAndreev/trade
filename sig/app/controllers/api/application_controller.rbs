@@ -1,0 +1,12 @@
+module Api
+  class ApplicationController < ActionController::API
+    include ActionController::Cookies
+
+    private
+
+    def current_user: () -> User?
+    def require_auth: () -> void
+    def bad_request: (ArgumentError error) -> void
+    def not_found: (ActiveRecord::RecordNotFound error) -> void
+  end
+end

@@ -1,0 +1,12 @@
+class Preset < ApplicationRecord
+  attr_accessor name: String
+  attr_accessor payload: Hash[String, untyped]
+  attr_accessor is_default: bool
+  attr_accessor updated_at: Time
+
+  def user: () -> User
+
+  private
+
+  def ensure_single_default: () -> void
+end

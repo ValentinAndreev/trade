@@ -1,0 +1,3 @@
+class ApplicationConfig < Anyway::Config
+  def self.instance: () -> instance
+end

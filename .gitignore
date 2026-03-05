@@ -38,3 +38,6 @@
 !/app/assets/builds/.keep
 
 /node_modules
+
+# RBS collection (generated, re-created by `bundle exec rbs collection install`)
+/.gem_rbs_collection/

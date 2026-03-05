@@ -1,0 +1,79 @@
+module HTTParty
+  interface _Response
+    def code: () -> Integer
+    def parsed_response: () -> untyped
+    def message: () -> String
+  end
+
+  def self.base_uri: (String uri) -> void
+  def self.get: (String path, ?query: Hash[Symbol, untyped]) -> _Response
+end
+
+module TechnicalAnalysis
+  module Validation
+    class ValidationError < StandardError
+    end
+  end
+
+  class Sma
+    def self.calculate: (Array[Hash[Symbol, untyped]], **untyped) -> Array[untyped]
+    def self.indicator_name: () -> String
+    def self.valid_options: () -> Array[Symbol]
+    def self.min_data_size: () -> Integer
+  end
+
+  class Ema < Sma
+  end
+
+  class Rsi < Sma
+  end
+
+  class Macd < Sma
+  end
+
+  class Bb < Sma
+  end
+
+  class Adx < Sma
+  end
+
+  class Atr < Sma
+  end
+
+  class Cci < Sma
+  end
+
+  class Mfi < Sma
+  end
+
+  class Obv < Sma
+  end
+
+  class Vwap < Sma
+  end
+
+  class Sr < Sma
+  end
+
+  class Ichimoku < Sma
+  end
+end
+
+class ApplicationJob < ActiveJob::Base
+end
+
+module ActionCable
+  module Server
+    def self.broadcast: (String channel, untyped message) -> void
+  end
+
+  def self.server: () -> Server
+end
+
+module ActionController
+  module Cookies
+  end
+
+  class API < ActionController::Base
+  end
+end

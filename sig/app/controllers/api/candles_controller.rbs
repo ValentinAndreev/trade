@@ -1,0 +1,9 @@
+module Api
+  class CandlesController < ApplicationController
+    def index: () -> void
+
+    private
+
+    def find_candles: () -> Array[ohlcv]
+  end
+end

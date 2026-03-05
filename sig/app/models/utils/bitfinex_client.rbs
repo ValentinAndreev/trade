@@ -1,0 +1,27 @@
+module Utils
+  class BitfinexClient
+    include HTTParty
+
+    class ApiError < StandardError
+    end
+
+    class RateLimitError < ApiError
+    end
+
+    INTERVALS: Array[String]
+    MAX_LIMIT: Integer
+
+    def tickers: (Array[String] symbols) -> Array[untyped]
+    def candles_history: (
+      symbol: String,
+      interval: String,
+      ?start_time: Integer?,
+      ?end_time: Integer?,
+      ?limit: Integer
+    ) -> Array[Array[Numeric]]
+
+    private
+
+    def handle_response: (untyped response) -> untyped
+  end
+end

@@ -1,0 +1,3 @@
+class CandleSyncSymbolJob < ApplicationJob
+  def perform: (String symbol) -> void
+end

@@ -1,0 +1,15 @@
+class BitfinexConfig < ApplicationConfig
+  def self.api_url: () -> String
+  def self.symbols: () -> Array[String]
+  def self.timeframes: () -> Array[String]
+  def self.rate_limit_pause: () -> Integer
+  def self.batch_size: () -> Integer
+  def self.default_interval: () -> String
+
+  def api_url: () -> String
+  def symbols: () -> Array[String]
+  def timeframes: () -> Array[String]
+  def rate_limit_pause: () -> Integer
+  def batch_size: () -> Integer
+  def default_interval: () -> String
+end

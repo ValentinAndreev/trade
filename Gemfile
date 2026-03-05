@@ -50,4 +50,9 @@ end
 
 group :development do
   gem 'web-console'
+
+  # Type checking
+  gem 'rbs', require: false
+  gem 'steep', require: false
+  gem 'rbs_rails', require: false
 end

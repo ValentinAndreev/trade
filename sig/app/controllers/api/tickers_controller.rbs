@@ -1,0 +1,5 @@
+module Api
+  class TickersController < ApplicationController
+    def index: () -> void
+  end
+end

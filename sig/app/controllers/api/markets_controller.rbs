@@ -1,0 +1,13 @@
+module Api
+  class MarketsController < ApplicationController
+    VALID_CATEGORIES: Array[String]
+
+    def index: () -> void
+    def add: () -> void
+    def remove: () -> void
+
+    private
+
+    def format_quote: (String sym, quote_meta? meta) -> market_quote?
+  end
+end

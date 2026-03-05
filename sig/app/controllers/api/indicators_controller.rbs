@@ -1,0 +1,12 @@
+module Api
+  class IndicatorsController < ApplicationController
+    ALLOWED_PARAMS: Array[Symbol]
+
+    def index: () -> void
+    def compute: () -> void
+
+    private
+
+    def indicator_params: () -> Hash[Symbol, untyped]
+  end
+end

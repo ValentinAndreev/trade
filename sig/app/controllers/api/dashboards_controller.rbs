@@ -1,0 +1,6 @@
+module Api
+  class DashboardsController < ApplicationController
+    def add: () -> void
+    def remove: () -> void
+  end
+end

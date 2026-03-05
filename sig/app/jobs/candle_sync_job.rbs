@@ -1,0 +1,3 @@
+class CandleSyncJob < ApplicationJob
+  def perform: () -> void
+end

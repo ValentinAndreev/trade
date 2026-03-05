@@ -1,0 +1,5 @@
+module Api
+  class RegistrationsController < ApplicationController
+    def create: () -> void
+  end
+end

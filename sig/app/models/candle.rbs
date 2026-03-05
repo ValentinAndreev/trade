@@ -1,0 +1,24 @@
+class Candle < ApplicationRecord
+  INDEX_FIELDS: Array[Symbol]
+
+  attr_accessor ts: Time
+  attr_accessor symbol: String
+  attr_accessor exchange: String
+  attr_accessor timeframe: String
+  attr_accessor open: BigDecimal
+  attr_accessor high: BigDecimal
+  attr_accessor low: BigDecimal
+  attr_accessor close: BigDecimal
+  attr_accessor volume: BigDecimal
+
+  def self.for_symbol: (String symbol) -> untyped
+  def self.for_timeframe: (String tf) -> untyped
+  def self.in_range: (Time from, Time to) -> untyped
+  def self.ordered: () -> untyped
+
+  def self.max_ts: (symbol: String, ?exchange: String) -> Time?
+  def self.min_ts: (symbol: String, ?exchange: String) -> Time?
+  def self.import: (Array[Hash[Symbol, untyped]] records, ?returning: Array[String]) -> untyped
+
+  def to_ohlcv: () -> ohlcv
+end

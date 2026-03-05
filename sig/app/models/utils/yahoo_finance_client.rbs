@@ -1,0 +1,10 @@
+module Utils
+  class YahooFinanceClient
+    def fetch_quotes: (Array[String] symbols) -> Hash[String, quote_meta]
+
+    private
+
+    def fetch_parallel: (Array[String] symbols) -> Hash[String, quote_meta]
+    def fetch_one: (String sym) -> quote_meta?
+  end
+end

@@ -1,0 +1,3 @@
+class CandleBackfillJob < ApplicationJob
+  def perform: () -> void
+end

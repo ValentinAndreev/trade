@@ -1,0 +1,9 @@
+class User < ApplicationRecord
+  attr_accessor username: String
+  attr_accessor password_digest: String
+
+  def presets: () -> untyped
+  def default_preset: () -> Preset?
+  def as_api_json: (?include_presets: bool) -> user_api
+  def authenticate: (String password) -> (User | false)
+end

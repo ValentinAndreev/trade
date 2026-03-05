@@ -1,0 +1,62 @@
+type ohlcv = {
+  time: Integer,
+  open: Float,
+  high: Float,
+  low: Float,
+  close: Float,
+  volume: Float
+}
+
+type ticker_data = {
+  symbol: String,
+  last_price: Float,
+  change_24h: Float,
+  change_24h_perc: Float,
+  volume: Float,
+  high: Float?,
+  low: Float?,
+  sparkline: Array[Float],
+  updated_at: String
+}
+
+type quote_meta = Hash[String, untyped]
+
+type market_quote = {
+  symbol: String,
+  name: String,
+  price: Float?,
+  change: Float?,
+  change_pct: Float?,
+  high: Float?,
+  low: Float?,
+  prev_close: Float?,
+  currency: String?,
+  updated_at: String?
+}
+
+type preset_summary = {
+  id: Integer,
+  name: String,
+  is_default: bool,
+  updated_at: String
+}
+
+type user_api = {
+  id: Integer,
+  username: String,
+  presets: Array[{ id: Integer, name: String, is_default: bool }]?
+}
+
+type symbol_snapshot = {
+  dashboardSymbols: Array[String]?,
+  marketsSymbols: Hash[String, Array[String]]?
+}
+
+type market_symbols = Hash[String, Array[String]]
+
+type indicator_info = {
+  key: Symbol,
+  name: String,
+  options: Array[Symbol],
+  min_data: Integer
+}

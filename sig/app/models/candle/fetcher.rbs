@@ -1,0 +1,33 @@
+class Candle
+  class Fetcher
+    MAX_LIMIT: Integer
+    MAX_ATTEMPTS: Integer
+    SYMBOL_PREFIX: String
+    EXCHANGE: String
+    CONTINUOUS_AGGREGATE_BUCKETS: Hash[String, untyped]
+
+    class FetchError < StandardError
+    end
+
+    attr_reader client: Utils::BitfinexClient
+    attr_reader symbol: String
+    attr_reader interval: String
+    attr_reader load_all_data: bool
+    attr_reader connection: untyped
+
+    def initialize: (String symbol, ?interval: String, ?load_all_data: bool) -> void
+    def call: () -> void
+
+    private
+
+    HISTORY_START: Integer
+
+    def end_time_ms: () -> Integer?
+    def perform_request: (Integer end_time, ?attempt: Integer) -> Array[Array[Numeric]]
+    def save_candles: (Array[Array[Numeric]] data) -> [Integer, Array[Time]]
+    def without_last_minute_ms: () -> Integer
+    def broadcast_new_candles: (Array[Hash[Symbol, untyped]] records, Array[Time] imported_timestamps) -> void
+    def retry_pause: () -> Numeric
+    def refresh_continuous_aggregates: (Array[Time] imported_timestamps) -> void
+  end
+end

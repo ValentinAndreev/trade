@@ -1,0 +1,36 @@
+class Candle
+  class FindQuery
+    CONTINUOUS_AGGREGATES: Hash[String, String]
+    TIMEFRAMES: Hash[String, { unit: String, duration: untyped }]
+    DEFAULT_LIMIT: Integer
+
+    attr_reader symbol: String
+    attr_reader exchange: String
+    attr_reader timeframe: String
+    attr_reader start_time: Time?
+    attr_reader end_time: Time?
+    attr_reader limit: Integer?
+    attr_reader connection: untyped
+
+    def initialize: (
+      symbol: String,
+      ?timeframe: String,
+      ?exchange: String,
+      ?start_time: (String | Time)?,
+      ?end_time: (String | Time)?,
+      ?limit: (Integer | String)?
+    ) -> void
+
+    def call: () -> Array[ohlcv]
+
+    private
+
+    def read_raw_candles: () -> Array[Hash[String, untyped]]
+    def read_from_aggregate: () -> Array[Hash[String, untyped]]
+    def calculate_on_the_fly: () -> Array[Hash[String, untyped]]
+    def format_ohlcv: (Array[Hash[String, untyped]] raw_data) -> Array[ohlcv]
+    def calculate_start_time: () -> Time?
+    def parse_timeframe: () -> [Integer, String]
+    def parse_time: (untyped value) -> Time?
+  end
+end

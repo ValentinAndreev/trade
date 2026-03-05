@@ -1,0 +1,19 @@
+class Candle
+  class IndicatorCalculator
+    INDICATORS: Hash[Symbol, untyped]
+
+    class UnknownIndicatorError < StandardError
+    end
+
+    attr_reader candles: Array[ohlcv]
+
+    def initialize: (Array[ohlcv] candles) -> void
+    def calculate: (String | Symbol indicator, **untyped params) -> Array[Hash[Symbol, untyped]]
+    def self.available: () -> Array[indicator_info]
+
+    private
+
+    def input_data: () -> Array[Hash[Symbol, untyped]]
+    def build_params: (untyped klass, Hash[Symbol, untyped] params) -> Hash[Symbol, untyped]
+  end
+end
