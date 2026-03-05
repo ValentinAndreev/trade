@@ -1,0 +1,26 @@
+---
+symbols:
+  indices:
+  - "^GSPC"
+  - "^IXIC"
+  - "^DJI"
+  - "^FTSE"
+  - "^N225"
+  - "^STOXX50E"
+  - "^BSESN"
+  - "^RUT"
+  - "^HSI"
+  - "^GDAXI"
+  - "^BVSP"
+  - "^STI"
+  forex:
+  - EURUSD=X
+  - GBPUSD=X
+  - USDCNY=X
+  - AUDUSD=X
+  - USDJPY=X
+  commodities:
+  - GC=F
+  - CL=F
+  - SI=F
+  - BZ=F

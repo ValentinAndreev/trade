@@ -10,6 +10,12 @@ Rails.application.routes.draw do
       post :add
       post :remove
     end
+    resources :markets, only: :index do
+      collection do
+        post :add
+        post :remove
+      end
+    end
     resources :indicators, only: :index
     post 'indicators/:type/compute', to: 'indicators#compute'
   end
