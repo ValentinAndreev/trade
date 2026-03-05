@@ -8,7 +8,7 @@ class Api::SessionsController < Api::ApplicationController
       session[:user_id] = user.id
       render json: { user: user_json(user) }
     else
-      render json: { error: "Invalid username or password" }, status: :unauthorized
+      render json: { error: 'Invalid username or password' }, status: :unauthorized
     end
   end
 

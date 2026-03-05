@@ -13,7 +13,7 @@ class Api::ApplicationController < ActionController::API
   end
 
   def require_auth
-    render json: { error: "Unauthorized" }, status: :unauthorized unless current_user
+    render json: { error: 'Unauthorized' }, status: :unauthorized unless current_user
   end
 
   def bad_request(error)

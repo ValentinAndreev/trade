@@ -2,7 +2,7 @@ Rails.application.routes.draw do
   get 'up' => 'rails/health#show', as: :rails_health_check
 
   namespace :api do
-    get "health", to: "health#show"
+    get 'health', to: 'health#show'
 
     # Auth
     resource :session, only: %i[show create destroy]

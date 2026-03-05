@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require "net/http"
-require "json"
+require 'net/http'
+require 'json'
 
 class Api::MarketsController < Api::ApplicationController
-  YAML_PATH = Rails.root.join("config/markets.yml")
+  YAML_PATH = Rails.root.join('config/markets.yml')
 
   def index
     symbols = load_symbols
@@ -50,11 +50,11 @@ class Api::MarketsController < Api::ApplicationController
     return default_symbols unless YAML_PATH.exist?
 
     data = YAML.safe_load_file(YAML_PATH)
-    data&.fetch("symbols", nil) || default_symbols
+    data&.fetch('symbols', nil) || default_symbols
   end
 
   def save_symbols(symbols)
-    YAML_PATH.write({ "symbols" => symbols }.to_yaml)
+    YAML_PATH.write({ 'symbols' => symbols }.to_yaml)
   end
 
   def default_symbols
@@ -83,14 +83,14 @@ class Api::MarketsController < Api::ApplicationController
         http.read_timeout = MarketsConfig.read_timeout
 
         request = Net::HTTP::Get.new(uri)
-        request["User-Agent"] = MarketsConfig.user_agent
+        request['User-Agent'] = MarketsConfig.user_agent
 
         response = http.request(request)
         next unless response.is_a?(Net::HTTPSuccess)
 
         raw = JSON.parse(response.body)
-        meta = raw.dig("chart", "result", 0, "meta")
-        [sym, meta] if meta
+        meta = raw.dig('chart', 'result', 0, 'meta')
+        [ sym, meta ] if meta
       rescue StandardError => e
         Rails.logger.debug("[markets] fetch #{sym} failed: #{e.message}")
         nil
@@ -108,25 +108,25 @@ class Api::MarketsController < Api::ApplicationController
   def format_quote(sym, meta)
     return nil unless meta
 
-    prev = meta["chartPreviousClose"] || meta["previousClose"]
-    price = meta["regularMarketPrice"]
+    prev = meta['chartPreviousClose'] || meta['previousClose']
+    price = meta['regularMarketPrice']
     change = prev && price ? price - prev : nil
     change_pct = prev && prev != 0 && change ? (change / prev) * 100 : nil
 
-    market_time = meta["regularMarketTime"]
+    market_time = meta['regularMarketTime']
     updated_at = market_time ? Time.at(market_time).utc.iso8601 : nil
 
     {
       symbol:     sym,
-      name:       MarketsConfig.labels[sym] || meta["shortName"] || meta["longName"] || sym,
+      name:       MarketsConfig.labels[sym] || meta['shortName'] || meta['longName'] || sym,
       price:      price,
       change:     change&.round(4),
       change_pct: change_pct&.round(2),
-      high:       meta["regularMarketDayHigh"],
-      low:        meta["regularMarketDayLow"],
+      high:       meta['regularMarketDayHigh'],
+      low:        meta['regularMarketDayLow'],
       prev_close: prev,
-      currency:   meta["currency"],
-      updated_at: updated_at,
+      currency:   meta['currency'],
+      updated_at: updated_at
     }
   end
 end

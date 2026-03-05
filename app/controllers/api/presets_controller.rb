@@ -4,8 +4,8 @@ class Api::PresetsController < Api::ApplicationController
   before_action :require_auth
   before_action :set_preset, only: %i[show update destroy]
 
-  DASHBOARD_YAML = Rails.root.join("config/dashboard.yml")
-  MARKETS_YAML   = Rails.root.join("config/markets.yml")
+  DASHBOARD_YAML = Rails.root.join('config/dashboard.yml')
+  MARKETS_YAML   = Rails.root.join('config/markets.yml')
 
   def index
     presets = current_user.presets.order(:name)
@@ -44,7 +44,7 @@ class Api::PresetsController < Api::ApplicationController
   def state
     render json: {
       dashboardSymbols: load_dashboard_symbols,
-      marketsSymbols: load_markets_symbols,
+      marketsSymbols: load_markets_symbols
     }
   end
 
@@ -59,12 +59,12 @@ class Api::PresetsController < Api::ApplicationController
   def apply_state
     body = JSON.parse(request.body.read)
 
-    if body["dashboardSymbols"].is_a?(Array)
-      DASHBOARD_YAML.write({ "symbols" => body["dashboardSymbols"] }.to_yaml)
+    if body['dashboardSymbols'].is_a?(Array)
+      DASHBOARD_YAML.write({ 'symbols' => body['dashboardSymbols'] }.to_yaml)
     end
 
-    if body["marketsSymbols"].is_a?(Hash)
-      MARKETS_YAML.write({ "symbols" => body["marketsSymbols"] }.to_yaml)
+    if body['marketsSymbols'].is_a?(Hash)
+      MARKETS_YAML.write({ 'symbols' => body['marketsSymbols'] }.to_yaml)
     end
 
     render json: { ok: true }
@@ -94,13 +94,13 @@ class Api::PresetsController < Api::ApplicationController
     return nil unless DASHBOARD_YAML.exist?
 
     data = YAML.safe_load_file(DASHBOARD_YAML)
-    data&.fetch("symbols", nil)
+    data&.fetch('symbols', nil)
   end
 
   def load_markets_symbols
     return nil unless MARKETS_YAML.exist?
 
     data = YAML.safe_load_file(MARKETS_YAML)
-    data&.fetch("symbols", nil)
+    data&.fetch('symbols', nil)
   end
 end
