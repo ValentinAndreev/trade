@@ -6,7 +6,7 @@ class Api::SessionsController < Api::ApplicationController
 
     if user&.authenticate(params[:password])
       session[:user_id] = user.id
-      render json: { user: user_json(user) }
+      render json: { user: user.as_api_json }
     else
       render json: { error: 'Invalid username or password' }, status: :unauthorized
     end
@@ -14,7 +14,7 @@ class Api::SessionsController < Api::ApplicationController
 
   def show
     if current_user
-      render json: { user: user_json(current_user) }
+      render json: { user: current_user.as_api_json }
     else
       render json: { user: nil }
     end
@@ -23,17 +23,5 @@ class Api::SessionsController < Api::ApplicationController
   def destroy
     session.delete(:user_id)
     render json: { ok: true }
-  end
-
-  private
-
-  def user_json(user)
-    {
-      id: user.id,
-      username: user.username,
-      presets: user.presets.order(:name).map { |p|
-        { id: p.id, name: p.name, is_default: p.is_default }
-      }
-    }
   end
 end

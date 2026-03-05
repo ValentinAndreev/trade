@@ -11,4 +11,14 @@ class User < ApplicationRecord
   def default_preset
     presets.find_by(is_default: true)
   end
+
+  def as_api_json(include_presets: true)
+    data = { id: id, username: username }
+    if include_presets
+      data[:presets] = presets.order(:name).map do |p|
+        { id: p.id, name: p.name, is_default: p.is_default }
+      end
+    end
+    data
+  end
 end
