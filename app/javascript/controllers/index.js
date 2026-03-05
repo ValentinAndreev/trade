@@ -16,3 +16,6 @@ application.register("nav", NavController)
 import MainController from "./main_controller"
 application.register("main", MainController)
 
+import AuthController from "./auth_controller"
+application.register("auth", AuthController)
+

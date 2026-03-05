@@ -1,10 +1,11 @@
-<div data-controller="nav" class="h-screen w-full bg-[#1a1a2e] flex flex-col">
+<div data-controller="nav auth" class="h-screen w-full bg-[#1a1a2e] flex flex-col">
   <!-- Nav bar -->
   <div class="flex items-center gap-1 px-4 py-1.5 bg-[#0a0a1e] border-b border-[#2a2a3e] shrink-0">
     <button data-action="click->nav#showMain" data-nav-target="mainBtn"
             class="px-3 py-1.5 rounded text-sm">Main</button>
     <button data-action="click->nav#showGraph" data-nav-target="graphBtn"
             class="px-3 py-1.5 rounded text-sm">Graph</button>
+    <div class="ml-auto" data-auth-target="userArea"></div>
   </div>
 
   <!-- Main page -->

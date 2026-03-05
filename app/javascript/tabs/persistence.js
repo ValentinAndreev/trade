@@ -2,30 +2,14 @@ import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 
 const STORAGE_KEY = "chart-tabs"
 const ACTIVE_TAB_KEY = "chart-active-tab"
-const DEFAULT_TABS = [{
-  id: "tab-1",
-  name: null,
-  panels: [{
-    id: "p-1",
-    timeframe: "1m",
-    overlays: [{
-      id: "o-1",
-      symbol: "BTCUSD",
-      mode: "price",
-      chartType: "Candlestick",
-      visible: true,
-      colorScheme: 0,
-      opacity: 1,
-    }],
-  }],
-}]
+const DEFAULT_TABS = []
 
 export function loadTabs() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
       const tabs = JSON.parse(stored)
-      if (Array.isArray(tabs) && tabs.length > 0) {
+      if (Array.isArray(tabs)) {
         return tabs.map(t => _migrateTab(t))
       }
     }

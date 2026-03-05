@@ -7,7 +7,8 @@ const DRAWING_PREFIX = { labels: "lbl", lines: "ln", hlines: "hl", vlines: "vl" 
 export default class TabStore {
   constructor() {
     this.tabs = loadTabs()
-    this._nextTabId = Math.max(...this.tabs.map(t => parseInt(t.id.split("-")[1]))) + 1
+    const tabNums = this.tabs.map(t => parseInt(t.id.split("-")[1]))
+    this._nextTabId = tabNums.length ? Math.max(...tabNums) + 1 : 1
     this._nextPanelId = calcNextId(this.tabs, "p")
     this._nextOverlayId = calcNextId(this.tabs, "o")
     this._nextDrawingId = {}
@@ -18,9 +19,9 @@ export default class TabStore {
     const savedTabId = loadActiveTabId()
     const savedTab = savedTabId && this.tabs.find(t => t.id === savedTabId)
     const activeTab = savedTab || this.tabs[0]
-    this.activeTabId = activeTab.id
-    this.selectedPanelId = activeTab.panels[0].id
-    this.selectedOverlayId = activeTab.panels[0].overlays[0]?.id || null
+    this.activeTabId = activeTab?.id || null
+    this.selectedPanelId = activeTab?.panels[0]?.id || null
+    this.selectedOverlayId = activeTab?.panels[0]?.overlays[0]?.id || null
   }
 
   // --- Tabs ---

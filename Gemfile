@@ -17,6 +17,9 @@ gem 'bootsnap', require: false
 gem 'kamal', require: false
 gem 'thruster', require: false
 
+# Authentication
+gem 'bcrypt', '~> 3.1'
+
 # Configuration
 gem 'anyway_config'
 
