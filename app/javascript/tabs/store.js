@@ -254,10 +254,11 @@ export default class TabStore {
     return true
   }
 
-  setOverlayIndicatorType(overlayId, type) {
+  setOverlayIndicatorType(overlayId, type, source) {
     const overlay = this._findOverlay(overlayId)
     if (!overlay) return false
     overlay.indicatorType = type
+    if (source !== undefined) overlay.indicatorSource = source
     this._save()
     return true
   }

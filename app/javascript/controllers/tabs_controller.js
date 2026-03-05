@@ -350,7 +350,7 @@ export default class extends Controller {
     let indicatorChanged = false
 
     if (overlay.mode === "indicator") {
-      const { type, params, pinnedTo } = this._readIndicatorInputs(overlay)
+      const { type, source, params, pinnedTo } = this._readIndicatorInputs(overlay)
 
       if (pinnedTo) {
         const sourceOverlay = this.store.overlayById(pinnedTo)
@@ -359,14 +359,14 @@ export default class extends Controller {
         }
       }
 
-      this.store.setOverlayIndicatorType(overlay.id, type)
+      this.store.setOverlayIndicatorType(overlay.id, type, source)
       this.store.setOverlayIndicatorParams(overlay.id, params)
       this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
       indicatorChanged = true
 
       if (!timeframeChanged && !symbolChanged) {
         const chartCtrl = this._chartCtrlForPanel(panel.id)
-        if (chartCtrl) chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo)
+        if (chartCtrl) chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo, source)
       }
     } else {
       const symbolEl = this.sidebarTarget.querySelector("[data-field='symbol']:not(.hidden)")
@@ -396,7 +396,7 @@ export default class extends Controller {
       if (chartCtrl) {
         chartCtrl.showMode(overlay.id, mode)
         if (mode === "indicator") {
-          chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo)
+          chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo, overlay.indicatorSource)
         }
       }
       this.render()
@@ -438,14 +438,15 @@ export default class extends Controller {
   }
 
   switchIndicatorType(e) {
-    const type = e.currentTarget.value
+    const raw = e.currentTarget.value
     const overlay = this.store.selectedOverlay
-    if (!overlay || !type) return
+    if (!overlay || !raw) return
 
+    const [type, source] = raw.includes("|") ? raw.split("|") : [raw, null]
     const meta = INDICATOR_META[type]
     const params = meta ? { ...meta.defaults } : {}
 
-    this.store.setOverlayIndicatorType(overlay.id, type)
+    this.store.setOverlayIndicatorType(overlay.id, type, source || (meta?.lib ? "client" : "server"))
     this.store.setOverlayIndicatorParams(overlay.id, params)
     this.render()
   }
@@ -460,15 +461,15 @@ export default class extends Controller {
     const overlay = this.store.selectedOverlay
     if (!overlay || overlay.mode !== "indicator") return
 
-    const { type, params, pinnedTo } = this._readIndicatorInputs(overlay)
+    const { type, source, params, pinnedTo } = this._readIndicatorInputs(overlay)
 
-    this.store.setOverlayIndicatorType(overlay.id, type)
+    this.store.setOverlayIndicatorType(overlay.id, type, source)
     this.store.setOverlayIndicatorParams(overlay.id, params)
     this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
 
     const panel = this.store.selectedPanel
     const chartCtrl = panel ? this._chartCtrlForPanel(panel.id) : null
-    if (chartCtrl) chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo)
+    if (chartCtrl) chartCtrl.updateIndicator(overlay.id, type, params, pinnedTo, source)
     this.render()
   }
 
@@ -546,7 +547,8 @@ export default class extends Controller {
 
   _readIndicatorInputs(overlay) {
     const typeEl = this.sidebarTarget.querySelector("[data-field='indicatorType']")
-    const type = typeEl?.value || overlay.indicatorType || "sma"
+    const raw = typeEl?.value || overlay.indicatorType || "sma"
+    const [type, source] = raw.includes("|") ? raw.split("|") : [raw, overlay.indicatorSource || null]
 
     const paramInputs = this.sidebarTarget.querySelectorAll("[data-indicator-param]")
     const params = {}
@@ -559,7 +561,7 @@ export default class extends Controller {
     const pinnedEl = this.sidebarTarget.querySelector("[data-field='pinnedTo']")
     const pinnedTo = pinnedEl?.value || null
 
-    return { type, params, pinnedTo }
+    return { type, source, params, pinnedTo }
   }
 
   _panelFromEvent(e) {
@@ -592,7 +594,7 @@ export default class extends Controller {
           // Sync mode (price/volume/indicator)
           chartCtrl.showMode(overlay.id, overlay.mode || "price")
           if (overlay.mode === "indicator") {
-            chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo)
+            chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo, overlay.indicatorSource)
           }
           chartCtrl.setOverlayVisibility(overlay.id, overlay.visible !== false)
           if (chartCtrl.setOverlayColorScheme) {

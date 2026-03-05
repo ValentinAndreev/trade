@@ -177,8 +177,8 @@ export default class extends Controller {
     this._applyOverlayStyle(ov)
   }
 
-  updateIndicator(id, type, params, pinnedTo) {
-    this.indicators.updateIndicator(id, type, params, pinnedTo)
+  updateIndicator(id, type, params, pinnedTo, source) {
+    this.indicators.updateIndicator(id, type, params, pinnedTo, source)
   }
 
   setPinnedTo(id, pinnedTo) {

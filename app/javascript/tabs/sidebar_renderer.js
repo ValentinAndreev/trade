@@ -71,7 +71,8 @@ export default class SidebarRenderer {
         const paramsStr = o.indicatorParams
           ? Object.values(o.indicatorParams).join(", ")
           : ""
-        modeLabel = (o.indicatorType || "ind").toUpperCase() + (paramsStr ? ` ${paramsStr}` : "")
+        const srcIcon = o.indicatorSource === "server" ? "\uD83C\uDF10" : "\u26A1"
+        modeLabel = srcIcon + " " + (o.indicatorType || "ind").toUpperCase() + (paramsStr ? ` ${paramsStr}` : "")
       } else {
         label = o.symbol || "Empty"
         modeLabel = !o.symbol ? "" : (o.mode === "volume" ? "Volume" : "Price")
@@ -369,22 +370,46 @@ export default class SidebarRenderer {
   _indicatorSettingsHTML(indicatorType, indicatorParams, selectedOverlay, panel) {
     const indicators = this.indicators || []
     const meta = INDICATOR_META[indicatorType]
+    const currentSource = selectedOverlay?.indicatorSource || (meta?.lib ? "client" : "server")
 
-    const allKeys = indicators.length > 0
-      ? indicators.map(i => i.key)
-      : Object.keys(INDICATOR_META)
+    const serverKeys = new Set(indicators.map(i => String(i.key)))
+    const clientKeys = new Set(
+      Object.keys(INDICATOR_META).filter(k => !!INDICATOR_META[k]?.lib)
+    )
+    const allEntries = []
+    const seen = new Set()
 
-    const indicatorKeys = allKeys.filter(key => {
+    for (const key of Object.keys(INDICATOR_META)) {
+      const hasClient = clientKeys.has(key)
+      const hasServer = serverKeys.has(key)
+      if (hasClient && hasServer) {
+        allEntries.push({ key, source: "client" })
+        allEntries.push({ key, source: "server" })
+      } else if (hasClient) {
+        allEntries.push({ key, source: "client" })
+      } else if (hasServer) {
+        allEntries.push({ key, source: "server" })
+      } else {
+        allEntries.push({ key, source: "server" })
+      }
+      seen.add(key)
+    }
+    for (const key of serverKeys) {
+      if (!seen.has(key)) allEntries.push({ key, source: "server" })
+    }
+
+    const filtered = allEntries.filter(({ source }) => {
       if (this.indicatorFilter === "all") return true
-      const m = INDICATOR_META[key]
-      return this.indicatorFilter === "client" ? !!m?.lib : !m?.lib
+      return this.indicatorFilter === source
     })
 
-    const indicatorOpts = indicatorKeys.map(key => {
+    const indicatorOpts = filtered.map(({ key, source }) => {
       const m = INDICATOR_META[key]
       const label = m?.label || key.toUpperCase()
-      const icon = m?.lib ? "\u26A1" : "\uD83C\uDF10"
-      return `<option value="${key}"${key === indicatorType ? " selected" : ""}>${icon} ${label}</option>`
+      const icon = source === "client" ? "\u26A1" : "\uD83C\uDF10"
+      const val = `${key}|${source}`
+      const selected = key === indicatorType && source === currentSource
+      return `<option value="${val}"${selected ? " selected" : ""}>${icon} ${label}</option>`
     }).join("")
 
     const filterLabel = INDICATOR_FILTER_LABELS[this.indicatorFilter]

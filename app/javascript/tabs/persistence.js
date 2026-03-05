@@ -108,6 +108,7 @@ function _migratePanel(p) {
         colorScheme: normalizeColorScheme(o.colorScheme ?? idx),
         opacity: normalizeOpacity(o.opacity),
         indicatorType: o.indicatorType ?? null,
+        indicatorSource: o.indicatorSource ?? null,
         indicatorParams: o.indicatorParams ?? null,
         pinnedTo: o.pinnedTo ?? null,
       })),

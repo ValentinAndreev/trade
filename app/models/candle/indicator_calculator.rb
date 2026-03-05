@@ -60,7 +60,9 @@ class Candle::IndicatorCalculator
 
   def build_params(klass, params)
     valid = klass.valid_options
-    filtered = params.select { |k, _| valid.include?(k.to_sym) }
+    defaults = {}
+    defaults[:price_key] = :close if valid.include?(:price_key) && !params.key?(:price_key)
+    filtered = defaults.merge(params).select { |k, _| valid.include?(k.to_sym) }
     filtered.transform_values { |v| v.is_a?(String) ? (v.match?(/\A\d+\z/) ? v.to_i : v.to_f) : v }
   end
 end

@@ -24,13 +24,15 @@ export default class IndicatorManager {
     const indicatorParams = config.indicatorParams || {}
     const pinnedTo = config.pinnedTo || null
 
+    const indicatorSource = config.indicatorSource || (INDICATOR_META[indicatorType]?.lib ? "client" : "server")
+
     const ov = {
       series: null,
       mode: "indicator", chartType: "Line",
       colorIndex: ci, colorScheme: ci, opacity, colors, visible,
       basePriceScaleId, activePriceScaleId: basePriceScaleId,
       symbol: config.symbol,
-      indicatorType, indicatorParams, pinnedTo,
+      indicatorType, indicatorParams, indicatorSource, pinnedTo,
       indicatorSeries: [],
     }
 
@@ -77,7 +79,7 @@ export default class IndicatorManager {
     }
   }
 
-  updateIndicator(id, type, params, pinnedTo) {
+  updateIndicator(id, type, params, pinnedTo, source) {
     const ov = this.overlayMap.get(id)
     if (!ov) return
 
@@ -86,6 +88,8 @@ export default class IndicatorManager {
     ov.indicatorParams = params
     ov.mode = "indicator"
     if (pinnedTo !== undefined) ov.pinnedTo = pinnedTo || null
+    if (source !== undefined) ov.indicatorSource = source
+    ov._lastSourceKey = null
 
     this.loadData(id, ov)
   }
@@ -162,13 +166,14 @@ export default class IndicatorManager {
     if (!sourceData || sourceData.length === 0) return []
 
     const meta = INDICATOR_META[ov.indicatorType]
-    if (meta?.lib) {
+    const useClient = meta?.lib && ov.indicatorSource !== "server"
+
+    if (useClient) {
       const result = meta.lib.fn(meta.lib.input(sourceData, ov.indicatorParams || {}))
       const offset = sourceData.length - result.length
       return result.map((val, i) => ({ time: sourceData[i + offset].time, ...meta.lib.map(val) }))
     }
 
-    // Server-side: skip if source data hasn't changed
     const sourceKey = `${sourceData.length}:${sourceData[0].time}`
     if (ov._lastSourceKey === sourceKey) return null
     ov._lastSourceKey = sourceKey
