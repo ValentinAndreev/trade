@@ -15,7 +15,7 @@ describe("apiFetch", () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     vi.mocked(showToast).mockClear()
-    monitor.isOnline = true as any
+    Object.defineProperty(monitor, "isOnline", { value: true, writable: true, configurable: true })
     monitor.internetOnline = true
     monitor.backendOnline = true
     vi.stubGlobal("fetch", vi.fn())

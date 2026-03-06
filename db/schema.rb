@@ -13,7 +13,7 @@
 ActiveRecord::Schema[8.1].define(version: 2026_03_05_071931) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
-  enable_extension "timescaledb"
+  enable_extension "timescaledb" unless ENV["CI"]
 
   create_table "candles", id: false, force: :cascade do |t|
     t.decimal "close", precision: 15, scale: 8, null: false

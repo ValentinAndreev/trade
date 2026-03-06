@@ -9,7 +9,7 @@ RSpec.describe Utils::BitfinexClient do
 
   describe '#tickers' do
     it 'returns parsed ticker data' do
-      body = [['tBTCUSD', 50_000, 1, 50_001, 2, 100, 0.02, 50_000, 1000, 51_000, 49_000]]
+      body = [ [ 'tBTCUSD', 50_000, 1, 50_001, 2, 100, 0.02, 50_000, 1000, 51_000, 49_000 ] ]
       stub_request(:get, "#{base_url}/tickers")
         .with(query: { symbols: 'tBTCUSD,tETHUSD' })
         .to_return(status: 200, body: body.to_json, headers: { 'Content-Type' => 'application/json' })
@@ -38,7 +38,7 @@ RSpec.describe Utils::BitfinexClient do
 
   describe '#candles_history' do
     it 'returns candle data' do
-      candles = [[1_700_000_000_000, 50_000, 50_100, 50_200, 49_900, 10]]
+      candles = [ [ 1_700_000_000_000, 50_000, 50_100, 50_200, 49_900, 10 ] ]
       stub_request(:get, %r{#{base_url}/candles/trade:1m:tBTCUSD/hist})
         .to_return(status: 200, body: candles.to_json, headers: { 'Content-Type' => 'application/json' })
 

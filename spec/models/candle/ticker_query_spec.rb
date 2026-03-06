@@ -15,7 +15,7 @@ RSpec.describe Candle::TickerQuery do
       create(:candle, symbol: 'BTCUSD', ts: 1.hour.ago, close: 49_000)
 
       allow(client).to receive(:tickers).and_return([
-        ['tBTCUSD', 50_000, 1, 50_010, 1, 1000.0, 0.02, 50_005.0, 500.0, 51_000.0, 49_000.0]
+        [ 'tBTCUSD', 50_000, 1, 50_010, 1, 1000.0, 0.02, 50_005.0, 500.0, 51_000.0, 49_000.0 ]
       ])
 
       tickers = described_class.new(%w[BTCUSD]).call
@@ -33,7 +33,7 @@ RSpec.describe Candle::TickerQuery do
       create(:candle, symbol: 'BTCUSD', ts: 1.hour.ago, close: 49_000)
 
       allow(client).to receive(:tickers).and_return([
-        ['tBTCUSD', 0, 0, 0, 0, 100.0, 0.01, 50_000.0, 300.0, 51_000.0, 49_000.0]
+        [ 'tBTCUSD', 0, 0, 0, 0, 100.0, 0.01, 50_000.0, 300.0, 51_000.0, 49_000.0 ]
       ])
 
       original_cache = Rails.cache

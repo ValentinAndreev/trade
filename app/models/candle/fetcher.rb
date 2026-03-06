@@ -38,7 +38,7 @@ class Candle::Fetcher
   def sync_recent
     gap = gap_minutes
     if gap
-      fetch_and_upsert([gap + 2, RECENT_LIMIT].max)
+      fetch_and_upsert([ gap + 2, RECENT_LIMIT ].max)
     else
       paginate_backward(from: current_time_ms)
     end
@@ -52,7 +52,7 @@ class Candle::Fetcher
   end
 
   def fetch_and_upsert(limit)
-    data = fetch_candles(end_time: current_time_ms, limit: [limit, MAX_LIMIT].min)
+    data = fetch_candles(end_time: current_time_ms, limit: [ limit, MAX_LIMIT ].min)
     return if data.blank?
 
     records = build_records(data)
@@ -195,16 +195,13 @@ class Candle::Fetcher
     max_ts = imported_timestamps.max
 
     CONTINUOUS_AGGREGATE_BUCKETS.each do |view_name, bucket_size|
-      from = connection.quote((min_ts - bucket_size).utc)
-      to = connection.quote((max_ts + bucket_size).utc)
-
-      connection.execute(<<~SQL.squish)
-        CALL refresh_continuous_aggregate(
-          '#{view_name}',
-          #{from}::timestamptz,
-          #{to}::timestamptz
-        );
-      SQL
+      sql = Candle.sanitize_sql_array([
+        'CALL refresh_continuous_aggregate(?, ?::timestamptz, ?::timestamptz)',
+        view_name,
+        (min_ts - bucket_size).utc,
+        (max_ts + bucket_size).utc
+      ])
+      connection.execute(sql)
     end
   end
 end
