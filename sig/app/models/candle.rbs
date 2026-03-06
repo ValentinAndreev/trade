@@ -19,6 +19,7 @@ class Candle < ApplicationRecord
   def self.max_ts: (symbol: String, ?exchange: String) -> Time?
   def self.min_ts: (symbol: String, ?exchange: String) -> Time?
   def self.import: (Array[Hash[Symbol, untyped]] records, ?returning: Array[String]) -> untyped
+  def self.upsert_recent: (Array[Hash[Symbol, untyped]] records) -> untyped
 
   def to_ohlcv: () -> ohlcv
 end

@@ -3,20 +3,39 @@
 require 'rails_helper'
 
 RSpec.describe CandleSyncJob do
-  it 'enqueues CandleSyncSymbolJob for each symbol' do
-    symbols = BitfinexConfig.symbols
+  it 'calls Candle::Fetcher for each symbol' do
+    BitfinexConfig.symbols.each do |symbol|
+      fetcher = instance_double(Candle::Fetcher)
+      allow(Candle::Fetcher).to receive(:new).with(symbol).and_return(fetcher)
+      allow(fetcher).to receive(:call)
+    end
 
-    expect {
-      described_class.perform_now
-    }.to have_enqueued_job(CandleSyncSymbolJob).exactly(symbols.count).times
-  end
-
-  it 'staggers jobs with different scheduled times' do
     described_class.perform_now
 
-    enqueued = ActiveJob::Base.queue_adapter.enqueued_jobs
-                 .select { |j| j['job_class'] == 'CandleSyncSymbolJob' }
-    scheduled = enqueued.map { |j| j['scheduled_at'] }.compact
-    expect(scheduled.uniq.size).to be > 1
+    BitfinexConfig.symbols.each do |symbol|
+      expect(Candle::Fetcher).to have_received(:new).with(symbol)
+    end
+  end
+
+  it 'continues syncing remaining symbols when one fails' do
+    symbols = BitfinexConfig.symbols
+    failing_symbol = symbols[1]
+
+    symbols.each do |symbol|
+      fetcher = instance_double(Candle::Fetcher)
+      allow(Candle::Fetcher).to receive(:new).with(symbol).and_return(fetcher)
+
+      if symbol == failing_symbol
+        allow(fetcher).to receive(:call).and_raise(Candle::Fetcher::FetchError, 'boom')
+      else
+        allow(fetcher).to receive(:call)
+      end
+    end
+
+    described_class.perform_now
+
+    symbols.each do |symbol|
+      expect(Candle::Fetcher).to have_received(:new).with(symbol)
+    end
   end
 end

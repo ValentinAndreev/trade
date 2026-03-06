@@ -1,6 +1,16 @@
 class Candle
   class TickerQuery
     SPARKLINE_POINTS: Integer
+    TICKERS_CACHE_KEY: String
+    TICKERS_CACHE_TTL: untyped
+    SPARKLINE_CACHE_TTL: untyped
+    IDX_SYMBOL: Integer
+    IDX_DAILY_CHANGE: Integer
+    IDX_DAILY_CHANGE_PC: Integer
+    IDX_LAST_PRICE: Integer
+    IDX_VOLUME: Integer
+    IDX_HIGH: Integer
+    IDX_LOW: Integer
 
     @symbols: Array[String]
 
@@ -9,7 +19,13 @@ class Candle
 
     private
 
-    def build_ticker: (String symbol) -> ticker_data?
+    type live_ticker = { last_price: Float?, change_24h: Float?, change_24h_perc: Float?, volume: Float?, high: Float?, low: Float? }
+
+    def fetch_live_tickers: () -> Hash[String, live_ticker]
+    def parse_tickers: (Array[Array[untyped]] raw) -> Hash[String, live_ticker]
+    def fetch_all_sparklines: () -> Hash[String, Array[Float]]
+    def build_ticker: (String symbol, live_ticker? live, Array[Float] sparkline) -> ticker_data?
+    def build_ticker_from_db: (String symbol, Array[Float] sparkline) -> ticker_data?
     def sample_sparkline: (Array[Float] closes) -> Array[Float]
   end
 end

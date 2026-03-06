@@ -41,6 +41,10 @@ class Candle < ApplicationRecord
     def import(records, returning: %w[ts])
       insert_all(records, unique_by: INDEX_FIELDS, returning: returning) # rubocop:disable Rails/SkipsModelValidations
     end
+
+    def upsert_recent(records)
+      upsert_all(records, unique_by: INDEX_FIELDS, update_only: %i[open high low close volume]) # rubocop:disable Rails/SkipsModelValidations
+    end
   end
 
   def to_ohlcv

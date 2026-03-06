@@ -9,7 +9,7 @@ gem 'turbo-rails'
 gem 'stimulus-rails'
 gem 'cssbundling-rails'
 gem 'jbuilder'
-gem 'tzinfo-data', platforms: %i[windows jruby]
+gem 'tzinfo-data', platforms: %i[mingw mswin x64_mingw jruby]
 gem 'solid_cache'
 gem 'solid_queue'
 gem 'solid_cable'
@@ -33,7 +33,7 @@ gem 'technical-analysis'
 gem 'view_component'
 
 group :development, :test do
-  gem 'debug', platforms: %i[mri windows], require: 'debug/prelude'
+  gem 'debug', platforms: %i[mri mingw mswin x64_mingw], require: 'debug/prelude'
   gem 'bundler-audit', require: false
   gem 'brakeman', require: false
 

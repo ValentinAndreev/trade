@@ -4,8 +4,11 @@ class CandleSyncJob < ApplicationJob
   queue_as :default
 
   def perform
-    BitfinexConfig.symbols.each_with_index do |symbol, index|
-      CandleSyncSymbolJob.set(wait: index * 6.seconds).perform_later(symbol)
+    BitfinexConfig.symbols.each do |symbol|
+      Candle::Fetcher.new(symbol).call
+      sleep(BitfinexConfig.sync_pause)
+    rescue Candle::Fetcher::FetchError => e
+      Rails.logger.error("CandleSyncJob: #{symbol} failed: #{e.message}")
     end
   end
 end

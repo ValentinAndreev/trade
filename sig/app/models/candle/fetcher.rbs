@@ -1,9 +1,11 @@
 class Candle
   class Fetcher
     MAX_LIMIT: Integer
+    RECENT_LIMIT: Integer
     MAX_ATTEMPTS: Integer
     SYMBOL_PREFIX: String
     EXCHANGE: String
+    HISTORY_START_MS: Integer
     CONTINUOUS_AGGREGATE_BUCKETS: Hash[String, untyped]
 
     class FetchError < StandardError
@@ -20,13 +22,19 @@ class Candle
 
     private
 
-    HISTORY_START: Integer
-
-    def end_time_ms: () -> Integer?
-    def perform_request: (Integer end_time, ?attempt: Integer) -> Array[Array[Numeric]]
-    def save_candles: (Array[Array[Numeric]] data) -> [Integer, Array[Time]]
-    def without_last_minute_ms: () -> Integer
-    def broadcast_new_candles: (Array[Hash[Symbol, untyped]] records, Array[Time] imported_timestamps) -> void
+    def sync_recent: () -> void
+    def gap_minutes: () -> Integer?
+    def fetch_and_upsert: (Integer limit) -> void
+    def paginate_history: () -> void
+    def history_start_ms: () -> Integer?
+    def paginate_backward: (from: Integer?, ?refresh_aggregates: bool, ?invalidate_min: bool) -> void
+    def import_and_broadcast: (Array[Hash[Symbol, untyped]] records, ?broadcast: bool) -> Array[untyped]
+    def next_page_ms: (untyped oldest_ts) -> Integer?
+    def current_time_ms: () -> Integer
+    def fetch_candles: (end_time: Integer, ?limit: Integer, ?attempt: Integer) -> Array[Array[Numeric]]
+    def build_records: (Array[Array[Numeric]] data) -> Array[Hash[Symbol, untyped]]
+    def broadcast_candles: (Array[Hash[Symbol, untyped]] records) -> void
+    def invalidate_cache: (Symbol kind) -> void
     def retry_pause: () -> Numeric
     def refresh_continuous_aggregates: (Array[Time] imported_timestamps) -> void
   end

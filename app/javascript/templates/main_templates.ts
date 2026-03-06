@@ -26,7 +26,7 @@ export function tickerTileHTML(t: TickerData): string {
   const high = formatLocaleNumber(t.high)
   const low = formatLocaleNumber(t.low)
   const sparkline = t.sparkline && t.sparkline.length > 1 ? sparklineSVG(t.sparkline, t.change_24h >= 0) : ""
-  const updatedAt = t.updated_at ? formatTime(t.updated_at) : ""
+  const updatedAt = t.updated_at ? formatDateTimeShort(t.updated_at) : ""
 
   return `
     <div class="relative group bg-[#12122a] border border-[#2a2a3e] rounded-lg p-4 hover:border-blue-500/50 cursor-pointer transition-colors"
