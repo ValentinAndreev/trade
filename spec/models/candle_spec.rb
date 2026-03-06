@@ -87,8 +87,8 @@ RSpec.describe Candle do
       attrs = { ts: ts, symbol: 'BTCUSD', exchange: 'bitfinex', timeframe: '1m',
                 open: 100, high: 110, low: 90, close: 105, volume: 50 }
 
-      described_class.import([attrs])
-      described_class.import([attrs])
+      described_class.import([ attrs ])
+      described_class.import([ attrs ])
       expect(described_class.count).to eq(1)
     end
   end

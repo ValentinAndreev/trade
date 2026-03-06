@@ -14,8 +14,8 @@ RSpec.describe Candle::Fetcher do
     it 'fetches and imports candles' do
       now = Time.zone.now
       candle_data = [
-        [(now - 2.minutes).to_i * 1000, 50_000, 50_100, 50_200, 49_900, 10],
-        [(now - 1.minute).to_i * 1000, 50_100, 50_200, 50_300, 50_000, 15]
+        [ (now - 2.minutes).to_i * 1000, 50_000, 50_100, 50_200, 49_900, 10 ],
+        [ (now - 1.minute).to_i * 1000, 50_100, 50_200, 50_300, 50_000, 15 ]
       ]
 
       allow(client).to receive(:candles_history).and_return(candle_data, [])
@@ -28,7 +28,7 @@ RSpec.describe Candle::Fetcher do
     it 'broadcasts new candles via ActionCable' do
       now = Time.zone.now
       candle_data = [
-        [(now - 1.minute).to_i * 1000, 50_000, 50_100, 50_200, 49_900, 10]
+        [ (now - 1.minute).to_i * 1000, 50_000, 50_100, 50_200, 49_900, 10 ]
       ]
 
       allow(client).to receive(:candles_history).and_return(candle_data, [])
@@ -46,7 +46,7 @@ RSpec.describe Candle::Fetcher do
 
     it 'retries on rate limit errors' do
       now = Time.zone.now
-      candle_data = [[(now - 1.minute).to_i * 1000, 50_000, 50_100, 50_200, 49_900, 10]]
+      candle_data = [ [ (now - 1.minute).to_i * 1000, 50_000, 50_100, 50_200, 49_900, 10 ] ]
 
       call_count = 0
       allow(client).to receive(:candles_history) do

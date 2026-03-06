@@ -38,7 +38,7 @@ class Candle::Fetcher
   def sync_recent
     gap = gap_minutes
     if gap
-      fetch_and_upsert([gap + 2, RECENT_LIMIT].max)
+      fetch_and_upsert([ gap + 2, RECENT_LIMIT ].max)
     else
       paginate_backward(from: current_time_ms)
     end
@@ -52,7 +52,7 @@ class Candle::Fetcher
   end
 
   def fetch_and_upsert(limit)
-    data = fetch_candles(end_time: current_time_ms, limit: [limit, MAX_LIMIT].min)
+    data = fetch_candles(end_time: current_time_ms, limit: [ limit, MAX_LIMIT ].min)
     return if data.blank?
 
     records = build_records(data)

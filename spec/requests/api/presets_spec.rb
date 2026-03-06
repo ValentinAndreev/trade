@@ -41,7 +41,7 @@ RSpec.describe 'Api::Presets', :symbol_store do
       create(:preset, user: user, name: 'My Setup', payload: { tabs: [] })
 
       expect {
-        post '/api/presets', params: { name: 'My Setup', payload: { tabs: [1] } }
+        post '/api/presets', params: { name: 'My Setup', payload: { tabs: [ 1 ] } }
       }.not_to change(Preset, :count)
 
       expect(response).to have_http_status(:ok)
@@ -55,10 +55,10 @@ RSpec.describe 'Api::Presets', :symbol_store do
 
   describe 'GET /api/presets/:id' do
     it 'returns preset with payload' do
-      preset = create(:preset, user: user, payload: { tabs: [1, 2] })
+      preset = create(:preset, user: user, payload: { tabs: [ 1, 2 ] })
       get "/api/presets/#{preset.id}"
       expect(response).to have_http_status(:ok)
-      expect(response.parsed_body['payload']).to eq({ 'tabs' => [1, 2] })
+      expect(response.parsed_body['payload']).to eq({ 'tabs' => [ 1, 2 ] })
     end
 
     it 'returns 404 for another user preset' do

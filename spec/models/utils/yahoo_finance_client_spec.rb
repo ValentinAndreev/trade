@@ -10,7 +10,7 @@ RSpec.describe Utils::YahooFinanceClient do
   let(:yahoo_response) do
     {
       'chart' => {
-        'result' => [{
+        'result' => [ {
           'meta' => {
             'regularMarketPrice' => 5100.5,
             'chartPreviousClose' => 5050.0,
@@ -18,7 +18,7 @@ RSpec.describe Utils::YahooFinanceClient do
             'currency' => 'USD',
             'regularMarketTime' => 1_700_000_000
           }
-        }]
+        } ]
       }
     }.to_json
   end
@@ -34,7 +34,7 @@ RSpec.describe Utils::YahooFinanceClient do
       stub_request(:get, %r{#{api_url}/\^GSPC})
         .to_return(status: 200, body: yahoo_response, headers: { 'Content-Type' => 'application/json' })
 
-      result = client.fetch_quotes(['^GSPC'])
+      result = client.fetch_quotes([ '^GSPC' ])
       expect(result).to have_key('^GSPC')
       expect(result['^GSPC']['regularMarketPrice']).to eq(5100.5)
     end
@@ -43,7 +43,7 @@ RSpec.describe Utils::YahooFinanceClient do
       stub_request(:get, %r{#{api_url}/INVALID})
         .to_return(status: 404, body: 'Not Found')
 
-      result = client.fetch_quotes(['INVALID'])
+      result = client.fetch_quotes([ 'INVALID' ])
       expect(result).to eq({})
     end
 
@@ -52,8 +52,8 @@ RSpec.describe Utils::YahooFinanceClient do
         .to_return(status: 200, body: yahoo_response, headers: { 'Content-Type' => 'application/json' })
 
       allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
-      client.fetch_quotes(['^GSPC'])
-      client.fetch_quotes(['^GSPC'])
+      client.fetch_quotes([ '^GSPC' ])
+      client.fetch_quotes([ '^GSPC' ])
       expect(stub).to have_been_requested.once
     end
   end
