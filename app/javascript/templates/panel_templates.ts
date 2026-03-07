@@ -114,27 +114,43 @@ export function tabButtonHTML(
   tabId: string,
   label: string,
   isActive: boolean,
-  canRemove: boolean
+  canRemove: boolean,
+  tabType: string = "chart",
 ): string {
+  const typeIcon = tabType === "data"
+    ? `<span class="text-green-400 text-xs mr-0.5" title="Data tab">&#9638;</span>`
+    : ""
+
+  const contextMenu = tabType === "chart"
+    ? `<span
+         data-action="click->${ctrl}#createDataFromChart"
+         title="Create Data tab from this chart"
+         class="ml-0.5 inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-green-300 hover:bg-green-500/10 text-xs leading-none cursor-pointer"
+       >&#9638;</span>`
+    : ""
+
   return `
     <button
       data-tab-id="${tabId}"
+      data-tab-type="${tabType}"
       data-action="click->${ctrl}#switchTab"
-      class="flex items-center gap-2 px-4 py-2 text-base font-medium cursor-pointer whitespace-nowrap
+      class="flex items-center gap-1 px-4 py-2 text-base font-medium cursor-pointer whitespace-nowrap
              ${isActive
                ? "text-white border-b-2 border-blue-400"
                : "text-gray-400 hover:text-gray-200 border-b-2 border-transparent"}"
     >
+      ${typeIcon}
       <span
         data-tab-label
         data-action="dblclick->${ctrl}#startRename"
         title="Double-click to rename tab"
       >${label}</span>
+      ${isActive ? contextMenu : ""}
       ${canRemove ? `
         <span
           data-action="click->${ctrl}#removeTab"
           title="Remove tab"
-          class="ml-1 inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none"
+          class="ml-0.5 inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm leading-none"
         >&times;</span>
       ` : ""}
     </button>
@@ -143,10 +159,40 @@ export function tabButtonHTML(
 
 export function addTabButtonHTML(ctrl: string): string {
   return `
-    <button
-      data-action="click->${ctrl}#addTab"
-      class="px-3 py-2 text-gray-400 hover:text-white text-2xl leading-none cursor-pointer"
-      title="Add new tab"
-    >+</button>
+    <div class="relative inline-flex" data-tab-type-menu>
+      <button
+        data-action="click->${ctrl}#toggleAddTabMenu"
+        class="px-3 py-2 text-gray-400 hover:text-white text-2xl leading-none cursor-pointer"
+        title="Add new tab"
+      >+</button>
+      <div data-tab-type-dropdown class="hidden absolute top-full left-0 z-50 mt-1 py-1 bg-[#22223a] border border-[#3a3a4e] rounded shadow-xl min-w-[140px]">
+        <button
+          data-action="click->${ctrl}#addChartTab"
+          class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
+        >
+          <span class="text-blue-400">&#9636;</span> Chart
+        </button>
+        <button
+          data-action="click->${ctrl}#addDataTab"
+          class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
+        >
+          <span class="text-green-400">&#9638;</span> Data
+        </button>
+      </div>
+    </div>
+  `
+}
+
+export function dataGridPanelHTML(
+  ctrl: string,
+  configJson: string,
+): string {
+  return `
+    <div class="relative flex-1 min-h-0">
+      <div class="absolute inset-0"
+           data-controller="data-grid"
+           data-data-grid-config-value='${configJson.replace(/'/g, "&#39;")}'>
+      </div>
+    </div>
   `
 }

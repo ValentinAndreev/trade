@@ -1,7 +1,7 @@
 import { OVERLAY_COLORS } from "../config/theme"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import { loadTabs, saveTabs, calcNextId, loadActiveTabId, saveActiveTabId } from "./persistence"
-import type { Tab, Panel, Overlay, DrawingKind, DrawingItem } from "../types/store"
+import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition } from "../types/store"
 
 const DRAWING_PREFIX: Record<DrawingKind, string> = { labels: "lbl", lines: "ln", hlines: "hl", vlines: "vl" }
 
@@ -15,6 +15,9 @@ export default class TabStore {
   _nextOverlayId: number
   _nextDrawingId: Record<string, number>
 
+  _nextConditionId: number
+  _nextColumnId: number
+
   constructor() {
     this.tabs = loadTabs()
     const tabNums = this.tabs.map(t => parseInt(t.id.split("-")[1]))
@@ -25,6 +28,8 @@ export default class TabStore {
     for (const kind of Object.keys(DRAWING_PREFIX)) {
       this._nextDrawingId[kind] = this._calcNextDrawingId(kind)
     }
+    this._nextConditionId = this._calcNextDataId("cond")
+    this._nextColumnId = this._calcNextDataId("col")
 
     const savedTabId = loadActiveTabId()
     const savedTab = savedTabId && this.tabs.find(t => t.id === savedTabId)
@@ -39,9 +44,10 @@ export default class TabStore {
   addTab({ symbol = null }: { symbol?: string | null } = {}): Tab {
     const overlayId = `o-${this._nextOverlayId++}`
     const panelId = `p-${this._nextPanelId++}`
-    const tab = {
+    const tab: Tab = {
       id: `tab-${this._nextTabId++}`,
       name: symbol || this._newTabName(),
+      type: "chart",
       panels: [{
         id: panelId,
         timeframe: "1m",
@@ -61,11 +67,18 @@ export default class TabStore {
     const idx = this.tabs.findIndex(t => t.id === tabId)
     this.tabs.splice(idx, 1)
 
+    this._cleanupChartLinks(tabId)
+
     if (this.activeTabId === tabId) {
       const newTab = this.tabs[Math.min(idx, this.tabs.length - 1)]
       this.activeTabId = newTab.id
-      this.selectedPanelId = newTab.panels[0].id
-      this.selectedOverlayId = newTab.panels[0].overlays[0]?.id || null
+      if (newTab.type === "data") {
+        this.selectedPanelId = null
+        this.selectedOverlayId = null
+      } else {
+        this.selectedPanelId = newTab.panels[0]?.id || null
+        this.selectedOverlayId = newTab.panels[0]?.overlays[0]?.id || null
+      }
     }
     this._save()
     return true
@@ -75,9 +88,14 @@ export default class TabStore {
     if (tabId === this.activeTabId) return false
     this.activeTabId = tabId
     const tab = this.activeTab
-    if (tab && !tab.panels.find(p => p.id === this.selectedPanelId)) {
-      this.selectedPanelId = tab.panels[0].id
-      this.selectedOverlayId = tab.panels[0].overlays[0]?.id || null
+    if (tab) {
+      if (tab.type === "data") {
+        this.selectedPanelId = null
+        this.selectedOverlayId = null
+      } else if (!tab.panels.find(p => p.id === this.selectedPanelId)) {
+        this.selectedPanelId = tab.panels[0]?.id || null
+        this.selectedOverlayId = tab.panels[0]?.overlays[0]?.id || null
+      }
     }
     saveActiveTabId(this.activeTabId)
     return true
@@ -93,6 +111,10 @@ export default class TabStore {
 
   tabLabel(tab: Tab): string {
     if (tab.name) return tab.name
+    if (tab.type === "data") {
+      const symbols = tab.dataConfig?.symbols || []
+      return symbols.length ? `Data: ${symbols[0]}` : "Data"
+    }
     const first = tab.panels[0]
     const firstOverlay = first?.overlays[0]
     return firstOverlay?.symbol ? `${firstOverlay.symbol} ${first.timeframe}` : "New"
@@ -125,6 +147,7 @@ export default class TabStore {
       const idx = tab.panels.findIndex(p => p.id === panelId)
       if (idx === -1) continue
       tab.panels.splice(idx, 1)
+      this._cleanupPanelLinks(panelId)
       if (tab.panels.length === 0) {
         const overlayId = `o-${this._nextOverlayId++}`
         const fresh = {
@@ -205,8 +228,10 @@ export default class TabStore {
   removeOverlay(panelId: string, overlayId: string): boolean {
     const panel = this._findPanel(panelId)
     if (!panel) return false
+    const overlay = panel.overlays.find(o => o.id === overlayId)
+    if (!overlay) return false
+    const wasPriceOverlay = overlay.mode !== "indicator" && !!overlay.symbol
     const idx = panel.overlays.findIndex(o => o.id === overlayId)
-    if (idx === -1) return false
     panel.overlays.splice(idx, 1)
     if (panel.overlays.length === 0) {
       const fresh = this._newOverlay(`o-${this._nextOverlayId++}`, null, 0)
@@ -214,6 +239,10 @@ export default class TabStore {
       this.selectedOverlayId = fresh.id
     } else if (this.selectedOverlayId === overlayId) {
       this.selectedOverlayId = panel.overlays[Math.min(idx, panel.overlays.length - 1)].id
+    }
+    if (wasPriceOverlay) {
+      const chartTab = this.tabs.find(t => t.type === "chart" && t.panels.some(p => p.id === panelId))
+      if (chartTab) this._cleanupChartLinks(chartTab.id)
     }
     this._save()
     return true
@@ -456,6 +485,176 @@ export default class TabStore {
       if (!Number.isNaN(num) && num > max) max = num
     }
     return max + 1
+  }
+
+  // --- Data Tabs ---
+
+  addDataTab({ symbols = [], timeframe = "1m", sourceTabId, extraColumns = [] }: { symbols?: string[]; timeframe?: string; sourceTabId?: string; extraColumns?: DataColumn[] } = {}): Tab {
+    const defaultColumns: DataColumn[] = [
+      { id: `col-${this._nextColumnId++}`, type: "datetime", label: "time" },
+      { id: `col-${this._nextColumnId++}`, type: "open", label: "open" },
+      { id: `col-${this._nextColumnId++}`, type: "high", label: "high" },
+      { id: `col-${this._nextColumnId++}`, type: "low", label: "low" },
+      { id: `col-${this._nextColumnId++}`, type: "close", label: "close" },
+      { id: `col-${this._nextColumnId++}`, type: "volume", label: "volume" },
+    ]
+
+    const chartLinks: { chartTabId: string; panelId: string }[] = []
+    const dataTabCount = this.tabs.filter(t => t.type === "data").length + 1
+    let tabName = `data${dataTabCount}`
+
+    if (sourceTabId) {
+      const sourceChart = this.tabs.find(t => t.id === sourceTabId && t.type === "chart")
+      if (sourceChart) {
+        for (const panel of sourceChart.panels) {
+          chartLinks.push({ chartTabId: sourceTabId, panelId: panel.id })
+        }
+        const chartLabel = sourceChart.name || this.tabLabel(sourceChart)
+        tabName = `${tabName} (${chartLabel})`
+      }
+    }
+
+    const tab: Tab = {
+      id: `tab-${this._nextTabId++}`,
+      name: tabName,
+      type: "data",
+      panels: [],
+      dataConfig: {
+        symbols,
+        timeframe,
+        columns: [...defaultColumns, ...extraColumns],
+        conditions: [],
+        chartLinks,
+        sourceTabId,
+      },
+    }
+    this.tabs.push(tab)
+    this.activeTabId = tab.id
+    this.selectedPanelId = null
+    this.selectedOverlayId = null
+    this._save()
+    return tab
+  }
+
+  addDataTabFromChart(chartTabId: string): Tab | null {
+    const chart = this.tabs.find(t => t.id === chartTabId && t.type === "chart")
+    if (!chart) return null
+
+    const symbols: string[] = []
+    const indicatorColumns: DataColumn[] = []
+    let timeframe = "1m"
+
+    for (const panel of chart.panels) {
+      timeframe = panel.timeframe || timeframe
+      for (const overlay of panel.overlays) {
+        if (overlay.symbol && !symbols.includes(overlay.symbol)) {
+          symbols.push(overlay.symbol)
+        }
+        if (overlay.mode === "indicator" && overlay.indicatorType) {
+          const params = overlay.indicatorParams || {}
+          const paramStr = Object.values(params).join("_")
+          const fieldName = paramStr ? `${overlay.indicatorType}_${paramStr}` : overlay.indicatorType
+          indicatorColumns.push({
+            id: `col-${this._nextColumnId++}`,
+            type: "indicator",
+            label: fieldName,
+            indicatorType: overlay.indicatorType,
+            indicatorParams: params,
+          })
+        }
+      }
+    }
+
+    return this.addDataTab({ symbols, timeframe, sourceTabId: chartTabId, extraColumns: indicatorColumns })
+  }
+
+  updateDataConfig(tabId: string, updates: Partial<DataConfig>): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab || !tab.dataConfig) return false
+    Object.assign(tab.dataConfig, updates)
+    this._save()
+    return true
+  }
+
+  addDataColumn(tabId: string, column: Omit<DataColumn, "id">): DataColumn | null {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig) return null
+    const col: DataColumn = { id: `col-${this._nextColumnId++}`, ...column }
+    tab.dataConfig.columns.push(col)
+    this._save()
+    return col
+  }
+
+  removeDataColumn(tabId: string, columnId: string): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig) return false
+    const idx = tab.dataConfig.columns.findIndex(c => c.id === columnId)
+    if (idx === -1) return false
+    tab.dataConfig.columns.splice(idx, 1)
+    this._save()
+    return true
+  }
+
+  addCondition(tabId: string, condition: Omit<Condition, "id">): Condition | null {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig) return null
+    const cond: Condition = { id: `cond-${this._nextConditionId++}`, ...condition }
+    tab.dataConfig.conditions.push(cond)
+    this._save()
+    return cond
+  }
+
+  updateCondition(tabId: string, conditionId: string, updates: Partial<Condition>): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig) return false
+    const cond = tab.dataConfig.conditions.find(c => c.id === conditionId)
+    if (!cond) return false
+    Object.assign(cond, updates)
+    this._save()
+    return true
+  }
+
+  removeCondition(tabId: string, conditionId: string): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig) return false
+    const idx = tab.dataConfig.conditions.findIndex(c => c.id === conditionId)
+    if (idx === -1) return false
+    tab.dataConfig.conditions.splice(idx, 1)
+    this._save()
+    return true
+  }
+
+  _calcNextDataId(prefix: string): number {
+    let max = 0
+    for (const tab of this.tabs) {
+      if (tab.type !== "data" || !tab.dataConfig) continue
+      const items = prefix === "col" ? tab.dataConfig.columns : tab.dataConfig.conditions
+      for (const item of items) {
+        const parts = item.id.split("-")
+        const num = parseInt(parts[parts.length - 1])
+        if (num > max) max = num
+      }
+    }
+    return max + 1
+  }
+
+  private _cleanupChartLinks(removedTabId: string): void {
+    for (const tab of this.tabs) {
+      if (tab.type !== "data" || !tab.dataConfig) continue
+      if (tab.dataConfig.sourceTabId === removedTabId) {
+        tab.dataConfig.sourceTabId = undefined
+      }
+      const links = tab.dataConfig.chartLinks
+      if (!links) continue
+      tab.dataConfig.chartLinks = links.filter(l => l.chartTabId !== removedTabId)
+    }
+  }
+
+  private _cleanupPanelLinks(removedPanelId: string): void {
+    for (const tab of this.tabs) {
+      if (tab.type !== "data" || !tab.dataConfig?.chartLinks) continue
+      tab.dataConfig.chartLinks = tab.dataConfig.chartLinks.filter(l => l.panelId !== removedPanelId)
+    }
   }
 
   _save(): void {

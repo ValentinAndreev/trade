@@ -19,3 +19,6 @@ application.register("main", MainController)
 import AuthController from "./auth_controller"
 application.register("auth", AuthController)
 
+import DataGridController from "./data_grid_controller"
+application.register("data-grid", DataGridController)
+

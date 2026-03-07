@@ -1,6 +1,7 @@
 import { apiFetch } from "../services/api_fetch"
 import { HISTORY_LOAD_LIMIT } from "../config/constants"
 import type { Candle } from "../types/candle"
+import candleCache from "../data/candle_cache"
 
 export default class DataLoader {
   baseUrl: string
@@ -9,12 +10,23 @@ export default class DataLoader {
   oldestTime: number | null
   candles: Candle[]
 
-  constructor(baseUrl: string) {
+  symbol: string | null = null
+  timeframe: string | null = null
+
+  constructor(baseUrl: string, symbol?: string, timeframe?: string) {
     this.baseUrl = baseUrl
     this.isLoading = false
     this.allLoaded = false
     this.oldestTime = null
     this.candles = []
+    this.symbol = symbol ?? null
+    this.timeframe = timeframe ?? null
+  }
+
+  private syncToCache(): void {
+    if (this.symbol && this.timeframe) {
+      candleCache.setCandles(this.symbol, this.timeframe, this.candles)
+    }
   }
 
   async loadInitial(): Promise<Candle[]> {
@@ -25,6 +37,7 @@ export default class DataLoader {
     if (data.length > 0) {
       this.oldestTime = data[0].time
     }
+    this.syncToCache()
     return this.candles
   }
 
@@ -56,6 +69,7 @@ export default class DataLoader {
 
       this.candles = [...filtered, ...this.candles]
       this.oldestTime = this.candles[0].time
+      this.syncToCache()
       return filtered
     } catch (error) {
       console.error("Failed to load history:", error)
@@ -72,6 +86,7 @@ export default class DataLoader {
     if (filtered.length === 0) return
     this.candles = [...filtered, ...this.candles]
     this.oldestTime = this.candles[0]!.time
+    this.syncToCache()
   }
 
   updateCandle(candle: Candle): void {
@@ -80,6 +95,9 @@ export default class DataLoader {
       this.candles[idx] = candle
     } else if (this.candles.length === 0 || candle.time > this.candles[this.candles.length - 1].time) {
       this.candles.push(candle)
+    }
+    if (this.symbol && this.timeframe) {
+      candleCache.updateCandle(this.symbol, this.timeframe, candle)
     }
   }
 }

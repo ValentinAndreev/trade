@@ -4,6 +4,7 @@ class Candle::IndicatorCalculator
   INDICATORS = {
     sma: TechnicalAnalysis::Sma,
     ema: TechnicalAnalysis::Ema,
+    wma: TechnicalAnalysis::Wma,
     rsi: TechnicalAnalysis::Rsi,
     macd: TechnicalAnalysis::Macd,
     bb: TechnicalAnalysis::Bb,
@@ -12,9 +13,31 @@ class Candle::IndicatorCalculator
     cci: TechnicalAnalysis::Cci,
     mfi: TechnicalAnalysis::Mfi,
     obv: TechnicalAnalysis::Obv,
+    obv_mean: TechnicalAnalysis::ObvMean,
     vwap: TechnicalAnalysis::Vwap,
     sr: TechnicalAnalysis::Sr,
-    ichimoku: TechnicalAnalysis::Ichimoku
+    ichimoku: TechnicalAnalysis::Ichimoku,
+    ao: TechnicalAnalysis::Ao,
+    cr: TechnicalAnalysis::Cr,
+    cmf: TechnicalAnalysis::Cmf,
+    dc: TechnicalAnalysis::Dc,
+    dpo: TechnicalAnalysis::Dpo,
+    dlr: TechnicalAnalysis::Dlr,
+    dr: TechnicalAnalysis::Dr,
+    eom: TechnicalAnalysis::Eom,
+    fi: TechnicalAnalysis::Fi,
+    kst: TechnicalAnalysis::Kst,
+    kc: TechnicalAnalysis::Kc,
+    mi: TechnicalAnalysis::Mi,
+    nvi: TechnicalAnalysis::Nvi,
+    tsi: TechnicalAnalysis::Tsi,
+    trix: TechnicalAnalysis::Trix,
+    uo: TechnicalAnalysis::Uo,
+    vpt: TechnicalAnalysis::Vpt,
+    vi: TechnicalAnalysis::Vi,
+    wr: TechnicalAnalysis::Wr,
+    adi: TechnicalAnalysis::Adi,
+    adtv: TechnicalAnalysis::Adtv
   }.freeze
 
   class UnknownIndicatorError < StandardError; end

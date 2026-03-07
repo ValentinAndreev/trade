@@ -1,7 +1,65 @@
+export type TabType = "chart" | "data"
+
 export interface Tab {
   id: string;
   name: string | null;
+  type: TabType;
   panels: Panel[];
+  dataConfig?: DataConfig;
+}
+
+export interface DataConfig {
+  symbols: string[];
+  timeframe: string;
+  columns: DataColumn[];
+  conditions: Condition[];
+  chartLinks: ChartLink[];
+  sourceTabId?: string;
+  startTime?: number;
+  endTime?: number;
+}
+
+export interface DataColumn {
+  id: string;
+  type: "datetime" | "open" | "high" | "low" | "close" | "volume"
+      | "indicator" | "change" | "custom" | "formula" | "instrument";
+  label: string;
+  indicatorType?: string;
+  indicatorParams?: Record<string, number | string>;
+  changePeriod?: string;
+  expression?: string;
+  instrumentSymbol?: string;
+  instrumentField?: string;
+}
+
+export interface Condition {
+  id: string;
+  name: string;
+  enabled: boolean;
+  rule: ConditionRule;
+  action: ConditionAction;
+}
+
+export interface ConditionRule {
+  type: "change_gt" | "change_lt" | "value_gt" | "value_lt"
+      | "cross_above" | "cross_below" | "between" | "correlation_gt"
+      | "expression";
+  column: string;
+  value: number;
+  compareColumn?: string;
+  params?: Record<string, number | string>;
+  expression?: string;
+}
+
+export interface ConditionAction {
+  rowHighlight?: string;
+  chartMarker?: { color: string; text?: string };
+  chartColorZone?: { color: string };
+}
+
+export interface ChartLink {
+  chartTabId: string;
+  panelId: string;
 }
 
 export interface Panel {

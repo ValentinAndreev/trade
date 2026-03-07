@@ -1,10 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest"
-
-vi.mock("../../config/theme", () => ({
-  OVERLAY_COLORS: Array.from({ length: 10 }, (_, i) => ({
-    up: `#up${i}`, down: `#down${i}`, line: `#line${i}`,
-  })),
-}))
+import { describe, it, expect, beforeEach } from "vitest"
 
 import { loadTabs, saveTabs, loadActiveTabId, saveActiveTabId, calcNextId } from "../../tabs/persistence"
 import type { Tab } from "../../types/store"
@@ -23,6 +17,7 @@ describe("persistence", () => {
       const tabs: Tab[] = [{
         id: "tab-1",
         name: "Test",
+        type: "chart",
         panels: [{
           id: "p-1",
           timeframe: "1m",
@@ -38,6 +33,7 @@ describe("persistence", () => {
       const result = loadTabs()
       expect(result).toHaveLength(1)
       expect(result[0].id).toBe("tab-1")
+      expect(result[0].type).toBe("chart")
       expect(result[0].panels[0].overlays[0].symbol).toBe("BTCUSD")
     })
 
@@ -46,32 +42,25 @@ describe("persistence", () => {
       expect(loadTabs()).toEqual([])
     })
 
-    it("migrates old tab format (no panels)", () => {
-      const oldTabs = [{ id: "tab-1", symbol: "ETHUSD", timeframe: "5m", mode: "price", name: "ETH" }]
-      localStorage.setItem("chart-tabs", JSON.stringify(oldTabs))
-      const result = loadTabs()
-      expect(result[0].panels).toHaveLength(1)
-      expect(result[0].panels[0].overlays[0].symbol).toBe("ETHUSD")
-      expect(result[0].panels[0].timeframe).toBe("5m")
-    })
-
-    it("migrates old panel format (no overlays)", () => {
-      const oldTabs = [{
+    it("preserves data tab type", () => {
+      const tabs = [{
         id: "tab-1",
-        name: null,
-        panels: [{ id: "p-1", symbol: "SOLUSD", timeframe: "15m", mode: "price" }],
+        name: "Data: BTCUSD",
+        type: "data",
+        panels: [],
+        dataConfig: { symbols: ["BTCUSD"], timeframe: "1h", columns: [], conditions: [], chartLinks: [] },
       }]
-      localStorage.setItem("chart-tabs", JSON.stringify(oldTabs))
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
       const result = loadTabs()
-      expect(result[0].panels[0].overlays).toHaveLength(1)
-      expect(result[0].panels[0].overlays[0].symbol).toBe("SOLUSD")
+      expect(result[0].type).toBe("data")
+      expect(result[0].dataConfig?.symbols).toEqual(["BTCUSD"])
     })
   })
 
   describe("saveTabs", () => {
     it("serializes to localStorage", () => {
       const tabs: Tab[] = [{
-        id: "tab-1", name: null,
+        id: "tab-1", name: null, type: "chart",
         panels: [{ id: "p-1", timeframe: "1m", overlays: [] }],
       }]
       saveTabs(tabs)
@@ -98,7 +87,7 @@ describe("persistence", () => {
 
     it("finds max panel id", () => {
       const tabs: Tab[] = [{
-        id: "tab-1", name: null,
+        id: "tab-1", name: null, type: "chart",
         panels: [
           { id: "p-3", timeframe: "1m", overlays: [{ id: "o-1", symbol: null, mode: "price", chartType: "Line", visible: true, colorScheme: 0, opacity: 1, indicatorType: null, indicatorParams: null, pinnedTo: null }] },
           { id: "p-7", timeframe: "1m", overlays: [{ id: "o-2", symbol: null, mode: "price", chartType: "Line", visible: true, colorScheme: 0, opacity: 1, indicatorType: null, indicatorParams: null, pinnedTo: null }] },
@@ -109,7 +98,7 @@ describe("persistence", () => {
 
     it("finds max overlay id", () => {
       const tabs: Tab[] = [{
-        id: "tab-1", name: null,
+        id: "tab-1", name: null, type: "chart",
         panels: [
           { id: "p-1", timeframe: "1m", overlays: [
             { id: "o-5", symbol: null, mode: "price", chartType: "Line", visible: true, colorScheme: 0, opacity: 1, indicatorType: null, indicatorParams: null, pinnedTo: null },
@@ -118,6 +107,16 @@ describe("persistence", () => {
         ],
       }]
       expect(calcNextId(tabs, "o")).toBe(13)
+    })
+
+    it("skips data tabs for panel/overlay IDs", () => {
+      const tabs: Tab[] = [{
+        id: "tab-1", name: null, type: "data",
+        panels: [],
+        dataConfig: { symbols: [], timeframe: "1m", columns: [], conditions: [], chartLinks: [] },
+      }]
+      expect(calcNextId(tabs, "p")).toBe(1)
+      expect(calcNextId(tabs, "o")).toBe(1)
     })
   })
 })

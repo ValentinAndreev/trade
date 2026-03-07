@@ -1,6 +1,3 @@
-// Generic drawing actions extracted from tabs_controller.js
-// Handles labels, lines, hlines, vlines with a unified interface.
-
 import { createInlineRenameInput } from "../utils/dom"
 import type TabStore from "./store"
 import type { Panel, DrawingKind, DrawingItem } from "../types/store"

@@ -1,0 +1,199 @@
+import type { ColDef, GridOptions, ValueFormatterParams } from "ag-grid-community"
+import type { DataColumn, Condition } from "../types/store"
+import { evaluateFormulaExpression, evaluateSingleCondition } from "./condition_engine"
+
+const PRICE_PRECISION = 2
+const CHANGE_PRECISION = 2
+const VOLUME_PRECISION = 4
+
+function formatPrice(params: ValueFormatterParams): string {
+  const v = params.value
+  if (v == null) return ""
+  return Number(v).toFixed(PRICE_PRECISION)
+}
+
+function formatVolume(params: ValueFormatterParams): string {
+  const v = params.value
+  if (v == null) return ""
+  return Number(v).toFixed(VOLUME_PRECISION)
+}
+
+function formatChange(params: ValueFormatterParams): string {
+  const v = params.value
+  if (v == null) return ""
+  const n = Number(v)
+  const sign = n > 0 ? "+" : ""
+  return `${sign}${n.toFixed(CHANGE_PRECISION)}%`
+}
+
+function formatDateTime(params: ValueFormatterParams): string {
+  const v = params.value
+  if (v == null) return ""
+  const d = new Date(Number(v) * 1000)
+  return d.toLocaleString("en-GB", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  })
+}
+
+export function buildColDefs(columns: DataColumn[]): ColDef[] {
+  return columns.map(col => {
+    const base: ColDef = {
+      colId: col.id,
+      headerName: col.label,
+      sortable: true,
+      filter: true,
+      resizable: true,
+    }
+
+    switch (col.type) {
+      case "datetime":
+        return { ...base, field: "time", valueFormatter: formatDateTime, width: 160, sort: "desc" as const }
+      case "open":
+        return { ...base, field: "open", valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+      case "high":
+        return { ...base, field: "high", valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+      case "low":
+        return { ...base, field: "low", valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+      case "close":
+        return { ...base, field: "close", valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+      case "volume":
+        return { ...base, field: "volume", valueFormatter: formatVolume, type: "numericColumn", width: 110 }
+      case "change":
+        return {
+          ...base,
+          field: `change_${col.changePeriod || "5m"}`,
+          valueFormatter: formatChange,
+          type: "numericColumn",
+          width: 90,
+          cellStyle: (params: any) => {
+            const v = params.value
+            if (v == null) return null
+            return v > 0 ? { color: "#26a69a" } : v < 0 ? { color: "#ef5350" } : null
+          },
+        }
+      case "indicator": {
+        const params = col.indicatorParams || {}
+        const suffix = Object.values(params)[0]
+        const field = suffix
+          ? `${col.indicatorType}_${suffix}`
+          : col.indicatorType || col.label
+        return { ...base, field, valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+      }
+      case "formula": {
+        const expression = col.expression || ""
+        return {
+          ...base,
+          field: col.label,
+          type: "numericColumn",
+          width: 110,
+          valueGetter: (params: any) => {
+            if (!params.data) return null
+            return evaluateFormulaExpression(expression, params.data)
+          },
+          valueFormatter: formatPrice,
+        }
+      }
+      case "instrument": {
+        return {
+          ...base,
+          field: col.label,
+          valueFormatter: formatPrice,
+          type: "numericColumn",
+          width: 100,
+        }
+      }
+      default:
+        return { ...base, field: col.id }
+    }
+  })
+}
+
+export function buildRowClassRules(conditions: Condition[]): Record<string, (params: any) => boolean> {
+  const rules: Record<string, (params: any) => boolean> = {}
+
+  conditions.filter(c => c.enabled && c.action.rowHighlight).forEach(cond => {
+    const cssClass = `data-grid-highlight-${cond.id}`
+    rules[cssClass] = (params: any) => {
+      if (!params.data) return false
+      return evaluateSingleCondition(cond, params.data)
+    }
+  })
+
+  return rules
+}
+
+export interface SelectionStats {
+  count: number
+  min: number
+  max: number
+  sum: number
+  avg: number
+  fields: Record<string, { min: number; max: number; avg: number }>
+}
+
+export function computeSelectionStats(selectedRows: Array<Record<string, any>>, numericFields: string[]): SelectionStats | null {
+  if (!selectedRows.length) return null
+
+  const fields: Record<string, { min: number; max: number; avg: number }> = {}
+  let globalMin = Infinity
+  let globalMax = -Infinity
+  let globalSum = 0
+  let globalCount = 0
+
+  for (const field of numericFields) {
+    const vals = selectedRows
+      .map(r => r[field])
+      .filter(v => v != null && Number.isFinite(Number(v)))
+      .map(Number)
+
+    if (!vals.length) continue
+
+    const min = Math.min(...vals)
+    const max = Math.max(...vals)
+    const sum = vals.reduce((a, b) => a + b, 0)
+    fields[field] = { min, max, avg: sum / vals.length }
+
+    if (min < globalMin) globalMin = min
+    if (max > globalMax) globalMax = max
+    globalSum += sum
+    globalCount += vals.length
+  }
+
+  if (!globalCount) return null
+
+  return {
+    count: selectedRows.length,
+    min: globalMin,
+    max: globalMax,
+    sum: globalSum,
+    avg: globalSum / globalCount,
+    fields,
+  }
+}
+
+export function buildGridOptions(columns: DataColumn[], conditions: Condition[]): GridOptions {
+  return {
+    columnDefs: buildColDefs(columns),
+    rowClassRules: buildRowClassRules(conditions),
+    defaultColDef: {
+      sortable: true,
+      filter: true,
+      resizable: true,
+      minWidth: 50,
+    },
+    animateRows: false,
+    rowSelection: { mode: "multiRow", enableClickSelection: true },
+    suppressCellFocus: false,
+    enableCellTextSelection: true,
+    domLayout: "normal",
+    statusBar: {
+      statusPanels: [
+        { statusPanel: "agSelectedRowCountComponent" },
+        { statusPanel: "agAggregationComponent" },
+      ],
+    },
+  }
+}

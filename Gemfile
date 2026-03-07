@@ -29,6 +29,9 @@ gem 'httparty'
 # Technical Analysis
 gem 'technical-analysis'
 
+# Statistics
+gem 'enumerable-statistics'
+
 # Frontend
 gem 'view_component'
 

@@ -165,20 +165,11 @@ ok "npm install done"
 
 # ── Database ──────────────────────────────────────────────────────
 
-step "Database"
 DB_NAME="trade_data_analysis_development"
 
-if "${PG_BIN}/psql" -lqt | cut -d'|' -f1 | grep -qw "$DB_NAME"; then
-  ok "database ${DB_NAME} exists"
-else
-  warn "creating databases…"
-  bin/rails db:create
-  ok "created"
-fi
-
-step "Migrations"
-bin/rails db:migrate
-ok "migrations up to date"
+step "Database setup"
+bin/rails db:prepare
+ok "database ready (created/migrated as needed)"
 
 # ── TimescaleDB objects (hypertable + continuous aggregates) ──
 

@@ -291,6 +291,95 @@ describe("TabStore", () => {
     })
   })
 
+  describe("data tab CRUD", () => {
+    it("addDataTab creates a data tab with default columns", () => {
+      const tab = store.addDataTab({ symbols: ["BTCUSD"], timeframe: "1h" })
+      expect(tab.type).toBe("data")
+      expect(tab.panels).toHaveLength(0)
+      expect(tab.dataConfig).toBeDefined()
+      expect(tab.dataConfig!.symbols).toEqual(["BTCUSD"])
+      expect(tab.dataConfig!.timeframe).toBe("1h")
+      expect(tab.dataConfig!.columns.length).toBeGreaterThanOrEqual(6)
+      expect(store.activeTabId).toBe(tab.id)
+      expect(store.selectedPanelId).toBeNull()
+    })
+
+    it("addDataTabFromChart copies chart settings", () => {
+      const chart = store.addTab({ symbol: "ETHUSD" })
+      const data = store.addDataTabFromChart(chart.id)
+      expect(data).not.toBeNull()
+      expect(data!.type).toBe("data")
+      expect(data!.dataConfig!.symbols).toContain("ETHUSD")
+      expect(data!.dataConfig!.sourceTabId).toBe(chart.id)
+    })
+
+    it("addDataTabFromChart returns null for unknown tab", () => {
+      expect(store.addDataTabFromChart("fake")).toBeNull()
+    })
+
+    it("addDataColumn adds column", () => {
+      const tab = store.addDataTab({ symbols: ["BTCUSD"] })
+      const col = store.addDataColumn(tab.id, { type: "change", label: "Change 5m", changePeriod: "5m" })
+      expect(col).not.toBeNull()
+      expect(col!.id).toMatch(/^col-/)
+      expect(tab.dataConfig!.columns).toContain(col)
+    })
+
+    it("removeDataColumn removes column", () => {
+      const tab = store.addDataTab({ symbols: ["BTCUSD"] })
+      const col = store.addDataColumn(tab.id, { type: "change", label: "Change 5m" })!
+      const before = tab.dataConfig!.columns.length
+      expect(store.removeDataColumn(tab.id, col.id)).toBe(true)
+      expect(tab.dataConfig!.columns.length).toBe(before - 1)
+    })
+
+    it("addCondition adds condition to data tab", () => {
+      const tab = store.addDataTab({ symbols: ["BTCUSD"] })
+      const cond = store.addCondition(tab.id, {
+        name: "Spike",
+        enabled: true,
+        rule: { type: "change_gt", column: "close", value: 2 },
+        action: { rowHighlight: "#ff0000" },
+      })
+      expect(cond).not.toBeNull()
+      expect(cond!.id).toMatch(/^cond-/)
+      expect(tab.dataConfig!.conditions).toContain(cond)
+    })
+
+    it("updateCondition updates condition", () => {
+      const tab = store.addDataTab({ symbols: ["BTCUSD"] })
+      const cond = store.addCondition(tab.id, {
+        name: "Spike",
+        enabled: true,
+        rule: { type: "change_gt", column: "close", value: 2 },
+        action: { rowHighlight: "#ff0000" },
+      })!
+      store.updateCondition(tab.id, cond.id, { enabled: false })
+      expect(cond.enabled).toBe(false)
+    })
+
+    it("removeCondition removes condition", () => {
+      const tab = store.addDataTab({ symbols: ["BTCUSD"] })
+      const cond = store.addCondition(tab.id, {
+        name: "Spike",
+        enabled: true,
+        rule: { type: "change_gt", column: "close", value: 2 },
+        action: {},
+      })!
+      expect(store.removeCondition(tab.id, cond.id)).toBe(true)
+      expect(tab.dataConfig!.conditions).toHaveLength(0)
+    })
+
+    it("activateTab sets null panels for data tab", () => {
+      store.addTab()
+      const data = store.addDataTab({ symbols: ["BTCUSD"] })
+      store.activateTab(store.tabs[0].id)
+      store.activateTab(data.id)
+      expect(store.selectedPanelId).toBeNull()
+      expect(store.selectedOverlayId).toBeNull()
+    })
+  })
+
   describe("volume profile", () => {
     it("setVolumeProfile enables with defaults", () => {
       const tab = store.addTab()

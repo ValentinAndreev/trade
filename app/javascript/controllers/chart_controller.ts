@@ -230,6 +230,7 @@ export default class extends Controller {
   enterLabelMode() { this.interaction?.enterLabelMode() }
   exitLabelMode() { this.interaction?.exitLabelMode() }
   setLabels(labels: any[]): void { this.drawings?.setLabels(labels) }
+  setConditionLabels(labels: any[]): void { this.drawings?.setConditionLabels(labels) }
   scrollToLabel(time: number): void { this.drawings?.scrollToLabel(time) }
 
   enterLineMode() { this.interaction?.enterLineMode() }
@@ -307,7 +308,7 @@ export default class extends Controller {
 
     const series = createOverlaySeries(this.chart, mode, chartType, colors, basePriceScaleId, visible, opacity)
     const url = `/api/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${encodeURIComponent(this.timeframeValue)}&limit=${CANDLE_LIMIT}`
-    const loader = new DataLoader(url)
+    const loader = new DataLoader(url, config.symbol, this.timeframeValue)
     const onCandle = (candle: Candle) => this._handleCandle(config.id, candle)
     const bfxFeed = new BitfinexFeed(config.symbol, this.timeframeValue, onCandle)
     const cableFeed = new CableFeed(config.symbol, this.timeframeValue, onCandle)
@@ -438,30 +439,39 @@ export default class extends Controller {
   }
 
   async _navigateToTime(targetTime: number): Promise<void> {
-    for (const [, ov] of this.overlayMap) {
-      if (!ov.loader) continue
-      const startTime = new Date(targetTime * 1000).toISOString()
-      const url = new URL(ov.loader.baseUrl, window.location.origin)
-      url.searchParams.set("start_time", startTime)
-      url.searchParams.set("limit", String(CANDLE_LIMIT))
-      try {
-        const resp = await apiFetch(url, {}, { silent: true })
-        if (!resp) continue
-        const newCandles = await resp.json()
-        if (newCandles.length === 0) continue
-        ov.loader.prependCandles(newCandles)
-        ov.series.setData(toSeriesData(ov, ov.loader.candles))
-      } catch (e) { console.error("[nav] load failed:", (e as Error).message) }
-    }
     const firstOv = [...this.overlayMap.values()].find(ov => ov.loader?.candles?.length)
     if (!firstOv) return
+
     const candles = firstOv.loader.candles
-    let idx = candles.findIndex((c: Candle) => c.time >= targetTime)
-    if (idx === -1) idx = candles.length - 1
+    const oldest = candles[0]?.time ?? Infinity
+    const needsFetch = targetTime < oldest
+
+    if (needsFetch) {
+      for (const [, ov] of this.overlayMap) {
+        if (!ov.loader) continue
+        const startTime = new Date(targetTime * 1000).toISOString()
+        const url = new URL(ov.loader.baseUrl, window.location.origin)
+        url.searchParams.set("start_time", startTime)
+        url.searchParams.set("limit", String(CANDLE_LIMIT))
+        try {
+          const resp = await apiFetch(url, {}, { silent: true })
+          if (!resp) continue
+          const newCandles = await resp.json()
+          if (newCandles.length === 0) continue
+          ov.loader.prependCandles(newCandles)
+          ov.series.setData(toSeriesData(ov, ov.loader.candles))
+        } catch (e) { console.error("[nav] load failed:", (e as Error).message) }
+      }
+      this.indicators.refreshAll()
+    }
+
+    const allCandles = firstOv.loader.candles
+    let idx = allCandles.findIndex((c: Candle) => c.time >= targetTime)
+    if (idx === -1) idx = allCandles.length - 1
     const range = this.chart.timeScale().getVisibleLogicalRange()
     const visible = range ? range.to - range.from : DEFAULT_VISIBLE_BARS
     this.chart.timeScale().setVisibleLogicalRange({ from: idx, to: idx + visible })
-    this.indicators.refreshAll()
+    if (!needsFetch) this.indicators.refreshAll()
     requestAnimationFrame(() => this.scrollbar?.update())
   }
 
@@ -496,5 +506,30 @@ export default class extends Controller {
     }
     this.indicators.refreshAll()
     requestAnimationFrame(() => this.scrollbar?.update())
+  }
+
+  applyColorZones(zones: Array<{ time: number; color: string }>): void {
+    const zoneMap = new Map<number, string>()
+    for (const z of zones) zoneMap.set(z.time, z.color)
+
+    for (const [, ov] of this.overlayMap) {
+      if (ov.mode !== "price" || !ov.series || !ov.loader?.candles?.length) continue
+      const coloredData = ov.loader.candles.map((c: any) => {
+        const zone = zoneMap.get(c.time)
+        if (zone) {
+          return {
+            ...toUpdatePoint(ov, c),
+            color: zone,
+            borderColor: zone,
+            wickUpColor: zone,
+            wickDownColor: zone,
+          }
+        }
+        return toUpdatePoint(ov, c)
+      })
+      try { ov.series.setData(coloredData) } catch (e) {
+        console.warn("[chart] color zone apply failed:", (e as Error).message)
+      }
+    }
   }
 }

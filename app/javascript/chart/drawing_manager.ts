@@ -18,10 +18,13 @@ export default class DrawingManager {
   _storedHLines: any[]
   _storedVLines: any[]
 
+  conditionLabels: any[]
+
   constructor(chart: IChartApi, overlayMap: Map<string, any>) {
     this.chart = chart
     this.overlayMap = overlayMap
     this.labels = []
+    this.conditionLabels = []
     this._labelMarkersPrimitives = []
     this._linePrimitives = []
     this._hlinePrimitives = []
@@ -38,8 +41,13 @@ export default class DrawingManager {
     this._renderLabelMarkers()
   }
 
+  setConditionLabels(labels: any[]): void {
+    this.conditionLabels = labels || []
+    this._renderLabelMarkers()
+  }
+
   refreshLabels(): void {
-    if (this.labels?.length > 0) this._renderLabelMarkers()
+    if (this.labels?.length > 0 || this.conditionLabels?.length > 0) this._renderLabelMarkers()
   }
 
   scrollToLabel(time: number): void {
@@ -63,12 +71,14 @@ export default class DrawingManager {
     }
     this._labelMarkersPrimitives = []
 
-    if (this.labels.length === 0) return
+    const allLabels = [...(this.labels || []), ...(this.conditionLabels || [])]
+    if (allLabels.length === 0) return
 
     const seriesLabelsMap = new Map()
-    for (const label of this.labels) {
-      if (!label.overlayId) continue
-      const targetSeries = this._findVisibleSeriesForMarkers(label.overlayId)
+    for (const label of allLabels) {
+      const targetSeries = label.overlayId
+        ? this._findVisibleSeriesForMarkers(label.overlayId)
+        : this._findFirstPriceSeries()
       if (!targetSeries) continue
       if (!seriesLabelsMap.has(targetSeries)) seriesLabelsMap.set(targetSeries, [])
       seriesLabelsMap.get(targetSeries).push(label)
@@ -190,7 +200,7 @@ export default class DrawingManager {
   // --- Re-render on visibility change ---
 
   refreshAfterVisibilityChange(): void {
-    if (this.labels?.length > 0) this._renderLabelMarkers()
+    if (this.labels?.length > 0 || this.conditionLabels?.length > 0) this._renderLabelMarkers()
     if (this._linePrimitives.length > 0 || this._storedLines?.length > 0) {
       this.setLines(this._storedLines || [])
     }
