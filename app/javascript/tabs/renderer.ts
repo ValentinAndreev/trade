@@ -3,6 +3,7 @@ import DataSidebarRenderer from "../data_grid/sidebar_renderer"
 import PanelRenderer from "./panel_renderer"
 import { tabButtonHTML, addTabButtonHTML } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
+import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 
 export interface TabRenderOpts {
   tabs: Tab[]
@@ -12,7 +13,7 @@ export interface TabRenderOpts {
   symbols: string[]
   timeframes: string[]
   labelFn?: (tab: Tab) => string
-  indicators: unknown[]
+  indicators: IndicatorInfo[]
   labelModeActive: boolean
   lineModeActive: boolean
   vpEnabled: boolean

@@ -83,8 +83,6 @@ export function evaluateSingleCondition(
       if (!rule.expression) return false
       return evaluateExpression(rule.expression, row)
     }
-    case "correlation_gt":
-      return false
     default:
       return false
   }
@@ -97,27 +95,32 @@ function resolveColumnValue(row: Record<string, any>, column: string): number | 
   return Number.isFinite(n) ? n : null
 }
 
-function evaluateExpression(expr: string, row: Record<string, any>): boolean {
-  try {
-    let resolved = expr.replace(/col\(['"]([^'"]+)['"]\)/g, (_match, colName) => {
-      const v = row[colName]
+const MATH_CONTEXT = "{abs,sqrt,min,max,pow,log,floor,ceil,round,sign,PI,E}=Math"
+
+function resolveVariables(expr: string, row: Record<string, any>): string {
+  let resolved = expr.replace(/col\(['"]([^'"]+)['"]\)/g, (_match, colName) => {
+    const v = row[colName]
+    return v != null ? String(Number(v)) : "NaN"
+  })
+
+  const rowKeys = Object.keys(row).sort((a, b) => b.length - a.length)
+  for (const key of rowKeys) {
+    if (/^\d/.test(key)) continue
+    const re = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g")
+    resolved = resolved.replace(re, () => {
+      const v = row[key]
       return v != null ? String(Number(v)) : "NaN"
     })
+  }
 
-    const rowKeys = Object.keys(row).sort((a, b) => b.length - a.length)
-    for (const key of rowKeys) {
-      if (/^\d/.test(key)) continue
-      const re = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g")
-      resolved = resolved.replace(re, () => {
-        const v = row[key]
-        return v != null ? String(Number(v)) : "NaN"
-      })
-    }
+  return resolved.replace(/[^0-9+\-*/().><=!&| \tNan,eE]/g, "")
+}
 
-    const sanitized = resolved.replace(/[^0-9+\-*/().><=!&| \tNan,eE]/g, "")
-    const fn = new Function(`"use strict"; const {abs,sqrt,min,max,pow,log,floor,ceil,round}=Math; return (${sanitized})`)
-    const result = fn()
-    return !!result
+function evaluateExpression(expr: string, row: Record<string, any>): boolean {
+  try {
+    const sanitized = resolveVariables(expr, row)
+    const fn = new Function(`"use strict"; const ${MATH_CONTEXT}; return (${sanitized})`)
+    return !!fn()
   } catch {
     return false
   }
@@ -125,23 +128,8 @@ function evaluateExpression(expr: string, row: Record<string, any>): boolean {
 
 export function evaluateFormulaExpression(expr: string, row: Record<string, any>): number | null {
   try {
-    let resolved = expr.replace(/col\(['"]([^'"]+)['"]\)/g, (_match, colName) => {
-      const v = row[colName]
-      return v != null ? String(Number(v)) : "NaN"
-    })
-
-    const rowKeys = Object.keys(row).sort((a, b) => b.length - a.length)
-    for (const key of rowKeys) {
-      if (/^\d/.test(key)) continue
-      const re = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g")
-      resolved = resolved.replace(re, () => {
-        const v = row[key]
-        return v != null ? String(Number(v)) : "NaN"
-      })
-    }
-
-    const sanitized = resolved.replace(/[^0-9+\-*/().><=!&| \tNan,eE]/g, "")
-    const fn = new Function(`"use strict"; const {sqrt,abs,min,max,pow,log,floor,ceil,round,sign,PI,E}=Math; return (${sanitized})`)
+    const sanitized = resolveVariables(expr, row)
+    const fn = new Function(`"use strict"; const ${MATH_CONTEXT}; return (${sanitized})`)
     const result = fn()
     return Number.isFinite(result) ? result : null
   } catch {
@@ -149,56 +137,34 @@ export function evaluateFormulaExpression(expr: string, row: Record<string, any>
   }
 }
 
-export function getChartMarkers(matches: Map<number, ConditionMatch>): Array<{
-  time: number
-  position: "aboveBar" | "belowBar"
-  color: string
-  shape: "arrowDown" | "arrowUp" | "circle"
-  text: string
-}> {
-  const markers: Array<{
-    time: number
-    position: "aboveBar" | "belowBar"
-    color: string
-    shape: "arrowDown" | "arrowUp" | "circle"
-    text: string
-  }> = []
-
+function extractActions<T>(
+  matches: Map<number, ConditionMatch>,
+  extract: (action: ConditionAction, time: number) => T | null,
+): T[] {
+  const results: T[] = []
   for (const [, match] of matches) {
     for (const action of match.actions) {
-      if (action.chartMarker) {
-        markers.push({
-          time: match.time,
-          position: "aboveBar",
-          color: action.chartMarker.color,
-          shape: "circle",
-          text: action.chartMarker.text || "",
-        })
-      }
+      const item = extract(action, match.time)
+      if (item) results.push(item)
     }
   }
-
-  return markers.sort((a, b) => a.time - b.time)
+  return results.sort((a: any, b: any) => (a.time ?? 0) - (b.time ?? 0))
 }
 
-export function getColorZones(matches: Map<number, ConditionMatch>): Array<{
-  time: number
-  color: string
-}> {
-  const zones: Array<{ time: number; color: string }> = []
+export function getChartMarkers(matches: Map<number, ConditionMatch>) {
+  return extractActions(matches, (action, time) =>
+    action.chartMarker
+      ? { time, position: "aboveBar" as const, color: action.chartMarker.color, shape: "circle" as const, text: action.chartMarker.text || "" }
+      : null
+  )
+}
 
-  for (const [, match] of matches) {
-    for (const action of match.actions) {
-      if (action.chartColorZone) {
-        zones.push({
-          time: match.time,
-          color: action.chartColorZone.color,
-        })
-      }
-    }
-  }
-
-  return zones.sort((a, b) => a.time - b.time)
+export function getColorZones(matches: Map<number, ConditionMatch>) {
+  return extractActions(matches, (action, time) =>
+    action.chartColorZone
+      ? { time, color: action.chartColorZone.color }
+      : null
+  )
 }
 
 export function getHighlightStyles(conditions: Condition[]): string {

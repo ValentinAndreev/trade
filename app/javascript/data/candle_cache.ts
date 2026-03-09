@@ -107,5 +107,5 @@ class CandleCache {
   }
 }
 
-export const candleCache = new CandleCache()
+const candleCache = new CandleCache()
 export default candleCache

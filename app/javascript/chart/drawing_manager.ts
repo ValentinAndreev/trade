@@ -1,4 +1,4 @@
-import type { IChartApi } from "lightweight-charts"
+import type { IChartApi, ISeriesApi, SeriesType } from "lightweight-charts"
 import type { Candle } from "../types/candle"
 import { TrendLinePrimitive } from "./primitives/trend_line"
 import { HLinePrimitive, VLinePrimitive } from "./primitives/guide_lines"
@@ -6,21 +6,69 @@ import { TextLabelsPrimitive } from "./primitives/text_labels"
 import { findFirstPriceSeries } from "./overlay_utils"
 import { DEFAULT_LINE_COLOR, DEFAULT_GUIDE_COLOR, DEFAULT_TREND_WIDTH, DEFAULT_VISIBLE_BARS } from "../config/constants"
 
+export interface LabelMarker {
+  id?: string
+  time: number
+  text: string
+  color?: string
+  position?: "aboveBar" | "belowBar"
+  price?: number
+  overlayId?: string
+}
+
+export interface TrendLineItem {
+  id: string
+  overlayId: string
+  p1: { time: number; price: number }
+  p2: { time: number; price: number }
+  color?: string
+  width?: number
+}
+
+export interface HLineItem {
+  id: string
+  overlayId: string
+  price: number
+  color?: string
+  width?: number
+}
+
+export interface VLineItem {
+  id: string
+  overlayId?: string
+  time: number
+  color?: string
+  width?: number
+}
+
+interface OverlayEntry {
+  series?: ISeriesApi<SeriesType>
+  indicatorSeries?: Array<{ series: ISeriesApi<SeriesType> }>
+  visible?: boolean
+  loader?: { candles?: Candle[] }
+  [key: string]: unknown
+}
+
+interface PrimitiveAttachment<T> {
+  id?: string
+  primitive: T
+  seriesRef: ISeriesApi<SeriesType>
+}
+
 export default class DrawingManager {
   chart: IChartApi
-  overlayMap: Map<string, any>
-  labels: any[]
-  _labelMarkersPrimitives: { primitive: any; seriesRef: any }[]
-  _linePrimitives: { id: string; primitive: any; seriesRef: any }[]
-  _hlinePrimitives: { id: string; primitive: any; seriesRef: any }[]
-  _vlinePrimitives: { id: string; primitive: any; seriesRef: any }[]
-  _storedLines: any[]
-  _storedHLines: any[]
-  _storedVLines: any[]
+  overlayMap: Map<string, OverlayEntry>
+  labels: LabelMarker[]
+  conditionLabels: LabelMarker[]
+  private _labelMarkersPrimitives: PrimitiveAttachment<InstanceType<typeof TextLabelsPrimitive>>[]
+  private _linePrimitives: PrimitiveAttachment<InstanceType<typeof TrendLinePrimitive>>[]
+  private _hlinePrimitives: PrimitiveAttachment<InstanceType<typeof HLinePrimitive>>[]
+  private _vlinePrimitives: PrimitiveAttachment<InstanceType<typeof VLinePrimitive>>[]
+  private _storedLines: TrendLineItem[]
+  private _storedHLines: HLineItem[]
+  private _storedVLines: VLineItem[]
 
-  conditionLabels: any[]
-
-  constructor(chart: IChartApi, overlayMap: Map<string, any>) {
+  constructor(chart: IChartApi, overlayMap: Map<string, OverlayEntry>) {
     this.chart = chart
     this.overlayMap = overlayMap
     this.labels = []
@@ -36,12 +84,12 @@ export default class DrawingManager {
 
   // --- Labels ---
 
-  setLabels(labels: any[]): void {
+  setLabels(labels: LabelMarker[]): void {
     this.labels = labels || []
     this._renderLabelMarkers()
   }
 
-  setConditionLabels(labels: any[]): void {
+  setConditionLabels(labels: LabelMarker[]): void {
     this.conditionLabels = labels || []
     this._renderLabelMarkers()
   }
@@ -54,7 +102,7 @@ export default class DrawingManager {
     if (!this.chart) return
     const firstOv = [...this.overlayMap.values()].find(ov => ov.loader?.candles?.length)
     if (!firstOv) return
-    const candles = firstOv.loader.candles
+    const candles = firstOv.loader!.candles!
     let idx = candles.findIndex((c: Candle) => c.time >= time)
     if (idx === -1) idx = candles.length - 1
     const range = this.chart.timeScale().getVisibleLogicalRange()
@@ -63,29 +111,26 @@ export default class DrawingManager {
     this.chart.timeScale().setVisibleLogicalRange({ from, to: from + visible })
   }
 
-  _renderLabelMarkers(): void {
-    if (this._labelMarkersPrimitives) {
-      for (const entry of this._labelMarkersPrimitives) {
-        try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
-      }
-    }
+  private _renderLabelMarkers(): void {
+    this._detachPrimitives(this._labelMarkersPrimitives)
     this._labelMarkersPrimitives = []
 
     const allLabels = [...(this.labels || []), ...(this.conditionLabels || [])]
     if (allLabels.length === 0) return
 
-    const seriesLabelsMap = new Map()
+    const seriesLabelsMap = new Map<ISeriesApi<SeriesType>, LabelMarker[]>()
     for (const label of allLabels) {
       const targetSeries = label.overlayId
         ? this._findVisibleSeriesForMarkers(label.overlayId)
         : this._findFirstPriceSeries()
       if (!targetSeries) continue
       if (!seriesLabelsMap.has(targetSeries)) seriesLabelsMap.set(targetSeries, [])
-      seriesLabelsMap.get(targetSeries).push(label)
+      seriesLabelsMap.get(targetSeries)!.push(label)
     }
 
     for (const [series, labels] of seriesLabelsMap) {
-      const primitive = new TextLabelsPrimitive(labels)
+      const inputLabels = labels.map(l => ({ ...l, price: l.price ?? 0 }))
+      const primitive = new TextLabelsPrimitive(inputLabels)
       series.attachPrimitive(primitive)
       this._labelMarkersPrimitives.push({ primitive, seriesRef: series })
     }
@@ -93,9 +138,10 @@ export default class DrawingManager {
 
   // --- Lines ---
 
-  setLines(lines: any[]): void {
+  setLines(lines: TrendLineItem[]): void {
     this._storedLines = lines || []
-    this._detachAllLinePrimitives()
+    this._detachPrimitives(this._linePrimitives)
+    this._linePrimitives = []
     if (!lines || lines.length === 0) return
     for (const line of lines) {
       this._attachLinePrimitive(line)
@@ -108,7 +154,7 @@ export default class DrawingManager {
     this.scrollToLabel(t)
   }
 
-  _attachLinePrimitive(line: any): void {
+  private _attachLinePrimitive(line: TrendLineItem): void {
     const series = this._findVisibleSeriesForMarkers(line.overlayId)
     if (!series) return
     const primitive = new TrendLinePrimitive(line.p1, line.p2, {
@@ -119,25 +165,19 @@ export default class DrawingManager {
     this._linePrimitives.push({ id: line.id, primitive, seriesRef: series })
   }
 
-  _detachAllLinePrimitives(): void {
-    for (const entry of this._linePrimitives) {
-      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
-    }
-    this._linePrimitives = []
-  }
-
   // --- HLines ---
 
-  setHLines(hlines: any[]): void {
+  setHLines(hlines: HLineItem[]): void {
     this._storedHLines = hlines || []
-    this._detachAllHLinePrimitives()
+    this._detachPrimitives(this._hlinePrimitives)
+    this._hlinePrimitives = []
     if (!hlines || hlines.length === 0) return
     for (const hl of hlines) {
       this._attachHLinePrimitive(hl)
     }
   }
 
-  _attachHLinePrimitive(hl: any): void {
+  private _attachHLinePrimitive(hl: HLineItem): void {
     const series = this._findVisibleSeriesForMarkers(hl.overlayId)
     if (!series) return
     const primitive = new HLinePrimitive(hl.price, {
@@ -148,26 +188,20 @@ export default class DrawingManager {
     this._hlinePrimitives.push({ id: hl.id, primitive, seriesRef: series })
   }
 
-  _detachAllHLinePrimitives(): void {
-    for (const entry of this._hlinePrimitives) {
-      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
-    }
-    this._hlinePrimitives = []
-  }
-
   // --- VLines ---
 
-  setVLines(vlines: any[]): void {
+  setVLines(vlines: VLineItem[]): void {
     this._storedVLines = vlines || []
-    this._detachAllVLinePrimitives()
+    this._detachPrimitives(this._vlinePrimitives)
+    this._vlinePrimitives = []
     if (!vlines || vlines.length === 0) return
     for (const vl of vlines) {
       this._attachVLinePrimitive(vl)
     }
   }
 
-  _attachVLinePrimitive(vl: any): void {
-    const series = this._findVisibleSeriesForMarkers(vl.overlayId) || this._findFirstPriceSeries()
+  private _attachVLinePrimitive(vl: VLineItem): void {
+    const series = (vl.overlayId ? this._findVisibleSeriesForMarkers(vl.overlayId) : null) || this._findFirstPriceSeries()
     if (!series) return
     const primitive = new VLinePrimitive(vl.time, {
       color: vl.color || DEFAULT_GUIDE_COLOR,
@@ -177,24 +211,23 @@ export default class DrawingManager {
     this._vlinePrimitives.push({ id: vl.id, primitive, seriesRef: series })
   }
 
-  _detachAllVLinePrimitives(): void {
-    for (const entry of this._vlinePrimitives) {
-      try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
-    }
-    this._vlinePrimitives = []
-  }
-
   // --- Helpers ---
 
-  _findVisibleSeriesForMarkers(overlayId: string): any {
+  private _detachPrimitives(entries: PrimitiveAttachment<unknown>[]): void {
+    for (const entry of entries) {
+      try { entry.seriesRef.detachPrimitive(entry.primitive as any) } catch { /* already detached */ }
+    }
+  }
+
+  private _findVisibleSeriesForMarkers(overlayId: string): ISeriesApi<SeriesType> | null {
     const ov = this.overlayMap.get(overlayId)
     if (ov?.visible && ov.series) return ov.series
-    if (ov?.visible && ov.indicatorSeries?.length > 0) return ov.indicatorSeries[0].series
+    if (ov?.visible && ov.indicatorSeries?.length) return ov.indicatorSeries[0].series
     return null
   }
 
-  _findFirstPriceSeries(): any {
-    return findFirstPriceSeries(this.overlayMap)
+  private _findFirstPriceSeries(): ISeriesApi<SeriesType> | null {
+    return findFirstPriceSeries(this.overlayMap) as ISeriesApi<SeriesType> | null
   }
 
   // --- Re-render on visibility change ---
@@ -215,14 +248,13 @@ export default class DrawingManager {
   // --- Cleanup ---
 
   destroy(): void {
-    this._detachAllLinePrimitives()
-    this._detachAllHLinePrimitives()
-    this._detachAllVLinePrimitives()
-    if (this._labelMarkersPrimitives) {
-      for (const entry of this._labelMarkersPrimitives) {
-        try { entry.seriesRef.detachPrimitive(entry.primitive) } catch (e) { console.warn("[drawing] detach:", e) }
-      }
-    }
+    this._detachPrimitives(this._linePrimitives)
+    this._detachPrimitives(this._hlinePrimitives)
+    this._detachPrimitives(this._vlinePrimitives)
+    this._detachPrimitives(this._labelMarkersPrimitives)
+    this._linePrimitives = []
+    this._hlinePrimitives = []
+    this._vlinePrimitives = []
     this._labelMarkersPrimitives = []
   }
 }

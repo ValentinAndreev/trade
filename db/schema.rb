@@ -31,6 +31,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_05_071931) do
     t.index ["ts"], name: "candles_ts_idx", order: :desc
   end
 
+  create_table "presets", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "is_default", default: false, null: false
+    t.string "name", null: false
+    t.jsonb "payload", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["user_id", "name"], name: "index_presets_on_user_id_and_name", unique: true
+    t.index ["user_id"], name: "index_presets_on_user_id"
+  end
+
   create_table "solid_cable_messages", force: :cascade do |t|
     t.binary "channel", null: false
     t.bigint "channel_hash", null: false
@@ -162,6 +173,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_05_071931) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
+  create_table "users", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "password_digest", null: false
+    t.datetime "updated_at", null: false
+    t.string "username", null: false
+    t.index ["username"], name: "index_users_on_username", unique: true
+  end
+
+  add_foreign_key "presets", "users"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_failed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

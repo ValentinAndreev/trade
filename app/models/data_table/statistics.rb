@@ -32,14 +32,14 @@ class DataTable::Statistics
   end
 
   def self.from_rows(rows, field)
-    vals = rows.map { |r| r[field.to_sym] || r[field.to_s] }
+    vals = rows.map { |r| row_value(r, field) }
     new(vals).calculate
   end
 
   def self.correlation_matrix(rows, fields)
     fields.combination(2).each_with_object({}) do |(a, b), matrix|
-      vals_a = rows.map { |r| r[a.to_sym] || r[a.to_s] }.compact.map(&:to_f)
-      vals_b = rows.map { |r| r[b.to_sym] || r[b.to_s] }.compact.map(&:to_f)
+      vals_a = rows.map { |r| row_value(r, a) }.compact.map(&:to_f)
+      vals_b = rows.map { |r| row_value(r, b) }.compact.map(&:to_f)
       n = [ vals_a.length, vals_b.length ].min
       next if n < 2
 
@@ -47,4 +47,9 @@ class DataTable::Statistics
       matrix["#{a}:#{b}"] = corr
     end
   end
+
+  def self.row_value(row, field)
+    row[field.to_sym] || row[field.to_s]
+  end
+  private_class_method :row_value
 end

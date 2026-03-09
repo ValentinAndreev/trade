@@ -59,7 +59,7 @@ class DataTable::Builder
         end
 
         rows.each { |row| row[col_key] = index_by_time[row[:time]] }
-      rescue => e
+      rescue StandardError => e
         Rails.logger.warn("DataTable::Builder indicator #{type} failed: #{e.message}")
         rows.each { |row| row[col_key] = nil }
       end
@@ -92,10 +92,10 @@ class DataTable::Builder
     suffix ? :"#{type}_#{suffix}" : type
   end
 
+  COMPOSITE_INDICATORS = %i[macd bb ichimoku sr dc kc kst vi].freeze
+
   def extract_indicator_value(result, type)
-    simple_keys = %i[sma ema wma rsi cci atr adx obv obv_mean vwap ao cr cmf dpo dlr
-                     dr eom fi mi nvi tsi trix uo vpt wr adi adtv]
-    return result[type] if result.key?(type) && simple_keys.include?(type)
+    return result[type] if result.key?(type) && !COMPOSITE_INDICATORS.include?(type)
 
     case type
     when :macd then result[:macd_line]

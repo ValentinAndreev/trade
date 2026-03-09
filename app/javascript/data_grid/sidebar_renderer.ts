@@ -11,12 +11,14 @@ import {
   columnListHTML,
   addColumnFormHTML,
   formulaEditHTML,
-  conditionItemHTML,
-  conditionBuilderHTML,
   chartLinkItemHTML,
   settingsHTML,
   actionsHTML,
-} from "../templates/data_grid_templates"
+} from "../templates/data_grid_form_templates"
+import {
+  conditionItemHTML,
+  conditionBuilderHTML,
+} from "../templates/condition_templates"
 
 export interface IndicatorInfo {
   key: string
@@ -93,19 +95,19 @@ export default class DataSidebarRenderer {
 
   // --- Public helpers used by tabs_controller ---
 
-  _indicatorParamsHTML(): string {
+  indicatorParamsHTML(): string {
     return indicatorParamsHTML(this.availableIndicators)
   }
 
-  _changeParamsHTML(): string {
+  changeParamsHTML(): string {
     return changeParamsHTML()
   }
 
-  _formulaParamsHTML(): string {
+  formulaParamsHTML(): string {
     return formulaParamsHTML()
   }
 
-  _instrumentParamsHTML(symbols: string[]): string {
+  instrumentParamsHTML(symbols: string[]): string {
     return instrumentParamsHTML(symbols)
   }
 
@@ -149,22 +151,30 @@ export default class DataSidebarRenderer {
     return { startVal, endVal }
   }
 
+  private _sectionHeader(
+    label: string,
+    addAction?: string,
+    addLabel = "+ Add",
+    toggleAction?: string,
+  ): string {
+    const titleAttr = toggleAction ? `data-action="click->${this.ctrl}#${toggleAction}" class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"` : `class="text-sm text-gray-500 uppercase tracking-wide"`
+    const addBtn = addAction
+      ? `<button data-action="click->${this.ctrl}#${addAction}" class="text-sm text-gray-400 hover:text-white cursor-pointer">${addLabel}</button>`
+      : ""
+    return `<div class="flex items-center justify-between"><span ${titleAttr}>${label}</span>${addBtn}</div>`
+  }
+
   private _columnsSection(columns: DataColumn[]): string {
     const editingCol = this.editingFormulaId ? columns.find(c => c.id === this.editingFormulaId) : null
     const editFormHTML = editingCol
       ? formulaEditHTML(this.ctrl, editingCol.id, editingCol.label, editingCol.expression || "")
       : ""
     return `
-      <div class="flex items-center justify-between">
-        <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
-              data-action="click->${this.ctrl}#toggleDataColumns">Columns</span>
-        <button data-action="click->${this.ctrl}#showAddColumn"
-                class="text-sm text-gray-400 hover:text-white cursor-pointer">+ Column</button>
-      </div>
+      ${this._sectionHeader("Columns", "showAddColumn", "+ Column", "toggleDataColumns")}
       ${this.columnsCollapsed ? "" : `
         <div class="flex flex-col gap-0.5">${columnListHTML(this.ctrl, columns)}</div>
         ${editFormHTML}
-        ${addColumnFormHTML(this.ctrl, this._indicatorParamsHTML())}
+        ${addColumnFormHTML(this.ctrl, this.indicatorParamsHTML())}
       `}
     `
   }
@@ -172,12 +182,7 @@ export default class DataSidebarRenderer {
   private _conditionsSection(conditions: Condition[]): string {
     const list = conditions.map(cond => conditionItemHTML(this.ctrl, cond)).join("")
     return `
-      <div class="flex items-center justify-between">
-        <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
-              data-action="click->${this.ctrl}#toggleDataConditions">Conditions</span>
-        <button data-action="click->${this.ctrl}#showAddCondition"
-                class="text-sm text-gray-400 hover:text-white cursor-pointer">+ Condition</button>
-      </div>
+      ${this._sectionHeader("Conditions", "showAddCondition", "+ Condition", "toggleDataConditions")}
       ${this.conditionsCollapsed ? "" : `
         <div class="flex flex-col gap-0.5">${list || '<span class="text-sm text-gray-500 italic px-2">No conditions</span>'}</div>
         ${this.showConditionBuilder ? conditionBuilderHTML(this.ctrl, this._currentColumns, this._editingCondition) : ""}
@@ -188,11 +193,7 @@ export default class DataSidebarRenderer {
   private _chartLinksSection(links: Array<{ chartTabId: string; panelId: string }>): string {
     const list = links.map((link, idx) => chartLinkItemHTML(this.ctrl, link, idx)).join("")
     return `
-      <div class="flex items-center justify-between">
-        <span class="text-sm text-gray-500 uppercase tracking-wide">Chart Links</span>
-        <button data-action="click->${this.ctrl}#addChartLink"
-                class="text-sm text-gray-400 hover:text-white cursor-pointer">+ Link</button>
-      </div>
+      ${this._sectionHeader("Chart Links", "addChartLink", "+ Link")}
       <div class="flex flex-col gap-0.5">
         ${list || '<span class="text-sm text-gray-500 italic px-2">No linked charts</span>'}
       </div>

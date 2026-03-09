@@ -18,6 +18,7 @@ import {
 } from "../chart/series_factory"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import DrawingManager from "../chart/drawing_manager"
+import type { LabelMarker } from "../chart/drawing_manager"
 import InteractionHandler from "../chart/interaction_handler"
 import ScaleManager from "../chart/scale_manager"
 import VolumeProfileManager from "../chart/volume_profile_manager"
@@ -229,8 +230,8 @@ export default class extends Controller {
 
   enterLabelMode() { this.interaction?.enterLabelMode() }
   exitLabelMode() { this.interaction?.exitLabelMode() }
-  setLabels(labels: any[]): void { this.drawings?.setLabels(labels) }
-  setConditionLabels(labels: any[]): void { this.drawings?.setConditionLabels(labels) }
+  setLabels(labels: LabelMarker[]): void { this.drawings?.setLabels(labels) }
+  setConditionLabels(labels: LabelMarker[]): void { this.drawings?.setConditionLabels(labels) }
   scrollToLabel(time: number): void { this.drawings?.scrollToLabel(time) }
 
   enterLineMode() { this.interaction?.enterLineMode() }
@@ -382,7 +383,7 @@ export default class extends Controller {
         if (ov.mode !== "indicator") ov.bfxFeed.connect()
       }
       this.indicators.refreshAll()
-      this.drawings?._renderLabelMarkers()
+      this.drawings?.refreshLabels()
     })
     for (const [, ov] of this.overlayMap) {
       if (ov.mode !== "indicator") ov.cableFeed.connect()

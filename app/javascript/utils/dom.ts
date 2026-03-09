@@ -9,6 +9,16 @@ export function escapeHTML(value: unknown): string {
     .replaceAll("'", "&#39;")
 }
 
+export function injectConditionStyles(css: string): void {
+  let styleEl = document.getElementById("data-grid-condition-styles")
+  if (!styleEl) {
+    styleEl = document.createElement("style")
+    styleEl.id = "data-grid-condition-styles"
+    document.head.appendChild(styleEl)
+  }
+  styleEl.textContent = css
+}
+
 export function createInlineRenameInput(currentText: string, onCommit: (text: string) => void, cssClass?: string): HTMLInputElement {
   const input = document.createElement("input")
   input.type = "text"

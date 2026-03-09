@@ -79,7 +79,6 @@ function mergeInstrumentData(
 
 export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]> {
   if (!config.symbols.length) {
-    console.warn("[DataGrid] No symbols configured, skipping load")
     return []
   }
 
@@ -90,7 +89,6 @@ export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]>
   if (isLinked && !needsServerCalc && !instrumentCols.length) {
     const cached = loadFromCache(config)
     if (cached && cached.length > 0) {
-      console.info(`[DataGrid] Using ${cached.length} cached rows (linked tab)`)
       return cached
     }
   }
@@ -126,7 +124,6 @@ export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]>
   try {
     const response = await apiFetch(url)
     if (!response) {
-      console.warn("[DataGrid] apiFetch returned null (offline?)")
       return loadFromCache(config) ?? []
     }
     if (!response.ok) {
@@ -134,24 +131,16 @@ export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]>
       return loadFromCache(config) ?? []
     }
     const data: DataTableRow[] = await response.json()
-    console.info(`[DataGrid] Loaded ${data.length} rows for ${symbol} ${config.timeframe}`)
 
     if (instrumentCols.length) {
       const uniqueSymbols = [...new Set(instrumentCols.map(c => c.instrumentSymbol!))]
-      console.log("[DataGrid] Fetching instrument data for:", uniqueSymbols)
       const instrumentData = new Map<string, Map<number, Record<string, number>>>()
       const fetches = uniqueSymbols.map(async (sym) => {
         const d = await fetchInstrumentData(sym, config.timeframe, config.startTime, config.endTime)
-        console.log(`[DataGrid] Instrument ${sym}: ${d.size} rows fetched`)
         instrumentData.set(sym, d)
       })
       await Promise.all(fetches)
       mergeInstrumentData(data, instrumentCols, instrumentData)
-      const sampleRow = data[0]
-      if (sampleRow) {
-        const instKeys = instrumentCols.map(c => c.label)
-        console.log("[DataGrid] Instrument merge result (first row):", instKeys.map(k => `${k}=${sampleRow[k]}`))
-      }
     }
 
     return data
@@ -159,20 +148,4 @@ export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]>
     console.error("[DataGrid] Failed to load data:", err)
     return loadFromCache(config) ?? []
   }
-}
-
-export async function loadCorrelation(
-  symbolA: string,
-  symbolB: string,
-  timeframe: string,
-): Promise<number | null> {
-  const response = await apiFetch("/api/data_table/correlations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ symbol_a: symbolA, symbol_b: symbolB, timeframe }),
-  })
-  if (!response || !response.ok) return null
-
-  const data = await response.json()
-  return data.correlation
 }

@@ -32,6 +32,16 @@ export interface DataColumn {
   instrumentField?: string;
 }
 
+export function columnFieldKey(col: DataColumn): string {
+  if (col.type === "change") return `change_${col.changePeriod || "5m"}`
+  if (col.type === "indicator" && col.indicatorType) {
+    const params = col.indicatorParams || {}
+    const suffix = Object.values(params)[0]
+    return suffix ? `${col.indicatorType}_${suffix}` : col.indicatorType
+  }
+  return col.label
+}
+
 export interface Condition {
   id: string;
   name: string;
@@ -42,8 +52,7 @@ export interface Condition {
 
 export interface ConditionRule {
   type: "change_gt" | "change_lt" | "value_gt" | "value_lt"
-      | "cross_above" | "cross_below" | "between" | "correlation_gt"
-      | "expression";
+      | "cross_above" | "cross_below" | "between" | "expression";
   column: string;
   value: number;
   compareColumn?: string;

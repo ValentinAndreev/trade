@@ -2,20 +2,7 @@
 
 class Api::DataTablesController < Api::ApplicationController
   def show
-    candles = Candle::FindQuery.new(
-      symbol: params.require(:symbol),
-      timeframe: params.require(:timeframe),
-      start_time: params[:start_time],
-      end_time: params[:end_time],
-      limit: params[:start_time] ? nil : (params[:limit] || 1500)
-    ).call
-
-    result = DataTable::Builder.new(candles)
-      .with_indicators(indicator_specs)
-      .with_changes(params[:changes])
-      .build
-
-    render json: result
+    render json: build_rows
   end
 
   def correlations
@@ -28,22 +15,11 @@ class Api::DataTablesController < Api::ApplicationController
 
     correlation = DataTable::CorrelationCalculator.from_candles(candles_a, candles_b, field: :close)
 
-    render json: { symbol_a: symbol_a, symbol_b: symbol_b, timeframe: timeframe, correlation: correlation }
+    render json: { symbol_a:, symbol_b:, timeframe:, correlation: }
   end
 
   def statistics
-    candles = Candle::FindQuery.new(
-      symbol: params.require(:symbol),
-      timeframe: params.require(:timeframe),
-      start_time: params[:start_time],
-      end_time: params[:end_time],
-      limit: params[:start_time] ? nil : (params[:limit] || 1500)
-    ).call
-
-    rows = DataTable::Builder.new(candles)
-      .with_indicators(indicator_specs)
-      .with_changes(params[:changes])
-      .build
+    rows = build_rows
 
     fields = Array(params[:fields]).presence || %w[close volume]
     result = fields.each_with_object({}) do |field, h|
@@ -59,6 +35,23 @@ class Api::DataTablesController < Api::ApplicationController
   end
 
   private
+
+  def fetch_candles
+    Candle::FindQuery.new(
+      symbol: params.require(:symbol),
+      timeframe: params.require(:timeframe),
+      start_time: params[:start_time],
+      end_time: params[:end_time],
+      limit: params[:start_time] ? nil : (params[:limit] || 1500)
+    ).call
+  end
+
+  def build_rows
+    DataTable::Builder.new(fetch_candles)
+      .with_indicators(indicator_specs)
+      .with_changes(params[:changes])
+      .build
+  end
 
   def indicator_specs
     return [] unless params[:indicators]

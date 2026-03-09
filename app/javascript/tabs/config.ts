@@ -1,9 +1,10 @@
 import { apiFetch } from "../services/api_fetch"
+import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 
 export interface AppConfig {
   symbols: string[]
   timeframes: string[]
-  indicators: unknown[]
+  indicators: IndicatorInfo[]
 }
 
 export async function fetchConfig(): Promise<AppConfig> {

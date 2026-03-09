@@ -4,6 +4,7 @@ import { AllCommunityModule, ModuleRegistry } from "ag-grid-community"
 import { buildGridOptions, buildColDefs, buildRowClassRules, computeSelectionStats, type SelectionStats } from "../data_grid/grid_config"
 import { loadDataTable, loadFromCache, type DataTableRow } from "../data_grid/data_loader"
 import { evaluateConditions, getHighlightStyles, type ConditionMatch } from "../data_grid/condition_engine"
+import { injectConditionStyles } from "../utils/dom"
 import candleCache from "../data/candle_cache"
 import type { DataConfig } from "../types/store"
 
@@ -272,13 +273,7 @@ export default class extends Controller {
 
   private injectConditionStyles() {
     if (!this.currentConfig) return
-    let styleEl = document.getElementById("data-grid-condition-styles")
-    if (!styleEl) {
-      styleEl = document.createElement("style")
-      styleEl.id = "data-grid-condition-styles"
-      document.head.appendChild(styleEl)
-    }
-    styleEl.textContent = getHighlightStyles(this.currentConfig.conditions)
+    injectConditionStyles(getHighlightStyles(this.currentConfig.conditions))
   }
 
   getConditionMatches(): Map<number, ConditionMatch> {

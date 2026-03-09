@@ -14,31 +14,35 @@ export default class PanelRenderer {
   }
 
   render(tabs: Tab[], activeTabId: string | null, selectedPanelId: string | null): void {
-    this.panelsEl.querySelectorAll<HTMLElement>("[data-tab-wrapper]").forEach(wrapper => {
-      const tabId = wrapper.dataset.tabWrapper
-      if (!tabs.find(t => t.id === tabId)) wrapper.remove()
-    })
-
-    tabs.forEach(tab => {
-      const isActive = tab.id === activeTabId
-      let wrapper = this.panelsEl.querySelector<HTMLElement>(`[data-tab-wrapper="${tab.id}"]`)
-
-      if (!wrapper) {
-        wrapper = document.createElement("div")
-        wrapper.dataset.tabWrapper = tab.id
-        wrapper.className = "flex flex-col h-full"
-        this.panelsEl.appendChild(wrapper)
-      }
-
-      wrapper.classList.toggle("hidden", !isActive)
-      if (!isActive) return
-
-      if (tab.type === "data") return
+    this._ensureWrappers(tabs, activeTabId, (tab, wrapper, isActive) => {
+      if (!isActive || tab.type === "data") return
       this._syncPanels(wrapper, tab.panels, selectedPanelId)
     })
   }
 
   renderDataTab(tabs: Tab[], activeTabId: string | null): void {
+    this._ensureWrappers(tabs, activeTabId, (tab, wrapper, isActive) => {
+      if (tab.type !== "data" || !tab.dataConfig) return
+      const hasChartLink = !!tab.dataConfig.chartLinks?.length
+      if (!isActive && !hasChartLink) return
+
+      const configJson = JSON.stringify(tab.dataConfig)
+      const existingGrid = wrapper.querySelector("[data-controller='data-grid']") as HTMLElement | null
+      if (existingGrid) {
+        if (existingGrid.dataset.dataGridConfigValue !== configJson) {
+          existingGrid.dataset.dataGridConfigValue = configJson
+        }
+      } else {
+        wrapper.innerHTML = dataGridPanelHTML(this.ctrl, configJson)
+      }
+    })
+  }
+
+  private _ensureWrappers(
+    tabs: Tab[],
+    activeTabId: string | null,
+    callback: (tab: Tab, wrapper: HTMLElement, isActive: boolean) => void,
+  ): void {
     this.panelsEl.querySelectorAll<HTMLElement>("[data-tab-wrapper]").forEach(wrapper => {
       const tabId = wrapper.dataset.tabWrapper
       if (!tabs.find(t => t.id === tabId)) wrapper.remove()
@@ -56,23 +60,7 @@ export default class PanelRenderer {
       }
 
       wrapper.classList.toggle("hidden", !isActive)
-
-      if (tab.type === "data" && tab.dataConfig) {
-        const hasChartLink = (tab.dataConfig as any).chartLinks?.length > 0
-        if (!isActive && !hasChartLink) return
-
-        const configJson = JSON.stringify(tab.dataConfig)
-        const existingGrid = wrapper.querySelector("[data-controller='data-grid']") as HTMLElement | null
-        if (existingGrid) {
-          if (existingGrid.dataset.dataGridConfigValue !== configJson) {
-            existingGrid.dataset.dataGridConfigValue = configJson
-          }
-        } else {
-          wrapper.innerHTML = dataGridPanelHTML(this.ctrl, configJson)
-        }
-      } else if (!isActive) {
-        return
-      }
+      callback(tab, wrapper, isActive)
     })
   }
 

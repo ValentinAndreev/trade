@@ -1,5 +1,5 @@
 import { evaluateConditions, getChartMarkers, getColorZones, type ConditionMatch } from "./condition_engine"
-import type { Tab, Condition, ChartLink } from "../types/store"
+import type { Tab } from "../types/store"
 
 export interface ChartBridgeMarker {
   time: number
@@ -30,7 +30,6 @@ export default class ChartBridge {
 
     const links = dataTab.dataConfig.chartLinks || []
     if (!links.length) {
-      console.warn("[ChartBridge] No chart links for data tab", dataTab.id)
       return
     }
 
@@ -38,18 +37,15 @@ export default class ChartBridge {
     const matches = evaluateConditions(data, conditions)
     const markers = getChartMarkers(matches)
     const colorZones = getColorZones(matches)
-    console.log("[ChartBridge] sync:", { conditions: conditions.length, matches: matches.size, markers: markers.length, colorZones: colorZones.length, links: links.length })
 
     for (const link of links) {
       const chartTab = chartTabs.find(t => t.id === link.chartTabId && t.type === "chart")
       if (!chartTab) {
-        console.warn("[ChartBridge] Chart tab not found:", link.chartTabId)
         continue
       }
 
       const chartCtrl = this._findChartController(link.chartTabId, link.panelId)
       if (!chartCtrl) {
-        console.warn("[ChartBridge] Chart controller not found for", link.chartTabId, link.panelId)
         continue
       }
 
@@ -72,7 +68,6 @@ export default class ChartBridge {
           }
         }).filter(m => m.price > 0)
 
-        console.log("[ChartBridge] Setting", labelMarkers.length, "condition labels on chart")
         chartCtrl.setConditionLabels(labelMarkers)
       }
 
@@ -93,22 +88,6 @@ export default class ChartBridge {
     } else if (ctrl.chart) {
       ctrl.chart.timeScale().scrollToRealTime()
     }
-  }
-
-  setupRowClickHandler(
-    gridElement: HTMLElement,
-    chartLinks: ChartLink[],
-  ): void {
-    gridElement.addEventListener("click", (e) => {
-      const row = (e.target as HTMLElement).closest(".ag-row")
-      if (!row) return
-
-      const timeCell = row.querySelector("[col-id]")
-      if (!timeCell) return
-
-      const rowNode = (gridElement as any).__agGrid
-      if (!rowNode) return
-    })
   }
 
   setupCrosshairSync(

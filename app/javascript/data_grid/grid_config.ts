@@ -1,4 +1,5 @@
-import type { ColDef, GridOptions, ValueFormatterParams } from "ag-grid-community"
+import type { ColDef, GridOptions, ValueFormatterParams, CellClassParams, ValueGetterParams } from "ag-grid-community"
+import { columnFieldKey } from "../types/store"
 import type { DataColumn, Condition } from "../types/store"
 import { evaluateFormulaExpression, evaluateSingleCondition } from "./condition_engine"
 
@@ -64,32 +65,26 @@ export function buildColDefs(columns: DataColumn[]): ColDef[] {
       case "change":
         return {
           ...base,
-          field: `change_${col.changePeriod || "5m"}`,
+          field: columnFieldKey(col),
           valueFormatter: formatChange,
           type: "numericColumn",
           width: 90,
-          cellStyle: (params: any) => {
+          cellStyle: (params: CellClassParams) => {
             const v = params.value
             if (v == null) return null
             return v > 0 ? { color: "#26a69a" } : v < 0 ? { color: "#ef5350" } : null
           },
         }
-      case "indicator": {
-        const params = col.indicatorParams || {}
-        const suffix = Object.values(params)[0]
-        const field = suffix
-          ? `${col.indicatorType}_${suffix}`
-          : col.indicatorType || col.label
-        return { ...base, field, valueFormatter: formatPrice, type: "numericColumn", width: 100 }
-      }
+      case "indicator":
+        return { ...base, field: columnFieldKey(col), valueFormatter: formatPrice, type: "numericColumn", width: 100 }
       case "formula": {
         const expression = col.expression || ""
         return {
           ...base,
-          field: col.label,
+          field: columnFieldKey(col),
           type: "numericColumn",
           width: 110,
-          valueGetter: (params: any) => {
+          valueGetter: (params: ValueGetterParams) => {
             if (!params.data) return null
             return evaluateFormulaExpression(expression, params.data)
           },
@@ -99,7 +94,7 @@ export function buildColDefs(columns: DataColumn[]): ColDef[] {
       case "instrument": {
         return {
           ...base,
-          field: col.label,
+          field: columnFieldKey(col),
           valueFormatter: formatPrice,
           type: "numericColumn",
           width: 100,
