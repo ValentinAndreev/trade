@@ -4,6 +4,23 @@ import type { PresetInfo } from "../types/markets"
 import type { Tab } from "../types/store"
 
 const ACTIVE_PRESET_KEY = "active-preset"
+const NAV_PAGE_KEY = "nav-active-page"
+
+/** Increment when the preset schema changes. */
+export const PRESET_VERSION = 2
+
+export interface PresetPayload {
+  version: number
+  tabs: Tab[]
+  activeTabId: string | null
+  navPage: string
+  dashboardSymbols?: unknown
+  marketsSymbols?: unknown
+}
+
+// ---------------------------------------------------------------------------
+// Active preset helpers
+// ---------------------------------------------------------------------------
 
 export function getActivePreset(): PresetInfo | null {
   try {
@@ -19,6 +36,10 @@ export function setActivePreset(preset: PresetInfo | null): void {
     localStorage.removeItem(ACTIVE_PRESET_KEY)
   }
 }
+
+// ---------------------------------------------------------------------------
+// API calls
+// ---------------------------------------------------------------------------
 
 export async function listPresets(): Promise<unknown[]> {
   const resp = await fetch("/api/presets", { headers: jsonHeaders() })
@@ -51,21 +72,14 @@ export async function deletePreset(id: number): Promise<void> {
   if (active && active.id === id) setActivePreset(null)
 }
 
-export async function resetState(): Promise<void> {
-  localStorage.removeItem("chart-tabs")
-  localStorage.removeItem("chart-active-tab")
-  localStorage.removeItem("nav-active-page")
-  setActivePreset(null)
+// ---------------------------------------------------------------------------
+// State collection & restoration
+// ---------------------------------------------------------------------------
 
-  try {
-    await fetch("/api/presets/reset_state", { method: "POST", headers: jsonHeaders() })
-  } catch { /* offline */ }
-}
-
-export async function collectState(): Promise<unknown> {
+export async function collectState(): Promise<PresetPayload> {
   const tabs = loadTabs()
   const activeTabId = loadActiveTabId()
-  const navPage = localStorage.getItem("nav-active-page") || "main"
+  const navPage = localStorage.getItem(NAV_PAGE_KEY) || "main"
 
   let dashboardSymbols = null
   let marketsSymbols = null
@@ -78,14 +92,15 @@ export async function collectState(): Promise<unknown> {
     }
   } catch { /* offline */ }
 
-  return { tabs, activeTabId, navPage, dashboardSymbols, marketsSymbols }
+  return { version: PRESET_VERSION, tabs, activeTabId, navPage, dashboardSymbols, marketsSymbols }
 }
 
-export async function applyState(payload: { tabs?: unknown; activeTabId?: string; dashboardSymbols?: unknown; marketsSymbols?: unknown } | null): Promise<void> {
+export async function applyState(payload: Partial<PresetPayload> | null): Promise<void> {
   if (!payload) return
 
-  if (payload.tabs) saveTabs(payload.tabs as Tab[])
+  if (payload.tabs) saveTabs(payload.tabs)
   if (payload.activeTabId) saveActiveTabId(payload.activeTabId)
+  if (payload.navPage) localStorage.setItem(NAV_PAGE_KEY, payload.navPage)
 
   if (payload.dashboardSymbols || payload.marketsSymbols) {
     try {
@@ -101,4 +116,15 @@ export async function applyState(payload: { tabs?: unknown; activeTabId?: string
   }
 
   window.location.reload()
+}
+
+export async function resetState(): Promise<void> {
+  localStorage.removeItem("chart-tabs")
+  localStorage.removeItem("chart-active-tab")
+  localStorage.removeItem(NAV_PAGE_KEY)
+  setActivePreset(null)
+
+  try {
+    await fetch("/api/presets/reset_state", { method: "POST", headers: jsonHeaders() })
+  } catch { /* offline */ }
 }

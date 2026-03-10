@@ -13,8 +13,10 @@ vi.mock("../../tabs/persistence", () => ({
 
 import {
   getActivePreset, setActivePreset, listPresets,
-  savePreset, deletePreset, collectState, resetState,
+  savePreset, deletePreset, collectState, applyState, resetState,
+  PRESET_VERSION,
 } from "../../services/presets"
+import { saveTabs, saveActiveTabId } from "../../tabs/persistence"
 
 describe("presets service", () => {
   beforeEach(() => {
@@ -106,27 +108,65 @@ describe("presets service", () => {
   })
 
   describe("collectState", () => {
-    it("returns tabs, activeTabId, and navPage", async () => {
+    it("includes version, tabs, activeTabId and navPage", async () => {
       vi.mocked(fetch).mockRejectedValue(new Error("offline"))
-      const result = await collectState() as any
+      const result = await collectState()
+      expect(result.version).toBe(PRESET_VERSION)
       expect(result).toHaveProperty("tabs")
       expect(result).toHaveProperty("activeTabId")
-      expect(result).toHaveProperty("navPage")
       expect(result.navPage).toBe("main")
+    })
+
+    it("reads navPage from localStorage", async () => {
+      localStorage.setItem("nav-active-page", "chart")
+      vi.mocked(fetch).mockRejectedValue(new Error("offline"))
+      const result = await collectState()
+      expect(result.navPage).toBe("chart")
     })
 
     it("includes server state when available", async () => {
       vi.mocked(fetch).mockResolvedValue(
         new Response(JSON.stringify({ dashboardSymbols: ["BTC"], marketsSymbols: { forex: ["EUR"] } }), { status: 200 })
       )
-      const result = await collectState() as any
+      const result = await collectState()
       expect(result.dashboardSymbols).toEqual(["BTC"])
       expect(result.marketsSymbols).toEqual({ forex: ["EUR"] })
     })
   })
 
+  describe("applyState", () => {
+    beforeEach(() => {
+      vi.stubGlobal("location", { reload: vi.fn() })
+    })
+
+    it("does nothing when payload is null", async () => {
+      await applyState(null)
+      expect(saveTabs).not.toHaveBeenCalled()
+    })
+
+    it("restores tabs and activeTabId", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 200 }))
+      const tabs = [{ id: "tab-1", name: null, type: "chart" as const, panels: [], primaryPanelId: "p-1" }]
+      await applyState({ version: PRESET_VERSION, tabs, activeTabId: "tab-1", navPage: "main" })
+      expect(saveTabs).toHaveBeenCalledWith(tabs)
+      expect(saveActiveTabId).toHaveBeenCalledWith("tab-1")
+    })
+
+    it("restores navPage to localStorage", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 200 }))
+      await applyState({ version: PRESET_VERSION, tabs: [], activeTabId: null, navPage: "chart" })
+      expect(localStorage.getItem("nav-active-page")).toBe("chart")
+    })
+
+    it("syncs server symbols when present", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 200 }))
+      await applyState({ version: PRESET_VERSION, tabs: [], activeTabId: null, navPage: "main", dashboardSymbols: ["BTC"] })
+      expect(fetch).toHaveBeenCalledWith("/api/presets/apply_state", expect.objectContaining({ method: "POST" }))
+    })
+  })
+
   describe("resetState", () => {
-    it("clears localStorage keys", async () => {
+    it("clears all localStorage keys", async () => {
       localStorage.setItem("chart-tabs", "[1]")
       localStorage.setItem("chart-active-tab", "tab-1")
       localStorage.setItem("nav-active-page", "chart")
