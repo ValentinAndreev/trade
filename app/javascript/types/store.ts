@@ -19,6 +19,8 @@ export interface DataConfig {
   sourceTabId?: string;
   startTime?: number;
   endTime?: number;
+  /** True only when the user explicitly set startTime via the "Set" button. Auto-saves are not marked. */
+  userConfiguredStart?: boolean;
 }
 
 export interface DataColumn {

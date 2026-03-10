@@ -1,4 +1,4 @@
-import type { ColDef, GridOptions, ValueFormatterParams, CellClassParams, ValueGetterParams } from "ag-grid-community"
+import type { ColDef, GridOptions, ValueFormatterParams, CellClassParams, ValueGetterParams, GetRowIdParams } from "ag-grid-community"
 import { columnFieldKey } from "../types/store"
 import type { DataColumn, Condition, DataTableRow } from "../types/store"
 import { evaluateFormulaExpression, type ConditionMatch } from "./condition_engine"
@@ -205,6 +205,7 @@ export function buildGridOptions(
   return {
     columnDefs: buildColDefs(columns),
     rowClassRules: buildRowClassRules(conditions, matchesByTime),
+    getRowId: (params: GetRowIdParams<DataTableRow>) => String(params.data.time),
     defaultColDef: {
       sortable: true,
       filter: true,

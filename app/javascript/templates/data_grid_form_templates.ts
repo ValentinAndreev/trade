@@ -162,6 +162,9 @@ export function instrumentParamsHTML(symbols: string[]): string {
         ${fieldOpts}
       </select>
     </div>
+    <p class="text-xs text-yellow-500/80 mt-1">
+      For live updates, add a chart tab with this instrument.
+    </p>
   `
 }
 
@@ -265,27 +268,6 @@ export function chartLinkSelectorHTML(ctrl: string, chartOptions: Array<{ id: st
   `
 }
 
-export function settingsHTML(ctrl: string): string {
-  return `
-    <div class="flex items-center justify-between">
-      <span class="text-sm text-gray-500 uppercase tracking-wide">Settings</span>
-    </div>
-    <label class="flex items-center justify-between text-sm text-gray-400">
-      <span>Price precision</span>
-      <input type="number" data-field="pricePrecision" value="2" min="0" max="8" step="1"
-             class="w-16 px-2 py-1 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded text-right">
-    </label>
-    <label class="flex items-center justify-between text-sm text-gray-400">
-      <span>Date format</span>
-      <select data-field="dateFormat"
-              class="px-2 py-1 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded">
-        <option value="locale">Local</option>
-        <option value="iso">ISO 8601</option>
-        <option value="unix">Unix</option>
-      </select>
-    </label>
-  `
-}
 
 export function actionsHTML(ctrl: string): string {
   return `

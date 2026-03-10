@@ -46,12 +46,48 @@ export function loadFromCache(config: DataConfig): DataTableRow[] | null {
   }))
 }
 
-/** Rows from cache with OHLCV mapped and indicators filled (same source as chart). Use when updating from cache. */
+/**
+ * Fill instrument columns from candleCache (same live source as the chart).
+ * - For live cache updates: always overwrites (latest candle value may change).
+ * - For initial load fallback: only fills where the row value is currently null/undefined
+ *   (i.e. API had no data for this symbol), so valid API-fetched data is never overwritten.
+ */
+function fillInstrumentsFromCache(
+  rows: DataTableRow[],
+  instrumentCols: DataColumn[],
+  timeframe: string,
+  overwrite = true,
+): void {
+  if (!instrumentCols.length || !rows.length) return
+  for (const col of instrumentCols) {
+    const sym = col.instrumentSymbol!
+    const field = col.instrumentField! as "open" | "high" | "low" | "close" | "volume"
+    const candles = candleCache.get(sym, timeframe)
+    if (!candles.length) continue
+    const byTime = new Map<number, number>()
+    for (const c of candles) {
+      const v = c[field]
+      if (v != null) byTime.set(c.time, v)
+    }
+    const fieldKey = columnFieldKey(col)
+    for (const row of rows) {
+      const v = byTime.get(row.time)
+      if (v == null) continue
+      const existing = (row as Record<string, unknown>)[fieldKey]
+      if (overwrite || existing == null) {
+        (row as Record<string, unknown>)[fieldKey] = v
+      }
+    }
+  }
+}
+
+/** Rows from cache with OHLCV mapped, indicators and instrument columns filled from live cache. */
 export function getRowsFromCache(config: DataConfig): DataTableRow[] | null {
   const rows = loadFromCache(config)
   if (!rows?.length || !config.symbols[0]) return rows
   mapOhlcvToColumnKeys(rows, config.columns)
   fillIndicatorsFromCache(rows, config.columns, config.symbols[0], config.timeframe)
+  fillInstrumentsFromCache(rows, getInstrumentColumns(config), config.timeframe)
   return rows
 }
 
@@ -89,8 +125,8 @@ function mergeInstrumentData(
       const data = instrumentData.get(col.instrumentSymbol!)
       if (!data) continue
       const instRow = data.get(row.time)
-      const fieldKey = col.label
-      ;(row as any)[fieldKey] = instRow ? instRow[col.instrumentField!] ?? null : null
+      const fieldKey = columnFieldKey(col)
+      ;(row as Record<string, unknown>)[fieldKey] = instRow ? instRow[col.instrumentField!] ?? null : null
     }
   }
 }
@@ -189,8 +225,12 @@ function buildApiUrl(config: DataConfig): URL {
   url.searchParams.set("symbol", config.symbols[0])
   url.searchParams.set("timeframe", config.timeframe)
 
-  if (config.startTime) url.searchParams.set("start_time", new Date(config.startTime * 1000).toISOString())
-  if (config.endTime) url.searchParams.set("end_time", new Date(config.endTime * 1000).toISOString())
+  // For linked tabs, only respect startTime if the user explicitly set it (userConfiguredStart flag).
+  // Auto-saved startTime (e.g. from cache oldestTime) would be stale on reload and cause data rollback.
+  const useStartTime = config.startTime && (!config.sourceTabId || config.userConfiguredStart)
+  if (useStartTime) url.searchParams.set("start_time", new Date(config.startTime! * 1000).toISOString())
+  // Linked tabs always fetch up to latest — never pass endTime.
+  if (config.endTime && !config.sourceTabId) url.searchParams.set("end_time", new Date(config.endTime * 1000).toISOString())
 
   const indicatorSpecs = config.columns
     .filter(c => c.type === "indicator" && c.indicatorType)
@@ -240,6 +280,9 @@ export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]>
     }
     const data: DataTableRow[] = await response.json()
     await fetchAndMergeInstruments(data, config)
+    // If API had no data for an instrument symbol (not in DB), fall back to candleCache.
+    // overwrite=false: only fills rows where API returned null, preserving real DB values.
+    fillInstrumentsFromCache(data, getInstrumentColumns(config), config.timeframe, false)
     mapOhlcvToColumnKeys(data, config.columns)
     return data
   } catch (err) {

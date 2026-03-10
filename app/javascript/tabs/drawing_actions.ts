@@ -1,12 +1,38 @@
 import { createInlineRenameInput } from "../utils/dom"
 import type TabStore from "./store"
-import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI } from "../types/store"
+import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput } from "../types/store"
 
-const CHART_METHODS = {
-  labels: { set: "setLabels", scroll: "scrollToLabel", enter: "enterLabelMode", exit: "exitLabelMode" },
-  lines:  { set: "setLines",  scroll: "scrollToLine",  enter: "enterLineMode",  exit: "exitLineMode" },
-  hlines: { set: "setHLines", scroll: "scrollToLabel",  enter: "enterHLineMode", exit: "exitHLineMode" },
-  vlines: { set: "setVLines", scroll: "scrollToLabel",  enter: "enterVLineMode", exit: "exitVLineMode" },
+type Ctrl = ChartControllerAPI
+const CHART_METHODS: Record<DrawingKind, {
+  enter(ctrl: Ctrl): void
+  exit(ctrl: Ctrl): void
+  set(ctrl: Ctrl, items: DrawingItem[]): void
+  scroll(ctrl: Ctrl, time: number): void
+}> = {
+  labels: {
+    enter: c => c.enterLabelMode(),
+    exit:  c => c.exitLabelMode(),
+    set:   (c, items) => c.setLabels(items as unknown as LabelMarkerInput[]),
+    scroll:(c, time)  => c.scrollToLabel(time),
+  },
+  lines: {
+    enter: c => c.enterLineMode(),
+    exit:  c => c.exitLineMode(),
+    set:   (c, items) => c.setLines(items),
+    scroll:(c, time)  => c.scrollToLine(time),
+  },
+  hlines: {
+    enter: c => c.enterHLineMode(),
+    exit:  c => c.exitHLineMode(),
+    set:   (c, items) => c.setHLines(items),
+    scroll:(c, time)  => c.scrollToLabel(time),
+  },
+  vlines: {
+    enter: c => c.enterVLineMode(),
+    exit:  c => c.exitVLineMode(),
+    set:   (c, items) => c.setVLines(items),
+    scroll:(c, time)  => c.scrollToLabel(time),
+  },
 }
 
 const NAME_KEYS = { labels: "text", lines: "name", hlines: "name", vlines: "name" }
@@ -37,9 +63,9 @@ export default class DrawingActions {
     const chartCtrl = panel ? this._getChartCtrl(panel.id) : null
     if (this.modes[kind]) {
       this.exitOtherModes(kind, chartCtrl)
-      if (chartCtrl) chartCtrl[CHART_METHODS[kind].enter]()
+      if (chartCtrl) CHART_METHODS[kind].enter(chartCtrl)
     } else {
-      if (chartCtrl) chartCtrl[CHART_METHODS[kind].exit]()
+      if (chartCtrl) CHART_METHODS[kind].exit(chartCtrl)
     }
     this._render()
   }
@@ -109,7 +135,7 @@ export default class DrawingActions {
     if (!panel || !panel[kind]?.length) return
     this.store.clearDrawings(panel.id, kind)
     const chartCtrl = this._getChartCtrl(panel.id)
-    if (chartCtrl) chartCtrl[CHART_METHODS[kind].set]([])
+    if (chartCtrl) CHART_METHODS[kind].set(chartCtrl, [])
     this._render()
   }
 
@@ -121,14 +147,9 @@ export default class DrawingActions {
     const chartCtrl = this._getChartCtrl(panel.id)
     if (!chartCtrl) return
 
-    const scrollMethod = CHART_METHODS[kind].scroll
-    if (kind === "labels") {
-      chartCtrl[scrollMethod](item.time)
-    } else if (kind === "lines") {
-      chartCtrl[scrollMethod](item.p1)
-    } else if (kind === "vlines") {
-      chartCtrl[scrollMethod](item.time)
-    }
+    if (kind === "labels") CHART_METHODS.labels.scroll(chartCtrl, item.time as number)
+    else if (kind === "lines") CHART_METHODS.lines.scroll(chartCtrl, item.p1 as number)
+    else if (kind === "vlines") CHART_METHODS.vlines.scroll(chartCtrl, item.time as number)
   }
 
   syncToChart(kind: DrawingKind): void {
@@ -136,7 +157,7 @@ export default class DrawingActions {
     if (!panel) return
     const chartCtrl = this._getChartCtrl(panel.id)
     if (!chartCtrl) return
-    chartCtrl[CHART_METHODS[kind].set](panel[kind] || [])
+    CHART_METHODS[kind].set(chartCtrl, panel[kind] || [])
   }
 
   onCreated(kind: DrawingKind, panel: Panel | null, detail: Partial<DrawingItem>): void {
@@ -152,7 +173,7 @@ export default class DrawingActions {
     for (const kind of Object.keys(this.modes) as DrawingKind[]) {
       if (kind !== except && this.modes[kind]) {
         this.modes[kind] = false
-        if (chartCtrl) chartCtrl[CHART_METHODS[kind].exit]()
+        if (chartCtrl) CHART_METHODS[kind].exit(chartCtrl)
       }
     }
   }
@@ -160,11 +181,8 @@ export default class DrawingActions {
   syncAllModesToChart(chartCtrl: ChartControllerAPI | null): void {
     if (!chartCtrl) return
     for (const kind of Object.keys(this.modes) as DrawingKind[]) {
-      if (this.modes[kind]) {
-        chartCtrl[CHART_METHODS[kind].enter]()
-      } else {
-        chartCtrl[CHART_METHODS[kind].exit]()
-      }
+      if (this.modes[kind]) CHART_METHODS[kind].enter(chartCtrl)
+      else CHART_METHODS[kind].exit(chartCtrl)
     }
   }
 }
