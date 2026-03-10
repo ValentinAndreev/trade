@@ -273,13 +273,11 @@ export function settingsHTML(ctrl: string): string {
     <label class="flex items-center justify-between text-sm text-gray-400">
       <span>Price precision</span>
       <input type="number" data-field="pricePrecision" value="2" min="0" max="8" step="1"
-             data-action="change->${ctrl}#updateGridSettings"
              class="w-16 px-2 py-1 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded text-right">
     </label>
     <label class="flex items-center justify-between text-sm text-gray-400">
       <span>Date format</span>
       <select data-field="dateFormat"
-              data-action="change->${ctrl}#updateGridSettings"
               class="px-2 py-1 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded">
         <option value="locale">Local</option>
         <option value="iso">ISO 8601</option>

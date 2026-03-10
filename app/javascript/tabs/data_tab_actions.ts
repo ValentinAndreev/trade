@@ -3,7 +3,7 @@ import type TabRenderer from "./renderer"
 import type ChartBridge from "../data_grid/chart_bridge"
 import { parseConditionFromBuilder } from "../templates/condition_templates"
 import { getHighlightStyles, validateFormulaReferences } from "../data_grid/condition_engine"
-import type { DataColumn, DataConfig } from "../types/store"
+import type { DataColumn, DataConfig, DataGridControllerAPI, DataTableRow, ChartLink, StimulusApp, Tab, Panel } from "../types/store"
 import { columnFieldKey } from "../types/store"
 import { injectConditionStyles } from "../utils/dom"
 import candleCache from "../data/candle_cache"
@@ -16,7 +16,7 @@ interface DataTabDeps {
   sidebarTarget: HTMLElement
   panelsTarget: HTMLElement
   config: { symbols: string[]; indicators: IndicatorInfo[] }
-  application: any
+  application: StimulusApp
   renderFn: () => void
 }
 
@@ -144,59 +144,69 @@ export default class DataTabActions {
     const typeEl = this.sidebar.querySelector("[data-field='newColumnType']") as HTMLSelectElement | null
     const colType = typeEl?.value || "indicator"
 
-    if (colType === "change") {
-      const periodEl = this.sidebar.querySelector("[data-field='changePeriod']") as HTMLSelectElement | null
-      const period = periodEl?.value || "5m"
-      const label = this._uniqueLabel(tab, `change_${period}`)
-      this.store.addDataColumn(tab.id, { type: "change", label, changePeriod: period })
-    } else if (colType === "formula") {
-      const labelEl = this.sidebar.querySelector("[data-field='formulaLabel']") as HTMLInputElement | null
-      const exprEl = this.sidebar.querySelector("[data-field='formulaExpression']") as HTMLInputElement | null
-      const rawLabel = labelEl?.value?.trim() || "formula"
-      const expression = exprEl?.value?.trim() || ""
-      if (!expression) return
-      const label = this._uniqueLabel(tab, rawLabel)
-      const validKeys = this._validFormulaColumnKeys(tab)
-      validKeys.add(label)
-      const invalidRef = validateFormulaReferences(expression, validKeys)
-      const errEl = this.sidebar.querySelector("[data-field='formulaExpression']")?.parentElement?.querySelector("[data-formula-error]") as HTMLElement | null
-      if (invalidRef) {
-        if (errEl) {
-          errEl.textContent = `Unknown column: ${invalidRef}`
-          errEl.classList.remove("hidden")
-        }
-        return
-      }
-      if (errEl) {
-        errEl.textContent = ""
-        errEl.classList.add("hidden")
-      }
-      this.store.addDataColumn(tab.id, { type: "formula", label, expression })
-    } else if (colType === "instrument") {
-      const symbolEl = this.sidebar.querySelector("[data-field='instrumentSymbol']") as HTMLSelectElement | null
-      const fieldEl = this.sidebar.querySelector("[data-field='instrumentField']") as HTMLSelectElement | null
-      const symbol = symbolEl?.value?.trim() || ""
-      const field = fieldEl?.value || "close"
-      if (!symbol) return
-      const label = this._uniqueLabel(tab, `${symbol.toLowerCase()}_${field}`)
-      this.store.addDataColumn(tab.id, {
-        type: "instrument", label, instrumentSymbol: symbol, instrumentField: field,
-      })
-    } else {
-      const indTypeEl = this.sidebar.querySelector("[data-field='indicatorType']") as HTMLSelectElement | null
-      const indPeriodEl = this.sidebar.querySelector("[data-field='indicatorPeriod']") as HTMLInputElement | null
-      const indType = indTypeEl?.value?.trim().toLowerCase() || "sma"
-      const period = parseInt(indPeriodEl?.value || "20", 10) || 20
-      const fieldName = this._uniqueLabel(tab, `${indType}_${period}`)
-      this.store.addDataColumn(tab.id, {
-        type: "indicator", label: fieldName, indicatorType: indType, indicatorParams: { period },
-      })
-    }
+    const added = this._buildAndAddColumn(tab, colType)
+    if (!added) return
 
     this.render()
     if (["indicator", "change", "instrument"].includes(colType)) {
       requestAnimationFrame(() => this.loadDataGrid())
     }
+  }
+
+  private _buildAndAddColumn(tab: { id: string; dataConfig?: DataConfig }, colType: string): boolean {
+    if (colType === "change") {
+      const period = (this.sidebar.querySelector("[data-field='changePeriod']") as HTMLSelectElement | null)?.value || "5m"
+      this.store.addDataColumn(tab.id, { type: "change", label: this._uniqueLabel(tab, `change_${period}`), changePeriod: period })
+      return true
+    }
+    if (colType === "formula") return this._addFormulaColumn(tab)
+    if (colType === "instrument") return this._addInstrumentColumn(tab)
+    return this._addIndicatorColumn(tab)
+  }
+
+  private _addFormulaColumn(tab: { id: string; dataConfig?: DataConfig }): boolean {
+    const rawLabel = (this.sidebar.querySelector("[data-field='formulaLabel']") as HTMLInputElement | null)?.value?.trim() || "formula"
+    const expression = (this.sidebar.querySelector("[data-field='formulaExpression']") as HTMLInputElement | null)?.value?.trim() || ""
+    if (!expression) return false
+
+    const label = this._uniqueLabel(tab, rawLabel)
+    const validKeys = this._validFormulaColumnKeys(tab)
+    validKeys.add(label)
+    if (!this._checkFormulaValid(expression, validKeys, "[data-field='formulaExpression']")) return false
+
+    this.store.addDataColumn(tab.id, { type: "formula", label, expression })
+    return true
+  }
+
+  private _addInstrumentColumn(tab: { id: string; dataConfig?: DataConfig }): boolean {
+    const symbol = (this.sidebar.querySelector("[data-field='instrumentSymbol']") as HTMLSelectElement | null)?.value?.trim() || ""
+    const field = (this.sidebar.querySelector("[data-field='instrumentField']") as HTMLSelectElement | null)?.value || "close"
+    if (!symbol) return false
+    this.store.addDataColumn(tab.id, {
+      type: "instrument", label: this._uniqueLabel(tab, `${symbol.toLowerCase()}_${field}`), instrumentSymbol: symbol, instrumentField: field,
+    })
+    return true
+  }
+
+  private _addIndicatorColumn(tab: { id: string; dataConfig?: DataConfig }): boolean {
+    const indType = (this.sidebar.querySelector("[data-field='indicatorType']") as HTMLSelectElement | null)?.value?.trim().toLowerCase() || "sma"
+    const period = parseInt((this.sidebar.querySelector("[data-field='indicatorPeriod']") as HTMLInputElement | null)?.value || "20", 10) || 20
+    this.store.addDataColumn(tab.id, {
+      type: "indicator", label: this._uniqueLabel(tab, `${indType}_${period}`), indicatorType: indType, indicatorParams: { period },
+    })
+    return true
+  }
+
+  /** Validate formula and show/hide error message. Returns true if valid. */
+  private _checkFormulaValid(expression: string, validKeys: Set<string>, fieldSelector: string): boolean {
+    const invalidRef = validateFormulaReferences(expression, validKeys)
+    const errEl = this.sidebar.querySelector(fieldSelector)?.parentElement?.querySelector("[data-formula-error]") as HTMLElement | null
+    if (invalidRef) {
+      if (errEl) { errEl.textContent = `Unknown column: ${invalidRef}`; errEl.classList.remove("hidden") }
+      return false
+    }
+    if (errEl) { errEl.textContent = ""; errEl.classList.add("hidden") }
+    return true
   }
 
   removeColumn(e: Event) {
@@ -221,8 +231,7 @@ export default class DataTabActions {
     this.render()
     const updated = this.store.activeTab
     if (updated?.type === "data" && updated.dataConfig) {
-      const gridEl = this.panels.querySelector(`[data-tab-wrapper="${updated.id}"] [data-controller='data-grid']`)
-      const gridCtrl = gridEl ? this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as { applyColumnDefsOnly?(c: DataConfig): void } | undefined : undefined
+      const gridCtrl = this._getGridCtrl(updated.id)
       if (gridCtrl?.applyColumnDefsOnly) gridCtrl.applyColumnDefsOnly(updated.dataConfig)
     }
   }
@@ -255,19 +264,7 @@ export default class DataTabActions {
         const toValidate = expression.trim()
         if (toValidate !== "") {
           const validKeys = this._validFormulaColumnKeys(tab)
-          const invalidRef = validateFormulaReferences(expression, validKeys)
-          const errEl = this.sidebar.querySelector("[data-field='editFormulaExpression']")?.parentElement?.querySelector("[data-formula-error]") as HTMLElement | null
-          if (invalidRef) {
-            if (errEl) {
-              errEl.textContent = `Unknown column: ${invalidRef}`
-              errEl.classList.remove("hidden")
-            }
-            return
-          }
-          if (errEl) {
-            errEl.textContent = ""
-            errEl.classList.add("hidden")
-          }
+          if (!this._checkFormulaValid(expression, validKeys, "[data-field='editFormulaExpression']")) return
         }
         col.expression = expression
       }
@@ -424,7 +421,7 @@ export default class DataTabActions {
     }
 
     tab.dataConfig.chartLinks = [{ chartTabId, panelId }]
-    this._syncFromChart(tab, chartTab)
+    this._initConfigFromChart(tab, chartTab)
     this.store.updateDataConfig(tab.id, { chartLinks: tab.dataConfig.chartLinks })
     this.store.moveTabNextToChart(tab.id, chartTabId)
     this.renderer.dataSidebar.showLinkSelector = false
@@ -465,9 +462,7 @@ export default class DataTabActions {
 
   /** Read current row time range from grid so we can persist it on unlink (data survives reload). */
   private _getGridTimeRange(tabId: string): { startTime: number; endTime: number } | null {
-    const gridEl = this.panels.querySelector(`[data-tab-wrapper="${tabId}"] [data-controller='data-grid']`)
-    if (!gridEl) return null
-    const ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as { getData?: () => Array<Record<string, unknown>> } | null
+    const ctrl = this._getGridCtrl(tabId)
     const data = ctrl?.getData?.()
     if (!data?.length) return null
     const times = data.map(r => r.time).filter((t): t is number => typeof t === "number").sort((a, b) => a - b)
@@ -478,10 +473,19 @@ export default class DataTabActions {
   /** Update grid config without reloading data (keeps current rows after unlink). */
   private _applyConfigOnlyToGrid(tabId: string, config: DataConfig | undefined): void {
     if (!config) return
-    const gridEl = this.panels.querySelector(`[data-tab-wrapper="${tabId}"] [data-controller='data-grid']`)
-    if (!gridEl) return
-    const ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as { applyConfigOnly?: (c: DataConfig) => void } | null
+    const ctrl = this._getGridCtrl(tabId)
     if (typeof ctrl?.applyConfigOnly === "function") ctrl.applyConfigOnly(config)
+  }
+
+  // --- Grid controller helper ---
+
+  private _getGridCtrl(tabId?: string): DataGridControllerAPI | null {
+    const selector = tabId
+      ? `[data-tab-wrapper="${tabId}"] [data-controller='data-grid']`
+      : "[data-controller='data-grid']"
+    const gridEl = this.panels.querySelector(selector)
+    if (!gridEl) return null
+    return this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as DataGridControllerAPI | null
   }
 
   // --- Grid sync & export ---
@@ -490,12 +494,8 @@ export default class DataTabActions {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "data" || !tab.dataConfig) return
 
-    const gridEl = tab.id
-      ? this.panels.querySelector(`[data-tab-wrapper="${tab.id}"] [data-controller='data-grid']`)
-      : this.panels.querySelector("[data-controller='data-grid']")
-    if (!gridEl) return
-    const ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as any
-    const data = ctrl?.getData() as Array<Record<string, any>> | undefined
+    const ctrl = this._getGridCtrl(tab.id)
+    const data = ctrl?.getData()
     if (!data?.length) return
 
     const chartTabs = this.store.tabs.filter(t => t.type === "chart")
@@ -508,32 +508,20 @@ export default class DataTabActions {
     injectConditionStyles(getHighlightStyles(tab.dataConfig.conditions))
   }
 
-  updateGridSettings() {
-    // read on next render/load
-  }
-
   async loadDataGrid() {
     let tab = this.store.activeTab
     if (tab?.type === "data" && tab.dataConfig && this.store.isLinkedDataTab(tab)) {
-      this._syncLinkedDataFromChart(tab)
-      this._syncTimeRangeFromCache(tab)
+      this._refreshLinkedSymbolAndTimeframe(tab)
+      this._extendTimeRangeFromCache(tab)
       this.render()
       tab = this.store.activeTab!
     }
 
     const activeId = tab?.id
-    let gridEl = activeId
-      ? this.panels.querySelector(`[data-tab-wrapper="${activeId}"] [data-controller='data-grid']`)
-      : this.panels.querySelector("[data-controller='data-grid']")
-    if (!gridEl) return
-
-    let ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as any
-    for (let i = 0; i < 4 && !ctrl; i++) {
-      await new Promise(r => requestAnimationFrame(r))
-      gridEl = activeId
-        ? this.panels.querySelector(`[data-tab-wrapper="${activeId}"] [data-controller='data-grid']`)
-        : this.panels.querySelector("[data-controller='data-grid']")
-      if (gridEl) ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as any
+    let ctrl = this._getGridCtrl(activeId)
+    if (!ctrl) {
+      await new Promise(r => setTimeout(r, 100))
+      ctrl = this._getGridCtrl(activeId)
     }
     if (!ctrl) return
 
@@ -544,7 +532,7 @@ export default class DataTabActions {
     }
 
     if (tab?.type === "data" && tab.dataConfig) {
-      const data = ctrl.getData() as Array<Record<string, any>>
+      const data = ctrl.getData()
       if (data?.length) {
         const times = data.map(r => r.time).filter(Boolean).sort((a: number, b: number) => a - b)
         if (times.length && (!tab.dataConfig.startTime || !tab.dataConfig.endTime)) {
@@ -561,10 +549,8 @@ export default class DataTabActions {
   }
 
   exportCsv() {
-    const gridEl = this.panels.querySelector("[data-controller='data-grid']")
-    if (!gridEl) return
-    const ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as any
-    const data = ctrl?.getData() as Array<Record<string, any>> | undefined
+    const ctrl = this._getGridCtrl()
+    const data = ctrl?.getData()
     if (!data?.length) return
 
     const keys = Object.keys(data[0])
@@ -584,31 +570,9 @@ export default class DataTabActions {
   syncIndicatorsFromChart() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "data" || !tab.dataConfig?.sourceTabId) return
-
     const chart = this.store.tabs.find(t => t.id === tab.dataConfig!.sourceTabId && t.type === "chart")
     if (!chart) return
-
-    const existingIndicators = new Set(
-      tab.dataConfig.columns
-        .filter(c => c.type === "indicator")
-        .map(c => `${c.indicatorType}:${JSON.stringify(c.indicatorParams || {})}`)
-    )
-
-    for (const panel of chart.panels) {
-      for (const overlay of panel.overlays) {
-        if (overlay.mode !== "indicator" || !overlay.indicatorType) continue
-        const params = overlay.indicatorParams || {}
-        const key = `${overlay.indicatorType}:${JSON.stringify(params)}`
-        if (existingIndicators.has(key)) continue
-
-        const paramStr = Object.values(params).join("_")
-        const fieldName = paramStr ? `${overlay.indicatorType}_${paramStr}` : overlay.indicatorType
-        this.store.addDataColumn(tab.id, {
-          type: "indicator", label: fieldName, indicatorType: overlay.indicatorType, indicatorParams: params,
-        })
-        existingIndicators.add(key)
-      }
-    }
+    this._addMissingIndicators(tab, chart)
   }
 
   syncAllDataConditionsToChart(chartTabId: string): void {
@@ -619,10 +583,8 @@ export default class DataTabActions {
 
     const chartTabs = this.store.tabs.filter(t => t.type === "chart")
     for (const dt of dataTabs) {
-      const gridEl = this.panels.querySelector(`[data-tab-wrapper="${dt.id}"] [data-controller='data-grid']`)
-      if (!gridEl) continue
-      const ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as any
-      const data = ctrl?.getData() as Array<Record<string, any>> | undefined
+      const ctrl = this._getGridCtrl(dt.id)
+      const data = ctrl?.getData()
       if (!data?.length) continue
       this.deps.chartBridge.syncConditionsToChart(dt, chartTabs, data)
     }
@@ -665,7 +627,7 @@ export default class DataTabActions {
 
   // --- Private helpers ---
 
-  private _syncFromChart(dataTab: { id: string; dataConfig?: { symbols: string[]; timeframe: string; chartLinks: any[]; sourceTabId?: string; columns: any[] } }, chart: { id: string; panels: Array<{ timeframe: string; overlays: Array<{ symbol: string | null; mode: string; indicatorType: string | null; indicatorParams: Record<string, any> | null }> }> }): void {
+  private _initConfigFromChart(dataTab: { id: string; dataConfig?: DataConfig }, chart: Tab): void {
     if (!dataTab.dataConfig) return
     const panel = chart.panels[0]
     if (!panel) return
@@ -676,7 +638,7 @@ export default class DataTabActions {
     }
     dataTab.dataConfig.timeframe = panel.timeframe
     dataTab.dataConfig.sourceTabId = chart.id
-    this._addMissingIndicators(dataTab as any, chart as any)
+    this._addMissingIndicators(dataTab, chart)
   }
 
   private _renameOhlcvColumnLabels(columns: Array<{ type: string; label: string }>, symbol: string): void {
@@ -687,7 +649,7 @@ export default class DataTabActions {
     }
   }
 
-  private _addMissingIndicators(tab: { id: string; dataConfig?: { columns: Array<{ type: string; indicatorType?: string; indicatorParams?: Record<string, any> }> } }, chart: { panels: Array<{ overlays: Array<{ mode: string; indicatorType: string | null; indicatorParams: Record<string, any> | null }> }> }): void {
+  private _addMissingIndicators(tab: { id: string; dataConfig?: { columns: DataColumn[] } }, chart: { panels: Panel[] }): void {
     if (!tab.dataConfig) return
     const existingIndicators = new Set(
       tab.dataConfig.columns
@@ -710,7 +672,7 @@ export default class DataTabActions {
     }
   }
 
-  private _syncLinkedDataFromChart(tab: { id: string; dataConfig?: { symbols: string[]; timeframe: string; chartLinks: Array<{ chartTabId: string; panelId: string }> } }): void {
+  private _refreshLinkedSymbolAndTimeframe(tab: { id: string; dataConfig?: { symbols: string[]; timeframe: string; chartLinks: Array<{ chartTabId: string; panelId: string }> } }): void {
     const link = tab.dataConfig?.chartLinks?.[0]
     if (!link) return
     const chartTab = this.store.tabs.find(t => t.id === link.chartTabId && t.type === "chart")
@@ -723,7 +685,7 @@ export default class DataTabActions {
     if (Object.keys(updates).length) this.store.updateDataConfig(tab.id, updates)
   }
 
-  private _syncTimeRangeFromCache(tab: { id: string; dataConfig?: { symbols: string[]; timeframe: string; startTime?: number; endTime?: number } }): void {
+  private _extendTimeRangeFromCache(tab: { id: string; dataConfig?: { symbols: string[]; timeframe: string; startTime?: number; endTime?: number } }): void {
     if (!tab.dataConfig?.symbols?.length) return
     if (tab.dataConfig.startTime != null && tab.dataConfig.endTime != null) return
     const symbol = tab.dataConfig.symbols[0]

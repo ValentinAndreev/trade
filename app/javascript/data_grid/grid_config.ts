@@ -1,6 +1,6 @@
 import type { ColDef, GridOptions, ValueFormatterParams, CellClassParams, ValueGetterParams } from "ag-grid-community"
 import { columnFieldKey } from "../types/store"
-import type { DataColumn, Condition } from "../types/store"
+import type { DataColumn, Condition, DataTableRow } from "../types/store"
 import { evaluateFormulaExpression, type ConditionMatch } from "./condition_engine"
 
 const PRICE_PRECISION = 2
@@ -134,12 +134,12 @@ export function buildColDefs(columns: DataColumn[]): ColDef[] {
 export function buildRowClassRules(
   conditions: Condition[],
   matchesByTime: Map<number, ConditionMatch>,
-): Record<string, (params: any) => boolean> {
-  const rules: Record<string, (params: any) => boolean> = {}
+): Record<string, (params: { data?: DataTableRow }) => boolean> {
+  const rules: Record<string, (params: { data?: DataTableRow }) => boolean> = {}
 
   conditions.filter(c => c.enabled && c.action.rowHighlight).forEach(cond => {
     const cssClass = `data-grid-highlight-${cond.id}`
-    rules[cssClass] = (params: any) => {
+    rules[cssClass] = (params: { data?: DataTableRow }) => {
       if (!params.data?.time) return false
       return matchesByTime.get(params.data.time)?.conditionNames.includes(cond.name) ?? false
     }
@@ -157,7 +157,7 @@ export interface SelectionStats {
   fields: Record<string, { min: number; max: number; avg: number }>
 }
 
-export function computeSelectionStats(selectedRows: Array<Record<string, any>>, numericFields: string[]): SelectionStats | null {
+export function computeSelectionStats(selectedRows: DataTableRow[], numericFields: string[]): SelectionStats | null {
   if (!selectedRows.length) return null
 
   const fields: Record<string, { min: number; max: number; avg: number }> = {}

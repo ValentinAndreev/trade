@@ -1,4 +1,4 @@
-import type { Condition, ConditionAction } from "../types/store"
+import type { Condition, ConditionAction, DataTableRow } from "../types/store"
 
 export interface ConditionMatch {
   rowIndex: number
@@ -8,7 +8,7 @@ export interface ConditionMatch {
 }
 
 export function evaluateConditions(
-  rows: Array<Record<string, any>>,
+  rows: DataTableRow[],
   conditions: Condition[],
 ): Map<number, ConditionMatch> {
   const active = conditions.filter(c => c.enabled)
@@ -41,8 +41,8 @@ export function evaluateConditions(
 
 export function evaluateSingleCondition(
   condition: Condition,
-  row: Record<string, any>,
-  prevRow: Record<string, any> | null = null,
+  row: DataTableRow,
+  prevRow: DataTableRow | null = null,
 ): boolean {
   const { rule } = condition
   const colValue = resolveColumnValue(row, rule.column)
@@ -88,7 +88,7 @@ export function evaluateSingleCondition(
   }
 }
 
-function resolveColumnValue(row: Record<string, any>, column: string): number | null {
+function resolveColumnValue(row: DataTableRow, column: string): number | null {
   const v = row[column]
   if (v == null) return null
   const n = Number(v)
@@ -126,7 +126,7 @@ export function validateFormulaReferences(expr: string, validKeys: Set<string>):
   return null
 }
 
-function resolveVariables(expr: string, row: Record<string, any>): string {
+function resolveColumnRefs(expr: string, row: DataTableRow): string {
   let resolved = expr.replace(/col\(['"]([^'"]+)['"]\)/g, (_match, colName) => {
     const v = row[colName]
     return v != null ? String(Number(v)) : "NaN"
@@ -145,9 +145,9 @@ function resolveVariables(expr: string, row: Record<string, any>): string {
   return resolved.replace(/[^0-9+\-*/().><=!&| \tNan,eE]/g, "")
 }
 
-function evaluateExpression(expr: string, row: Record<string, any>): boolean {
+function evaluateExpression(expr: string, row: DataTableRow): boolean {
   try {
-    const sanitized = resolveVariables(expr, row)
+    const sanitized = resolveColumnRefs(expr, row)
     const fn = new Function(`"use strict"; const ${MATH_CONTEXT}; return (${sanitized})`)
     return !!fn()
   } catch {
@@ -155,9 +155,9 @@ function evaluateExpression(expr: string, row: Record<string, any>): boolean {
   }
 }
 
-export function evaluateFormulaExpression(expr: string, row: Record<string, any>): number | null {
+export function evaluateFormulaExpression(expr: string, row: DataTableRow): number | null {
   try {
-    const sanitized = resolveVariables(expr, row)
+    const sanitized = resolveColumnRefs(expr, row)
     const fn = new Function(`"use strict"; const ${MATH_CONTEXT}; return (${sanitized})`)
     const result = fn()
     return Number.isFinite(result) ? result : null
@@ -166,7 +166,7 @@ export function evaluateFormulaExpression(expr: string, row: Record<string, any>
   }
 }
 
-function extractActions<T>(
+function extractActions<T extends { time?: number }>(
   matches: Map<number, ConditionMatch>,
   extract: (action: ConditionAction, time: number) => T | null,
 ): T[] {
@@ -177,7 +177,7 @@ function extractActions<T>(
       if (item) results.push(item)
     }
   }
-  return results.sort((a: any, b: any) => (a.time ?? 0) - (b.time ?? 0))
+  return results.sort((a, b) => (a.time ?? 0) - (b.time ?? 0))
 }
 
 export function getChartMarkers(matches: Map<number, ConditionMatch>) {

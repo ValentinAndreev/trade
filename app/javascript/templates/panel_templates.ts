@@ -118,8 +118,6 @@ export function tabButtonHTML(
   tabType: string = "chart",
   insideGroup: boolean = false,
 ): string {
-  const typeIcon = ""
-
   const contextMenu = tabType === "chart"
     ? `<span
          data-action="click->${ctrl}#createDataFromChart"
@@ -151,7 +149,6 @@ export function tabButtonHTML(
                : "text-gray-400 hover:text-gray-200 border-b-2 border-transparent"}"
     >
       ${dragHandle}
-      ${typeIcon}
       <span
         data-tab-label
         data-action="dblclick->${ctrl}#startRename"

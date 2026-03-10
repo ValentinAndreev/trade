@@ -1,6 +1,6 @@
 import { createInlineRenameInput } from "../utils/dom"
 import type TabStore from "./store"
-import type { Panel, DrawingKind, DrawingItem } from "../types/store"
+import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI } from "../types/store"
 
 const CHART_METHODS = {
   labels: { set: "setLabels", scroll: "scrollToLabel", enter: "enterLabelMode", exit: "exitLabelMode" },
@@ -14,14 +14,14 @@ const NAME_KEYS = { labels: "text", lines: "name", hlines: "name", vlines: "name
 export default class DrawingActions {
   store: TabStore
   _getPanel: () => Panel | null
-  _getChartCtrl: (panelId: string) => any
+  _getChartCtrl: (panelId: string) => ChartControllerAPI | null
   _render: () => void
   modes: Record<DrawingKind, boolean>
 
   constructor(
     store: TabStore,
     getPanel: () => Panel | null,
-    getChartCtrl: (panelId: string) => any,
+    getChartCtrl: (panelId: string) => ChartControllerAPI | null,
     render: () => void
   ) {
     this.store = store
@@ -148,7 +148,7 @@ export default class DrawingActions {
     }
   }
 
-  exitOtherModes(except: DrawingKind, chartCtrl: any): void {
+  exitOtherModes(except: DrawingKind, chartCtrl: ChartControllerAPI | null): void {
     for (const kind of Object.keys(this.modes) as DrawingKind[]) {
       if (kind !== except && this.modes[kind]) {
         this.modes[kind] = false
@@ -157,7 +157,7 @@ export default class DrawingActions {
     }
   }
 
-  syncAllModesToChart(chartCtrl: any): void {
+  syncAllModesToChart(chartCtrl: ChartControllerAPI | null): void {
     if (!chartCtrl) return
     for (const kind of Object.keys(this.modes) as DrawingKind[]) {
       if (this.modes[kind]) {

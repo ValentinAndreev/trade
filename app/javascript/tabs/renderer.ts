@@ -51,6 +51,8 @@ export default class TabRenderer {
 
     const activeTab = tabs.find(t => t.id === activeTabId)
 
+    const hasLinkedData = tabs.some(t => t.type === "data" && t.dataConfig?.chartLinks?.length)
+
     if (activeTab?.type === "data") {
       this.panels.renderDataTab(tabs, activeTabId)
       if (activeTab.dataConfig) {
@@ -60,7 +62,7 @@ export default class TabRenderer {
       this.dataSidebar.render(activeTab, symbols, timeframes, opts.chartTabOptions || [])
     } else {
       this.panels.render(tabs, activeTabId, selectedPanelId)
-      this.panels.renderDataTab(tabs, activeTabId)
+      if (hasLinkedData) this.panels.renderDataTab(tabs, activeTabId)
 
       let panel: Panel | null = null
       for (const tab of tabs) {

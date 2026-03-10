@@ -41,9 +41,9 @@ export interface VLineItem {
   width?: number
 }
 
-interface OverlayEntry {
-  series?: ISeriesApi<SeriesType>
-  indicatorSeries?: Array<{ series: ISeriesApi<SeriesType> }>
+export interface OverlayEntry {
+  series?: ISeriesApi<SeriesType> | null
+  indicatorSeries?: Array<{ series: ISeriesApi<SeriesType> }> | null
   visible?: boolean
   loader?: { candles?: Candle[] }
   [key: string]: unknown

@@ -2,13 +2,13 @@ import TabStore from "./store"
 import { INDICATOR_META } from "../config/indicators"
 import connectionMonitor from "../services/connection_monitor"
 import type TabRenderer from "./renderer"
-import type { Panel } from "../types/store"
+import type { Panel, Overlay, ChartControllerAPI } from "../types/store"
 
 interface ChartSidebarDeps {
   store: TabStore
   renderer: TabRenderer
   sidebarTarget: HTMLElement
-  chartCtrlFn: () => any
+  chartCtrlFn: () => ChartControllerAPI | null
   renderFn: () => void
 }
 
@@ -21,7 +21,7 @@ export default class ChartSidebarActions {
 
   private get store() { return this.deps.store }
   private get sidebar() { return this.deps.sidebarTarget }
-  private withChartCtrl(fn: (ctrl: any) => void) {
+  private withChartCtrl(fn: (ctrl: ChartControllerAPI) => void) {
     const ctrl = this.deps.chartCtrlFn()
     if (ctrl) fn(ctrl)
   }
@@ -61,7 +61,7 @@ export default class ChartSidebarActions {
       this.withChartCtrl(c => {
         c.showMode(overlay.id, mode)
         if (mode === "indicator") {
-          c.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo, overlay.indicatorSource)
+          c.updateIndicator(overlay.id, overlay.indicatorType || "", overlay.indicatorParams as Record<string, number> || {}, overlay.pinnedTo, overlay.indicatorSource || "")
         }
       })
       this.render()
@@ -87,9 +87,9 @@ export default class ChartSidebarActions {
 
   cycleIndicatorFilter(): void {
     const filters = ["all", "client", "server"]
-    const current = (this.deps.renderer.sidebar as any).indicatorFilter || "all"
+    const current = (this.deps.renderer.sidebar as unknown as Record<string, unknown>).indicatorFilter as string || "all"
     const next = filters[(filters.indexOf(current) + 1) % filters.length]
-    ;(this.deps.renderer.sidebar as any).indicatorFilter = next
+    ;(this.deps.renderer.sidebar as unknown as Record<string, unknown>).indicatorFilter = next
     this.render()
   }
 
@@ -126,7 +126,7 @@ export default class ChartSidebarActions {
     this.store.setOverlayPinnedTo(overlay.id, pinnedTo)
 
     this.withChartCtrl(c => {
-      if (c.hasOverlay(overlay.id)) c.updateIndicator(overlay.id, type, params, pinnedTo, source ?? undefined)
+      if (c.hasOverlay(overlay.id)) c.updateIndicator(overlay.id, type, params, pinnedTo, source || "")
       else c.addOverlay(overlay)
     })
     this.render()
@@ -219,7 +219,7 @@ export default class ChartSidebarActions {
     if (e.type === "change") this.render()
   }
 
-  _readIndicatorInputs(overlay: any): { type: string; source: string | null; params: Record<string, number>; pinnedTo: string | null } {
+  _readIndicatorInputs(overlay: Overlay): { type: string; source: string | null; params: Record<string, number>; pinnedTo: string | null } {
     const typeEl = this.sidebar.querySelector("[data-field='indicatorType']") as HTMLSelectElement | null
     const raw = typeEl?.value || overlay.indicatorType || "sma"
     const [type, source] = raw.includes("|") ? raw.split("|") : [raw, overlay.indicatorSource || null]
@@ -238,7 +238,7 @@ export default class ChartSidebarActions {
     return { type, source, params, pinnedTo }
   }
 
-  private _applyIndicatorSettings(panel: Panel, overlay: any, timeframeChanged: boolean): boolean | null {
+  private _applyIndicatorSettings(panel: Panel, overlay: Overlay, timeframeChanged: boolean): boolean | null {
     const { type, source, params, pinnedTo } = this._readIndicatorInputs(overlay)
 
     const needsBackend = timeframeChanged || source === "server"
@@ -258,7 +258,7 @@ export default class ChartSidebarActions {
 
     this.withChartCtrl(c => {
       if (c.hasOverlay(overlay.id)) {
-        if (!timeframeChanged && !symbolChanged) c.updateIndicator(overlay.id, type, params, pinnedTo, source ?? undefined)
+        if (!timeframeChanged && !symbolChanged) c.updateIndicator(overlay.id, type, params, pinnedTo, source || "")
       } else {
         c.addOverlay(overlay)
       }
@@ -266,7 +266,7 @@ export default class ChartSidebarActions {
     return true
   }
 
-  private _applySymbolSettings(overlay: any, timeframeChanged: boolean): boolean | null {
+  private _applySymbolSettings(overlay: Overlay, timeframeChanged: boolean): boolean | null {
     const symbolEl = this.sidebar.querySelector("[data-field='symbol']:not(.hidden)") as HTMLSelectElement | null
     const symbol = symbolEl?.value?.trim().toUpperCase()
     const willChangeSymbol = symbol && symbol !== overlay.symbol

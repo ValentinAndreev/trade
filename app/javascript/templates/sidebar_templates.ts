@@ -197,6 +197,78 @@ export function overlayItemHTML(
   `
 }
 
+function indicatorOptionsHTML(
+  indicatorType: string,
+  currentSource: string,
+  indicators: Array<{ key: string }>,
+  indicatorFilter: "all" | "client" | "server",
+): string {
+  const serverKeys = new Set(indicators.map(i => String(i.key)))
+  const clientKeys = new Set(Object.keys(INDICATOR_META).filter(k => !!INDICATOR_META[k]?.lib))
+  const allEntries: Array<{ key: string; source: string }> = []
+  const processedKeys = new Set<string>()
+
+  for (const key of Object.keys(INDICATOR_META)) {
+    const hasClient = clientKeys.has(key)
+    const hasServer = serverKeys.has(key)
+    if (hasClient) allEntries.push({ key, source: "client" })
+    if (hasServer || !hasClient) allEntries.push({ key, source: "server" })
+    processedKeys.add(key)
+  }
+  for (const key of serverKeys) {
+    if (!processedKeys.has(key)) allEntries.push({ key, source: "server" })
+  }
+
+  return allEntries
+    .filter(({ source }) => indicatorFilter === "all" || indicatorFilter === source)
+    .map(({ key, source }) => {
+      const m = INDICATOR_META[key]
+      const label = m?.label || key.toUpperCase()
+      const icon = source === "client" ? "\u26A1" : "\uD83C\uDF10"
+      const selected = key === indicatorType && source === currentSource
+      return `<option value="${key}|${source}"${selected ? " selected" : ""}>${icon} ${label}</option>`
+    }).join("")
+}
+
+function indicatorParamInputHTML(
+  ctrl: string,
+  paramKey: string,
+  value: number | string,
+  label: string,
+): string {
+  return `
+    <label class="flex flex-col gap-1 text-sm text-gray-400">
+      ${escapeHTML(label)}
+      <input type="number" data-indicator-param="${paramKey}" value="${value}"
+             data-action="keydown->${ctrl}#applyIndicatorOnEnter" class="${SELECT_CLASS}">
+    </label>`
+}
+
+function sourceSelectHTML(
+  ctrl: string,
+  selectedOverlay: Overlay | null | undefined,
+  panel: Panel,
+  requires: string,
+): string {
+  const pinnedTo = selectedOverlay?.pinnedTo || null
+  const pinTargets = panel.overlays.filter(o => {
+    if (o.id === selectedOverlay?.id || !o.symbol || o.mode === "indicator") return false
+    return requires === "values" || o.mode === "price"
+  })
+  const sourceOpts = pinTargets.map(o => {
+    const modeLabel = o.mode === "volume" ? "Vol" : "Price"
+    return `<option value="${o.id}"${o.id === pinnedTo ? " selected" : ""}>${escapeHTML(o.symbol)} ${modeLabel}</option>`
+  }).join("")
+
+  return `
+    <label class="flex flex-col gap-1 text-sm text-gray-400">
+      Source
+      <select data-field="pinnedTo" data-action="change->${ctrl}#changePinnedTo" class="${SELECT_CLASS}">
+        ${pinTargets.length > 0 ? sourceOpts : '<option value="" disabled selected>No charts on panel</option>'}
+      </select>
+    </label>`
+}
+
 export function indicatorSettingsHTML(
   ctrl: string,
   indicatorType: string,
@@ -208,111 +280,30 @@ export function indicatorSettingsHTML(
 ): string {
   const meta = INDICATOR_META[indicatorType]
   const currentSource = selectedOverlay?.indicatorSource || (meta?.lib ? "client" : "server")
-
-  const serverKeys = new Set(indicators.map(i => String(i.key)))
-  const clientKeys = new Set(
-    Object.keys(INDICATOR_META).filter(k => !!INDICATOR_META[k]?.lib)
-  )
-  const allEntries = []
-  const seen = new Set()
-
-  for (const key of Object.keys(INDICATOR_META)) {
-    const hasClient = clientKeys.has(key)
-    const hasServer = serverKeys.has(key)
-    if (hasClient && hasServer) {
-      allEntries.push({ key, source: "client" })
-      allEntries.push({ key, source: "server" })
-    } else if (hasClient) {
-      allEntries.push({ key, source: "client" })
-    } else if (hasServer) {
-      allEntries.push({ key, source: "server" })
-    } else {
-      allEntries.push({ key, source: "server" })
-    }
-    seen.add(key)
-  }
-  for (const key of serverKeys) {
-    if (!seen.has(key)) allEntries.push({ key, source: "server" })
-  }
-
-  const filtered = allEntries.filter(({ source }) => {
-    if (indicatorFilter === "all") return true
-    return indicatorFilter === source
-  })
-
-  const indicatorOpts = filtered.map(({ key, source }) => {
-    const m = INDICATOR_META[key]
-    const label = m?.label || key.toUpperCase()
-    const icon = source === "client" ? "\u26A1" : "\uD83C\uDF10"
-    const val = `${key}|${source}`
-    const selected = key === indicatorType && source === currentSource
-    return `<option value="${val}"${selected ? " selected" : ""}>${icon} ${label}</option>`
-  }).join("")
-
+  const indicatorOpts = indicatorOptionsHTML(indicatorType, currentSource, indicators, indicatorFilter)
   const filterLabel = INDICATOR_FILTER_LABELS[indicatorFilter]
 
   let paramInputs = ""
-  if (meta && meta.defaults) {
+  if (meta?.defaults) {
     const params = { ...meta.defaults, ...indicatorParams }
-    paramInputs = Object.entries(meta.defaults).map(([key, defaultVal]) => {
-      const value = params[key] ?? defaultVal
-      const label = meta.paramLabels?.[key] || key
-      return `
-        <label class="flex flex-col gap-1 text-sm text-gray-400">
-          ${escapeHTML(label)}
-          <input
-            type="number"
-            data-indicator-param="${key}"
-            value="${value}"
-            data-action="keydown->${ctrl}#applyIndicatorOnEnter"
-            class="${SELECT_CLASS}"
-          >
-        </label>
-      `
-    }).join("")
+    paramInputs = Object.entries(meta.defaults)
+      .map(([key, defaultVal]) =>
+        indicatorParamInputHTML(ctrl, key, params[key] ?? defaultVal, meta.paramLabels?.[key] || key)
+      ).join("")
   }
-
-  const pinnedTo = selectedOverlay?.pinnedTo || null
-  const requires = meta?.requires || "values"
-  const pinTargets = panel.overlays.filter(o => {
-    if (o.id === selectedOverlay?.id || !o.symbol) return false
-    if (o.mode === "indicator") return false
-    if (requires === "values") return true
-    return o.mode === "price"
-  })
-  const sourceOpts = pinTargets.map(o => {
-    const modeLabel = o.mode === "volume" ? "Vol" : (o.mode === "indicator" ? (o.indicatorType || "").toUpperCase() : "Price")
-    return `<option value="${o.id}"${o.id === pinnedTo ? " selected" : ""}>${escapeHTML(o.symbol)} ${modeLabel}</option>`
-  }).join("")
-
-  const sourceHTML = `
-    <label class="flex flex-col gap-1 text-sm text-gray-400">
-      Source
-      <select
-        data-field="pinnedTo"
-        data-action="change->${ctrl}#changePinnedTo"
-        class="${SELECT_CLASS}"
-      >${pinTargets.length > 0 ? sourceOpts : '<option value="" disabled selected>No charts on panel</option>'}</select>
-    </label>
-  `
 
   return `
     <div class="flex flex-col gap-1 text-sm text-gray-400">
       <span>Indicator</span>
       <div class="flex gap-1 items-stretch">
-        <select
-          data-field="indicatorType"
-          data-action="change->${ctrl}#switchIndicatorType"
-          class="flex-1 min-w-0 ${SELECT_CLASS}"
-        >${indicatorOpts}</select>
-        <button
-          data-action="click->${ctrl}#cycleIndicatorFilter"
-          class="min-w-[5.5rem] px-2 py-2 text-xs text-gray-300 bg-[#2a2a3e] border border-[#3a3a4e] rounded hover:bg-[#3a3a4e] whitespace-nowrap text-center"
-          title="Filter: ${filterLabel}"
-        >${filterLabel}</button>
+        <select data-field="indicatorType" data-action="change->${ctrl}#switchIndicatorType"
+                class="flex-1 min-w-0 ${SELECT_CLASS}">${indicatorOpts}</select>
+        <button data-action="click->${ctrl}#cycleIndicatorFilter"
+                class="min-w-[5.5rem] px-2 py-2 text-xs text-gray-300 bg-[#2a2a3e] border border-[#3a3a4e] rounded hover:bg-[#3a3a4e] whitespace-nowrap text-center"
+                title="Filter: ${filterLabel}">${filterLabel}</button>
       </div>
     </div>
     ${paramInputs}
-    ${sourceHTML}
+    ${sourceSelectHTML(ctrl, selectedOverlay, panel, meta?.requires || "values")}
   `
 }

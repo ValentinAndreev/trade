@@ -1,6 +1,8 @@
 import { Controller } from "@hotwired/stimulus"
 import { createChart, IChartApi, LogicalRange } from "lightweight-charts"
+import type { ISeriesApi, SeriesType } from "lightweight-charts"
 
+import type { OverlayConfig, DrawingItem } from "../types/store"
 import { CHART_THEME, OVERLAY_COLORS } from "../config/theme"
 import DataLoader from "../chart/data_loader"
 import BitfinexFeed from "../chart/feeds/bitfinex_feed"
@@ -18,12 +20,33 @@ import {
 } from "../chart/series_factory"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import DrawingManager from "../chart/drawing_manager"
-import type { LabelMarker } from "../chart/drawing_manager"
+import type { LabelMarker, OverlayEntry as BaseOverlayEntry, TrendLineItem, HLineItem, VLineItem } from "../chart/drawing_manager"
 import InteractionHandler from "../chart/interaction_handler"
 import ScaleManager from "../chart/scale_manager"
 import VolumeProfileManager from "../chart/volume_profile_manager"
 import { apiFetch } from "../services/api_fetch"
 import type { Candle } from "../types/candle"
+
+interface OverlayEntry extends BaseOverlayEntry {
+  series: ReturnType<typeof createOverlaySeries> | null
+  loader: DataLoader
+  bfxFeed: BitfinexFeed
+  cableFeed: CableFeed
+  mode: string
+  chartType: string
+  colorIndex: number
+  colorScheme: number
+  opacity: number
+  colors: { up: string; down: string; line: string }
+  visible: boolean
+  basePriceScaleId: string
+  activePriceScaleId: string
+  symbol: string
+  indicatorSeries?: Array<{ series: ISeriesApi<SeriesType> }> | null
+  indicatorType?: string
+}
+
+type IndicatorSeries = { series: ISeriesApi<SeriesType> }
 
 export default class extends Controller {
   static values = {
@@ -34,7 +57,7 @@ export default class extends Controller {
   declare timeframeValue: string
   declare overlaysValue: string
 
-  overlayMap!: Map<string, any>
+  overlayMap!: Map<string, OverlayEntry>
   private _colorIndex!: number
   selectedOverlayId: string | null = null
   chart!: IChartApi
@@ -64,7 +87,7 @@ export default class extends Controller {
 
     this._initChart()
 
-    const indicatorConfigs: any[] = []
+    const indicatorConfigs: OverlayConfig[] = []
     configs.forEach(config => {
       if (!config.symbol) return
       if (config.mode === "indicator") {
@@ -89,7 +112,7 @@ export default class extends Controller {
       ov.bfxFeed?.disconnect()
       ov.cableFeed?.disconnect()
       if (ov.indicatorSeries) {
-        ov.indicatorSeries.forEach((s: any) => { try { this.chart.removeSeries(s.series) } catch (e) { console.warn("[chart] cleanup:", (e as Error).message) } })
+        ov.indicatorSeries.forEach((s: IndicatorSeries) => { try { this.chart.removeSeries(s.series) } catch (e) { console.warn("[chart] cleanup:", (e as Error).message) } })
       }
     }
     if (this._scrollHandler) {
@@ -110,7 +133,7 @@ export default class extends Controller {
     return this.overlayMap.has(id)
   }
 
-  addOverlay(config: any): void {
+  addOverlay(config: OverlayConfig): void {
     if (!this.chart) this._initChart()
     if (config.mode === "indicator") {
       this.indicators.addOverlay(config, this._colorIndex++)
@@ -185,7 +208,7 @@ export default class extends Controller {
     if (ov.visible === normalized) return
     ov.visible = normalized
     if (ov.indicatorSeries) {
-      ov.indicatorSeries.forEach((s: any) => s.series.applyOptions({ visible: normalized }))
+      ov.indicatorSeries.forEach((s: IndicatorSeries) => s.series.applyOptions({ visible: normalized }))
     } else if (ov.series) {
       ov.series.applyOptions({ visible: normalized })
     }
@@ -219,7 +242,7 @@ export default class extends Controller {
 
   hasIndicatorSeries(id: string): boolean {
     const ov = this.overlayMap.get(id)
-    return ov?.indicatorSeries?.length > 0
+    return (ov?.indicatorSeries?.length ?? 0) > 0
   }
 
   setPinnedTo(id: string, pinnedTo: string | null): void {
@@ -236,16 +259,16 @@ export default class extends Controller {
 
   enterLineMode() { this.interaction?.enterLineMode() }
   exitLineMode() { this.interaction?.exitLineMode() }
-  setLines(lines: any[]): void { this.drawings?.setLines(lines) }
+  setLines(lines: DrawingItem[]): void { this.drawings?.setLines(lines as unknown as TrendLineItem[]) }
   scrollToLine(time: number): void { this.drawings?.scrollToLine(time) }
 
   enterHLineMode() { this.interaction?.enterHLineMode() }
   exitHLineMode() { this.interaction?.exitHLineMode() }
-  setHLines(hlines: any[]): void { this.drawings?.setHLines(hlines) }
+  setHLines(hlines: DrawingItem[]): void { this.drawings?.setHLines(hlines as unknown as HLineItem[]) }
 
   enterVLineMode() { this.interaction?.enterVLineMode() }
   exitVLineMode() { this.interaction?.exitVLineMode() }
-  setVLines(vlines: any[]): void { this.drawings?.setVLines(vlines) }
+  setVLines(vlines: DrawingItem[]): void { this.drawings?.setVLines(vlines as unknown as VLineItem[]) }
 
   // --- Volume Profile delegations ---
 
@@ -256,7 +279,7 @@ export default class extends Controller {
 
   // --- Internal ---
 
-  _parseOverlays(): any[] {
+  _parseOverlays(): OverlayConfig[] {
     try { return JSON.parse(this.overlaysValue) } catch { return [] }
   }
 
@@ -298,13 +321,14 @@ export default class extends Controller {
     this.vpManager = new VolumeProfileManager(this.chart, this.overlayMap)
   }
 
-  _addOverlayInternal(config: any): void {
-    const colorIndex = normalizeColorScheme(config.colorScheme, this._colorIndex++)
+  _addOverlayInternal(config: OverlayConfig): void {
+    if (!config.symbol) return
+    const colorIndex = normalizeColorScheme(config.colorScheme ?? 0, this._colorIndex++)
     const colors = OVERLAY_COLORS[colorIndex]
     const mode = config.mode || "price"
     const chartType = config.chartType || (mode === "volume" ? "Histogram" : "Candlestick")
     const visible = config.visible !== false
-    const opacity = normalizeOpacity(config.opacity, 1)
+    const opacity = normalizeOpacity(config.opacity ?? 1, 1)
     const basePriceScaleId = `overlay-${config.id}`
 
     const series = createOverlaySeries(this.chart, mode, chartType, colors, basePriceScaleId, visible, opacity)
@@ -323,30 +347,30 @@ export default class extends Controller {
     this._syncSelectedOverlayScale()
   }
 
-  _applyOverlayStyle(ov: any): void {
+  _applyOverlayStyle(ov: OverlayEntry): void {
     if (!ov) return
     if (ov.indicatorSeries) {
-      const meta = INDICATOR_META[ov.indicatorType]
+      const meta = ov.indicatorType ? INDICATOR_META[ov.indicatorType] : undefined
       if (meta) {
         const fieldColors = indicatorFieldColors(ov.colors, meta.fields.length, ov.opacity)
-        ov.indicatorSeries.forEach((s: any, i: number) => { s.series.applyOptions({ color: fieldColors[i] }) })
+        ov.indicatorSeries.forEach((s: IndicatorSeries, i: number) => { s.series.applyOptions({ color: fieldColors[i] }) })
       }
       return
     }
     if (!ov.series) return
     const styleOvr = seriesStyleOverrides(ov.mode, ov.chartType, ov.colors, ov.opacity)
     if (Object.keys(styleOvr).length > 0) ov.series.applyOptions(styleOvr)
-    if (ov.mode === "volume" && ov.chartType === "Histogram" && ov.loader.candles.length > 0) {
+    if (ov.mode === "volume" && ov.chartType === "Histogram" && ov.loader?.candles?.length) {
       ov.series.setData(toSeriesData(ov, ov.loader.candles))
     }
   }
 
   _recreateSeries(id: string): void {
     const ov = this.overlayMap.get(id)
-    if (!ov) return
+    if (!ov || !ov.series) return
     this.chart.removeSeries(ov.series)
     ov.series = createOverlaySeries(this.chart, ov.mode, ov.chartType, ov.colors, ov.activePriceScaleId, ov.visible, ov.opacity)
-    if (ov.loader.candles.length > 0) ov.series.setData(toSeriesData(ov, ov.loader.candles))
+    if (ov.loader?.candles?.length) ov.series.setData(toSeriesData(ov, ov.loader.candles))
     this._syncSelectedOverlayScale()
     this.drawings?.refreshLabels()
   }
@@ -390,7 +414,7 @@ export default class extends Controller {
     }
   }
 
-  async _loadOverlayData(ov: any, id: string): Promise<void> {
+  async _loadOverlayData(ov: OverlayEntry, id: string): Promise<void> {
     if (!ov.series) return
     try {
       const candles = await ov.loader.loadInitial()
@@ -460,7 +484,7 @@ export default class extends Controller {
           const newCandles = await resp.json()
           if (newCandles.length === 0) continue
           ov.loader.prependCandles(newCandles)
-          ov.series.setData(toSeriesData(ov, ov.loader.candles))
+          if (ov.series) ov.series.setData(toSeriesData(ov, ov.loader.candles))
         } catch (e) { console.error("[nav] load failed:", (e as Error).message) }
       }
       this.indicators.refreshAll()
@@ -515,7 +539,7 @@ export default class extends Controller {
 
     for (const [, ov] of this.overlayMap) {
       if (ov.mode !== "price" || !ov.series || !ov.loader?.candles?.length) continue
-      const coloredData = ov.loader.candles.map((c: any) => {
+      const coloredData = ov.loader.candles.map((c: Candle) => {
         const zone = zoneMap.get(c.time)
         if (zone) {
           return {

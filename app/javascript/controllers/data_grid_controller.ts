@@ -132,7 +132,7 @@ export default class extends Controller {
     gridOptions.theme = darkTheme
     gridOptions.rowData = []
 
-    gridOptions.onRowClicked = (event: any) => {
+    gridOptions.onRowClicked = (event: { data?: DataTableRow }) => {
       const time = event.data?.time
       if (time) {
         this.element.dispatchEvent(new CustomEvent("datagrid:rowclick", {
@@ -162,11 +162,11 @@ export default class extends Controller {
       }, 0)
     }
 
-    gridOptions.onColumnMoved = (params: any) => {
+    gridOptions.onColumnMoved = (params: { finished?: boolean }) => {
       if (params.finished) dispatchColumnState()
     }
 
-    gridOptions.onColumnResized = (params: any) => {
+    gridOptions.onColumnResized = (params: { finished?: boolean }) => {
       if (params.finished) dispatchColumnState()
     }
 

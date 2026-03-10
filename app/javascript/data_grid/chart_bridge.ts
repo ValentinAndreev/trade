@@ -1,5 +1,5 @@
 import { evaluateConditions, getChartMarkers, getColorZones, type ConditionMatch } from "./condition_engine"
-import type { Tab } from "../types/store"
+import type { Tab, DataTableRow, StimulusApp, ChartControllerAPI } from "../types/store"
 
 export interface ChartBridgeMarker {
   time: number
@@ -14,9 +14,9 @@ export interface ChartBridgeMarker {
 
 export default class ChartBridge {
   private tabsElement: HTMLElement
-  private application: any
+  private application: StimulusApp
 
-  constructor(tabsElement: HTMLElement, application: any) {
+  constructor(tabsElement: HTMLElement, application: StimulusApp) {
     this.tabsElement = tabsElement
     this.application = application
   }
@@ -24,7 +24,7 @@ export default class ChartBridge {
   syncConditionsToChart(
     dataTab: Tab,
     chartTabs: Tab[],
-    data: Array<Record<string, any>>,
+    data: DataTableRow[],
   ): void {
     if (!dataTab.dataConfig) return
 
@@ -52,7 +52,7 @@ export default class ChartBridge {
       if (!conditions.length || !markers.length) {
         chartCtrl.setConditionLabels([])
       } else {
-        const dataByTime = new Map<number, Record<string, any>>()
+        const dataByTime = new Map<number, DataTableRow>()
         for (const row of data) {
           if (row.time != null) dataByTime.set(row.time, row)
         }
@@ -86,7 +86,7 @@ export default class ChartBridge {
     if (typeof ctrl._navigateToTime === "function") {
       ctrl._navigateToTime(time)
     } else if (ctrl.chart) {
-      ctrl.chart.timeScale().scrollToRealTime()
+      (ctrl.chart.timeScale() as { scrollToRealTime(): void }).scrollToRealTime()
     }
   }
 
@@ -98,7 +98,7 @@ export default class ChartBridge {
     const ctrl = this._findChartController(chartTabId, panelId)
     if (!ctrl?.chart) return null
 
-    const handler = (param: any) => {
+    const handler = (param: { time?: number | { year: number; month: number; day: number } }) => {
       if (!param?.time) return
       const time = typeof param.time === "object"
         ? new Date(param.time.year, param.time.month - 1, param.time.day).getTime() / 1000
@@ -106,12 +106,13 @@ export default class ChartBridge {
       onTimeHover(time)
     }
 
-    ctrl.chart.subscribeCrosshairMove(handler)
+    const chart = ctrl.chart
+    chart.subscribeCrosshairMove(handler)
 
-    return () => ctrl.chart.unsubscribeCrosshairMove(handler)
+    return () => chart?.unsubscribeCrosshairMove(handler)
   }
 
-  private _findChartController(tabId: string, panelId: string): any {
+  private _findChartController(tabId: string, panelId: string): ChartControllerAPI | null {
     const wrapper = this.tabsElement.querySelector(`[data-tab-wrapper="${tabId}"]`)
     if (!wrapper) return null
 
@@ -121,6 +122,6 @@ export default class ChartBridge {
     const chartEl = panelEl.querySelector("[data-controller='chart']")
     if (!chartEl) return null
 
-    return this.application.getControllerForElementAndIdentifier(chartEl, "chart")
+    return this.application.getControllerForElementAndIdentifier(chartEl, "chart") as ChartControllerAPI
   }
 }

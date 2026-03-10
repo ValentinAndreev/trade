@@ -1,8 +1,10 @@
 import { apiFetch } from "../services/api_fetch"
-import { type DataConfig, type DataColumn, columnFieldKey } from "../types/store"
+import { type DataConfig, type DataColumn, type DataTableRow, columnFieldKey } from "../types/store"
 import candleCache from "../data/candle_cache"
 import indicatorCache from "../data/indicator_cache"
 import { INDICATOR_META } from "../config/indicators"
+
+export type { DataTableRow }
 
 const OHLCV_TYPES = ["open", "high", "low", "close", "volume"] as const
 
@@ -16,23 +18,6 @@ function mapOhlcvToColumnKeys(rows: DataTableRow[], columns: DataColumn[]): void
       if (val !== undefined) (row as Record<string, number>)[columnFieldKey(col)] = Number(val)
     }
   }
-}
-
-export interface DataTableRow {
-  time: number
-  open: number
-  high: number
-  low: number
-  close: number
-  volume: number
-  [key: string]: number | null | undefined
-}
-
-function hasIndicatorsOrChanges(config: DataConfig): boolean {
-  return config.columns.some(c =>
-    (c.type === "indicator" && c.indicatorType) ||
-    (c.type === "change" && c.changePeriod)
-  )
 }
 
 /** True when we need API (change, extra instruments, or server-only indicators). */
@@ -199,93 +184,66 @@ function fillIndicatorsFromCache(
   }
 }
 
-export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]> {
-  if (!config.symbols.length) {
-    return []
-  }
+function buildApiUrl(config: DataConfig): URL {
+  const url = new URL("/api/data_table", window.location.origin)
+  url.searchParams.set("symbol", config.symbols[0])
+  url.searchParams.set("timeframe", config.timeframe)
 
-  const isLinked = !!config.sourceTabId
-  const instrumentCols = getInstrumentColumns(config)
-  const useCacheOnly = isLinked && !needsServerData(config)
+  if (config.startTime) url.searchParams.set("start_time", new Date(config.startTime * 1000).toISOString())
+  if (config.endTime) url.searchParams.set("end_time", new Date(config.endTime * 1000).toISOString())
 
-  const symbol = config.symbols[0]
-
-  if (useCacheOnly) {
-    const cached = loadFromCache(config)
-    if (cached && cached.length > 0) {
-      mapOhlcvToColumnKeys(cached, config.columns)
-      fillIndicatorsFromCache(cached, config.columns, symbol, config.timeframe)
-      return cached
-    }
-  }
   const indicatorSpecs = config.columns
     .filter(c => c.type === "indicator" && c.indicatorType)
     .map(c => ({ type: c.indicatorType, params: c.indicatorParams || {} }))
+  if (indicatorSpecs.length) url.searchParams.set("indicators", JSON.stringify(indicatorSpecs))
 
-  const changePeriods = config.columns
+  config.columns
     .filter(c => c.type === "change" && c.changePeriod)
-    .map(c => c.changePeriod)
+    .forEach(c => { if (c.changePeriod) url.searchParams.append("changes[]", c.changePeriod) })
 
-  const url = new URL("/api/data_table", window.location.origin)
-  url.searchParams.set("symbol", symbol)
-  url.searchParams.set("timeframe", config.timeframe)
+  return url
+}
 
-  if (config.startTime) {
-    url.searchParams.set("start_time", new Date(config.startTime * 1000).toISOString())
+async function fetchAndMergeInstruments(
+  data: DataTableRow[],
+  config: DataConfig,
+): Promise<void> {
+  const instrumentCols = getInstrumentColumns(config)
+  if (!instrumentCols.length) return
+  const uniqueSymbols = [...new Set(instrumentCols.map(c => c.instrumentSymbol!))]
+  const instrumentData = new Map<string, Map<number, Record<string, number>>>()
+  await Promise.all(uniqueSymbols.map(async (sym) => {
+    instrumentData.set(sym, await fetchInstrumentData(sym, config.timeframe, config.startTime, config.endTime))
+  }))
+  mergeInstrumentData(data, instrumentCols, instrumentData)
+}
+
+export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]> {
+  if (!config.symbols.length) return []
+
+  const symbol = config.symbols[0]
+  const isLinked = !!config.sourceTabId
+  const useCacheOnly = isLinked && !needsServerData(config)
+
+  if (useCacheOnly) {
+    const cached = getRowsFromCache(config)
+    if (cached?.length) return cached
   }
-  if (config.endTime) {
-    url.searchParams.set("end_time", new Date(config.endTime * 1000).toISOString())
-  }
 
-  if (indicatorSpecs.length) {
-    url.searchParams.set("indicators", JSON.stringify(indicatorSpecs))
-  }
-
-  changePeriods.forEach(p => {
-    if (p) url.searchParams.append("changes[]", p)
-  })
+  const cacheFallback = (): DataTableRow[] => getRowsFromCache(config) ?? []
 
   try {
-    const response = await apiFetch(url)
-    if (!response) {
-      const fallback = loadFromCache(config) ?? []
-      if (fallback.length) {
-        mapOhlcvToColumnKeys(fallback, config.columns)
-        fillIndicatorsFromCache(fallback, config.columns, symbol, config.timeframe)
-      }
-      return fallback
-    }
-    if (!response.ok) {
-      console.error("[DataGrid] API error:", response.status, response.statusText)
-      const fallback = loadFromCache(config) ?? []
-      if (fallback.length) {
-        mapOhlcvToColumnKeys(fallback, config.columns)
-        fillIndicatorsFromCache(fallback, config.columns, symbol, config.timeframe)
-      }
-      return fallback
+    const response = await apiFetch(buildApiUrl(config))
+    if (!response || !response.ok) {
+      if (response && !response.ok) console.error("[DataGrid] API error:", response.status, response.statusText)
+      return cacheFallback()
     }
     const data: DataTableRow[] = await response.json()
-
-    if (instrumentCols.length) {
-      const uniqueSymbols = [...new Set(instrumentCols.map(c => c.instrumentSymbol!))]
-      const instrumentData = new Map<string, Map<number, Record<string, number>>>()
-      const fetches = uniqueSymbols.map(async (sym) => {
-        const d = await fetchInstrumentData(sym, config.timeframe, config.startTime, config.endTime)
-        instrumentData.set(sym, d)
-      })
-      await Promise.all(fetches)
-      mergeInstrumentData(data, instrumentCols, instrumentData)
-    }
-
+    await fetchAndMergeInstruments(data, config)
     mapOhlcvToColumnKeys(data, config.columns)
     return data
   } catch (err) {
     console.error("[DataGrid] Failed to load data:", err)
-    const fallback = loadFromCache(config) ?? []
-    if (fallback.length) {
-      mapOhlcvToColumnKeys(fallback, config.columns)
-      fillIndicatorsFromCache(fallback, config.columns, symbol, config.timeframe)
-    }
-    return fallback
+    return cacheFallback()
   }
 }

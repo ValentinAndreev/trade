@@ -8,7 +8,7 @@ import DataTabActions from "../tabs/data_tab_actions"
 import ChartSidebarActions from "../tabs/chart_sidebar_actions"
 import ChartBridge from "../data_grid/chart_bridge"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
-import type { Panel, DrawingKind } from "../types/store"
+import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput } from "../types/store"
 
 export default class extends Controller {
   static targets = ["tabBar", "panels", "sidebar"]
@@ -59,7 +59,7 @@ export default class extends Controller {
       renderFn: () => this.render(),
     })
     if (this.config.indicators?.length) {
-      this.renderer.dataSidebar.availableIndicators = this.config.indicators as any[]
+      this.renderer.dataSidebar.availableIndicators = this.config.indicators as IndicatorInfo[]
     }
     this.render()
 
@@ -339,7 +339,7 @@ export default class extends Controller {
   // --- Section collapse ---
 
   _toggleSidebarSection(key: string): void {
-    ;(this.renderer.sidebar as any)[key] = !(this.renderer.sidebar as any)[key]
+    ;(this.renderer.sidebar as unknown as Record<string, unknown>)[key] = !(this.renderer.sidebar as unknown as Record<string, unknown>)[key]
     this.render()
   }
 
@@ -395,13 +395,13 @@ export default class extends Controller {
 
   // --- Drawing created events ---
 
-  _onDrawingCreated(kind: string, e: Event, nameFn?: (d: any) => string): void {
+  _onDrawingCreated(kind: string, e: Event, nameFn?: (d: Record<string, unknown>) => string): void {
     const panel = this._panelFromEvent(e)
     if (!panel) return
     const detail = { ...(e as CustomEvent).detail }
     if (panel.timeframe) detail.timeframe = panel.timeframe
     if (nameFn) {
-      const existing = (panel[kind] as any[]) || []
+      const existing = (panel[kind] as DrawingItem[]) || []
       detail.name = `${nameFn(detail)}${existing.length + 1}`
     }
     this.drawingActions.onCreated(kind as DrawingKind, panel, detail)
@@ -469,7 +469,6 @@ export default class extends Controller {
   confirmAddChartLink()              { this.dataActions.confirmAddChartLink() }
   cancelAddChartLink()               { this.dataActions.cancelAddChartLink() }
   removeChartLink(e: Event)          { this.dataActions.removeChartLink(e) }
-  updateGridSettings()               { this.dataActions.updateGridSettings() }
   loadDataGrid()                     { return this.dataActions.loadDataGrid() }
   exportCsv()                        { this.dataActions.exportCsv() }
 
@@ -503,7 +502,6 @@ export default class extends Controller {
       vlModeActive: this.drawingActions.modes.vlines,
       chartTabOptions,
     })
-    this._syncSelectedOverlayScale()
     requestAnimationFrame(() => {
       this._syncSelectedOverlayScale()
       this.drawingActions.syncAllModesToChart(this._getSelectedChartCtrl())
@@ -530,16 +528,16 @@ export default class extends Controller {
     return panel ? this._chartCtrlForPanel(panel.id) : null
   }
 
-  _withChartCtrl(fn: (ctrl: any) => void): void {
+  _withChartCtrl(fn: (ctrl: ChartControllerAPI) => void): void {
     const ctrl = this._getSelectedChartCtrl()
     if (ctrl) fn(ctrl)
   }
 
-  _chartCtrlForPanel(panelId: string): any {
+  _chartCtrlForPanel(panelId: string): ChartControllerAPI | null {
     const panelEl = this.panelsTarget.querySelector(`[data-panel-id="${panelId}"]`)
     const chartEl = panelEl?.querySelector("[data-controller='chart']")
     if (!chartEl) return null
-    return this.application.getControllerForElementAndIdentifier(chartEl, "chart") as any
+    return this.application.getControllerForElementAndIdentifier(chartEl, "chart") as ChartControllerAPI | null
   }
 
   _syncSelectedOverlayScale() {
@@ -549,7 +547,7 @@ export default class extends Controller {
     this.panelsTarget.querySelectorAll("[data-panel-id]").forEach((panelEl: Element) => {
       const chartEl = panelEl.querySelector("[data-controller='chart']")
       if (!chartEl) return
-      const chartCtrl = this.application.getControllerForElementAndIdentifier(chartEl, "chart") as any
+      const chartCtrl = this.application.getControllerForElementAndIdentifier(chartEl, "chart") as ChartControllerAPI | null
       if (!chartCtrl?.setSelectedOverlayScale) return
 
       const panel = this._panelById((panelEl as HTMLElement).dataset.panelId ?? "")
@@ -564,12 +562,12 @@ export default class extends Controller {
     })
   }
 
-  _syncOverlaysToChart(chartCtrl: any, panel: Panel): void {
+  _syncOverlaysToChart(chartCtrl: ChartControllerAPI, panel: Panel): void {
     if (!chartCtrl.setOverlayVisibility) return
     panel.overlays.forEach(overlay => {
       chartCtrl.showMode(overlay.id, overlay.mode || "price")
       if (overlay.mode === "indicator" && !chartCtrl.hasIndicatorSeries(overlay.id)) {
-        chartCtrl.updateIndicator(overlay.id, overlay.indicatorType, overlay.indicatorParams, overlay.pinnedTo, overlay.indicatorSource)
+        chartCtrl.updateIndicator(overlay.id, overlay.indicatorType || "", overlay.indicatorParams as Record<string, number> || {}, overlay.pinnedTo, overlay.indicatorSource || "")
       }
       chartCtrl.setOverlayVisibility(overlay.id, overlay.visible !== false)
       if (chartCtrl.setOverlayColorScheme) chartCtrl.setOverlayColorScheme(overlay.id, overlay.colorScheme)
@@ -577,18 +575,18 @@ export default class extends Controller {
     })
   }
 
-  _syncDrawingsToChart(chartCtrl: any, panel: Panel): void {
-    chartCtrl.setLabels(panel.labels || [])
+  _syncDrawingsToChart(chartCtrl: ChartControllerAPI, panel: Panel): void {
+    chartCtrl.setLabels((panel.labels || []) as unknown as LabelMarkerInput[])
     chartCtrl.setLines(panel.lines || [])
     chartCtrl.setHLines(panel.hlines || [])
     chartCtrl.setVLines(panel.vlines || [])
   }
 
-  _syncVpToChart(chartCtrl: any, panel: Panel): void {
-    const vp = panel.volumeProfile ?? { enabled: false, opacity: 0.3 }
-    if (vp.enabled && !chartCtrl.vpEnabled) {
-      chartCtrl.enableVolumeProfile(vp.opacity ?? 0.3)
-    } else if (!vp.enabled && chartCtrl.vpEnabled) {
+  _syncVpToChart(chartCtrl: ChartControllerAPI, panel: Panel): void {
+    const volumeProfile = panel.volumeProfile ?? { enabled: false, opacity: 0.3 }
+    if (volumeProfile.enabled && !chartCtrl.vpEnabled) {
+      chartCtrl.enableVolumeProfile(volumeProfile.opacity ?? 0.3)
+    } else if (!volumeProfile.enabled && chartCtrl.vpEnabled) {
       chartCtrl.disableVolumeProfile()
     }
   }
