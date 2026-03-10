@@ -2,11 +2,10 @@ import TabStore from "./store"
 import type TabRenderer from "./renderer"
 import type ChartBridge from "../data_grid/chart_bridge"
 import { parseConditionFromBuilder } from "../templates/condition_templates"
-import { getHighlightStyles, validateFormulaReferences } from "../data_grid/condition_engine"
+import { getHighlightStyles, validateFormulaReferences, evaluateFormulaExpression } from "../data_grid/condition_engine"
 import type { DataColumn, DataConfig, DataGridControllerAPI, DataTableRow, ChartLink, StimulusApp, Tab, Panel } from "../types/store"
 import { columnFieldKey } from "../types/store"
 import { injectConditionStyles } from "../utils/dom"
-import candleCache from "../data/candle_cache"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 
 interface DataTabDeps {
@@ -88,7 +87,10 @@ export default class DataTabActions {
     if (!tab || tab.type !== "data" || !tab.dataConfig) return
     const startTime = this._readDateTimeFromInputs("dataStartDate", "dataStartHour", "dataStartMinute")
     const isLinked = this.store.isLinkedDataTab(tab)
-    const updates: { startTime?: number; endTime?: number } = { startTime }
+    const updates: { startTime?: number; endTime?: number; userConfiguredStart?: boolean } = {
+      startTime,
+      userConfiguredStart: !!startTime,  // mark as user-set so it survives reloads
+    }
     if (!isLinked) {
       updates.endTime = this._readDateTimeFromInputs("dataEndDate", "dataEndHour", "dataEndMinute", true)
     }
@@ -512,7 +514,6 @@ export default class DataTabActions {
     let tab = this.store.activeTab
     if (tab?.type === "data" && tab.dataConfig && this.store.isLinkedDataTab(tab)) {
       this._refreshLinkedSymbolAndTimeframe(tab)
-      this._extendTimeRangeFromCache(tab)
       this.render()
       tab = this.store.activeTab!
     }
@@ -535,11 +536,11 @@ export default class DataTabActions {
       const data = ctrl.getData()
       if (data?.length) {
         const times = data.map(r => r.time).filter(Boolean).sort((a: number, b: number) => a - b)
-        if (times.length && (!tab.dataConfig.startTime || !tab.dataConfig.endTime)) {
-          this.store.updateDataConfig(tab.id, {
-            startTime: times[0],
-            endTime: times[times.length - 1],
-          })
+        // Only auto-save range for unlinked tabs. Linked tabs never persist startTime/endTime
+        // automatically — stale auto-saved values cause data rollback on reload.
+        const isLinked = !!tab.dataConfig.sourceTabId
+        if (!isLinked && times.length && (!tab.dataConfig.startTime || !tab.dataConfig.endTime)) {
+          this.store.updateDataConfig(tab.id, { startTime: times[0], endTime: times[times.length - 1] })
           this.render()
         }
       }
@@ -549,16 +550,36 @@ export default class DataTabActions {
   }
 
   exportCsv() {
+    const tab = this.store.activeTab
     const ctrl = this._getGridCtrl()
     const data = ctrl?.getData()
     if (!data?.length) return
 
-    const keys = Object.keys(data[0])
-    const header = keys.join(",")
-    const rows = data.map(row => keys.map(k => row[k] ?? "").join(","))
-    const csv = [header, ...rows].join("\n")
+    const escape = (v: unknown): string => {
+      const s = v == null ? "" : String(v)
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s
+    }
 
-    const blob = new Blob([csv], { type: "text/csv" })
+    const columns = tab?.dataConfig?.columns
+    let csv: string
+
+    if (columns?.length) {
+      const header = columns.map(c => escape(c.label)).join(",")
+      const rows = data.map(row =>
+        columns.map(col => {
+          const value = col.type === "formula" && col.expression
+            ? evaluateFormulaExpression(col.expression, row)
+            : row[columnFieldKey(col)]
+          return escape(value)
+        }).join(",")
+      )
+      csv = [header, ...rows].join("\n")
+    } else {
+      const keys = Object.keys(data[0])
+      csv = [keys.join(","), ...data.map(row => keys.map(k => escape(row[k])).join(","))].join("\n")
+    }
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -611,6 +632,10 @@ export default class DataTabActions {
     if (!tab?.dataConfig) return
     // Do not overwrite user-set range (e.g. after Set): only sync when config has no range yet
     if (tab.dataConfig.startTime != null || tab.dataConfig.endTime != null) return
+
+    // Linked tabs: never auto-save startTime/endTime — stale values cause data rollback on reload.
+    // startTime is only saved when user explicitly clicks "Set" (sets userConfiguredStart flag).
+    if (tab.dataConfig.sourceTabId) return
 
     if (tab.dataConfig.startTime !== startTime || tab.dataConfig.endTime !== endTime) {
       this.store.updateDataConfig(tab.id, { startTime, endTime })
@@ -685,17 +710,6 @@ export default class DataTabActions {
     if (Object.keys(updates).length) this.store.updateDataConfig(tab.id, updates)
   }
 
-  private _extendTimeRangeFromCache(tab: { id: string; dataConfig?: { symbols: string[]; timeframe: string; startTime?: number; endTime?: number } }): void {
-    if (!tab.dataConfig?.symbols?.length) return
-    if (tab.dataConfig.startTime != null && tab.dataConfig.endTime != null) return
-    const symbol = tab.dataConfig.symbols[0]
-    const tf = tab.dataConfig.timeframe
-    const oldest = candleCache.oldestTime(symbol, tf)
-    const newest = candleCache.newestTime(symbol, tf)
-    if (oldest && newest) {
-      this.store.updateDataConfig(tab.id, { startTime: oldest, endTime: newest })
-    }
-  }
 
   private _columnLabelExists(tab: { dataConfig?: { columns: Array<{ label: string; id: string }> } }, label: string, excludeId?: string): boolean {
     if (!tab.dataConfig) return false

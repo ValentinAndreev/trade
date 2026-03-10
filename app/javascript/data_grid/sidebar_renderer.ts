@@ -13,7 +13,6 @@ import {
   formulaEditHTML,
   chartLinkItemHTML,
   chartLinkSelectorHTML,
-  settingsHTML,
   actionsHTML,
 } from "../templates/data_grid_form_templates"
 import {
@@ -85,10 +84,6 @@ export default class DataSidebarRenderer {
         <hr class="border-[#3a3a4e]">
 
         ${this._chartLinksSection(config.chartLinks || [])}
-
-        <hr class="border-[#3a3a4e]">
-
-        ${settingsHTML(this.ctrl)}
 
         <hr class="border-[#3a3a4e]">
 

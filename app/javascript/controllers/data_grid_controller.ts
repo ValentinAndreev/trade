@@ -6,7 +6,9 @@ import { loadDataTable, getRowsFromCache, type DataTableRow } from "../data_grid
 import { evaluateConditions, getHighlightStyles, type ConditionMatch } from "../data_grid/condition_engine"
 import { injectConditionStyles } from "../utils/dom"
 import candleCache from "../data/candle_cache"
+import type { Candle } from "../types/candle"
 import type { DataConfig } from "../types/store"
+import { columnFieldKey } from "../types/store"
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -42,6 +44,7 @@ export default class extends Controller {
   private conditionMatches: Map<number, ConditionMatch> = new Map()
   private cacheUnsub: (() => void) | null = null
   private selectionStatsEl: HTMLElement | null = null
+  private isLoadingData = false
 
   connect() {
     this.parseConfig()
@@ -50,9 +53,42 @@ export default class extends Controller {
     }
   }
 
+  /** Fill null instrument-column values from cache when the secondary symbol's cache arrives. */
+  private fillInstrumentColFromCache(instSymbol: string) {
+    if (!this.currentConfig || !this.gridApi || this.isLoadingData || !this.rows.length) return
+    const cols = this.currentConfig.columns.filter(
+      c => c.type === "instrument" && c.instrumentSymbol === instSymbol
+    )
+    if (!cols.length) return
+    const candles = candleCache.get(instSymbol, this.currentConfig.timeframe)
+    if (!candles?.length) return
+    const byTime = new Map(candles.map(c => [c.time, c]))
+    const toUpdate: DataTableRow[] = []
+    for (let i = 0; i < this.rows.length; i++) {
+      const candle = byTime.get(this.rows[i].time)
+      if (!candle) continue
+      let changed = false
+      const updated = { ...this.rows[i] }
+      for (const col of cols) {
+        const key = columnFieldKey(col)
+        const val = (col.instrumentField
+          ? (candle as unknown as Record<string, unknown>)[col.instrumentField]
+          : candle.close) as unknown
+        if (val != null && updated[key] == null) {
+          ;(updated as Record<string, unknown>)[key] = val
+          changed = true
+        }
+      }
+      if (changed) { this.rows[i] = updated; toUpdate.push(updated) }
+    }
+    if (toUpdate.length) {
+      this.refreshConditionMatches()
+      this.gridApi.applyTransaction({ update: toUpdate })
+    }
+  }
+
   disconnect() {
-    this.cacheUnsub?.()
-    this.cacheUnsub = null
+    this.teardownCacheSubscriptions()
     this.selectionStatsEl?.remove()
     this.selectionStatsEl = null
     this.gridApi?.destroy()
@@ -71,17 +107,22 @@ export default class extends Controller {
     const serverColsChanged = this.prevServerColsKey !== oldServerCols
 
     if (this.gridApi) {
-      this.gridApi.updateGridOptions({
-        columnDefs: buildColDefs(this.currentConfig.columns),
-        rowClassRules: buildRowClassRules(this.currentConfig.conditions, this.conditionMatches),
-      })
-
       if (symbolChanged || timeframeChanged || serverColsChanged) {
+        // Data reload path: loadData() will atomically apply columnDefs + rowData.
+        // Avoid a separate updateGridOptions({ columnDefs }) here which would briefly
+        // show rebuilt columns with no/old row data (the visual flicker).
         this.setupCacheSubscription()
         this.loadData()
-      } else if (this.rows.length) {
-        this.applyConditions()
-        this.gridApi.updateGridOptions({ rowData: this.rows })
+      } else {
+        // No data reload: apply column/condition config changes immediately.
+        this.gridApi.updateGridOptions({
+          columnDefs: buildColDefs(this.currentConfig.columns),
+          rowClassRules: buildRowClassRules(this.currentConfig.conditions, this.conditionMatches),
+        })
+        if (this.rows.length) {
+          this.refreshConditionMatches()
+          this.gridApi.updateGridOptions({ rowData: this.rows })
+        }
       }
     } else {
       this.initGrid()
@@ -236,46 +277,93 @@ export default class extends Controller {
     `
   }
 
+  private instrumentUnsubs: Array<() => void> = []
+
+  private teardownCacheSubscriptions() {
+    this.cacheUnsub?.(); this.cacheUnsub = null
+    this.instrumentUnsubs.forEach(u => u()); this.instrumentUnsubs = []
+  }
+
   private setupCacheSubscription() {
-    this.cacheUnsub?.()
-    this.cacheUnsub = null
-
+    this.teardownCacheSubscriptions()
     if (!this.currentConfig?.sourceTabId) return
-    const symbol = this.currentConfig.symbols[0]
-    if (!symbol) return
+    const { symbols, timeframe } = this.currentConfig
+    if (!symbols[0]) return
 
-    const hasServerCalcs = this.currentConfig.columns.some(c =>
+    const instSymbols = [...new Set(
+      this.currentConfig.columns.filter(c => c.type === "instrument" && c.instrumentSymbol).map(c => c.instrumentSymbol!)
+    )]
+    this.instrumentUnsubs = instSymbols.map(sym =>
+      candleCache.subscribe(sym, timeframe, () => this.fillInstrumentColFromCache(sym))
+    )
+    this.cacheUnsub = candleCache.subscribe(symbols[0], timeframe, (candles) => this.onCacheTick(candles))
+  }
+
+  private onCacheTick(candles: Candle[]) {
+    if (!this.currentConfig?.sourceTabId || !this.gridApi || this.isLoadingData || !candles.length) return
+    if (!this.rows.length) { this.populateFromCache(); return }
+    this.applyIncrementalCacheUpdate(candles)
+  }
+
+  private populateFromCache() {
+    const cached = getRowsFromCache(this.currentConfig!)
+    if (!cached?.length) return
+    this.rows = cached
+    this.refreshConditionMatches()
+    this.gridApi!.updateGridOptions({ rowData: this.rows })
+  }
+
+  private applyIncrementalCacheUpdate(candles: Candle[]) {
+    const config = this.currentConfig!
+    const hasServerCalcs = config.columns.some(c =>
       (c.type === "indicator" && c.indicatorType) ||
       (c.type === "change" && c.changePeriod) ||
       (c.type === "instrument" && c.instrumentSymbol)
     )
+    const freshRows = getRowsFromCache({ ...config, startTime: candles.at(-2)?.time, endTime: undefined })
+    if (!freshRows?.length) return
 
-    this.cacheUnsub = candleCache.subscribe(symbol, this.currentConfig.timeframe, () => {
-      if (!this.currentConfig?.sourceTabId || !this.gridApi) return
+    const byTime = new Map<number, number>()
+    for (let i = 0; i < this.rows.length; i++) byTime.set(this.rows[i].time, i)
 
-      const newest = candleCache.newestTime(symbol, this.currentConfig.timeframe)
-      const config = {
-        ...this.currentConfig,
-        endTime: newest ?? this.currentConfig.endTime,
+    const toAdd: DataTableRow[] = []
+    const toUpdate: DataTableRow[] = []
+    for (const fresh of freshRows) {
+      const idx = byTime.get(fresh.time)
+      if (idx != null) {
+        const merged = hasServerCalcs ? this.mergePreservingNulls(this.rows[idx], fresh) : fresh
+        this.rows[idx] = merged; toUpdate.push(merged)
+      } else {
+        this.rows.push(fresh); toAdd.push(fresh)
       }
-      const cached = getRowsFromCache(config)
-      if (!cached?.length) {
-        if (hasServerCalcs && !this.rows.length) this.loadData()
-        return
-      }
-      this.rows = cached
-      this.applyConditions()
-      this.gridApi.updateGridOptions({ rowData: this.rows })
-    })
+    }
+    if (!toAdd.length && !toUpdate.length) return
+    this.refreshConditionMatches()
+    this.gridApi!.applyTransaction({ add: toAdd, update: toUpdate })
+  }
+
+  private mergePreservingNulls(existing: DataTableRow, fresh: DataTableRow): DataTableRow {
+    const result = { ...existing } as Record<string, unknown>
+    for (const [k, v] of Object.entries(fresh)) if (v != null) result[k] = v
+    return result as DataTableRow
   }
 
   async loadData() {
-    if (!this.currentConfig || !this.gridApi) return
+    if (!this.currentConfig || !this.gridApi || this.isLoadingData) return
 
+    this.isLoadingData = true
     try {
-      this.rows = await loadDataTable(this.currentConfig)
-      this.applyConditions()
-      this.gridApi?.updateGridOptions({ rowData: this.rows })
+      // Snapshot config so we apply the exact column defs that match this data load.
+      const config = this.currentConfig
+      this.rows = await loadDataTable(config)
+      this.refreshConditionMatches()
+      // Atomic update: columnDefs + rowClassRules + rowData in one call so AG Grid
+      // never renders a state with new columns but empty/old rows (the visual flicker).
+      this.gridApi?.updateGridOptions({
+        columnDefs: buildColDefs(config.columns),
+        rowClassRules: buildRowClassRules(config.conditions, this.conditionMatches),
+        rowData: this.rows,
+      })
       this.dispatchTimeRange()
       this.element.dispatchEvent(new CustomEvent("datagrid:loaded", { bubbles: true }))
     } catch (err) {
@@ -283,6 +371,8 @@ export default class extends Controller {
       if (!this.rows.length) {
         this.gridApi?.updateGridOptions({ rowData: [] })
       }
+    } finally {
+      this.isLoadingData = false
     }
   }
 
@@ -292,10 +382,7 @@ export default class extends Controller {
     this.prevTimeframe = config.timeframe ?? null
     this.prevServerColsKey = this.serverColsKey(config)
     if (this.gridApi) {
-      this.gridApi.updateGridOptions({
-        columnDefs: buildColDefs(config.columns),
-        rowClassRules: buildRowClassRules(config.conditions, this.conditionMatches),
-      })
+      // No pre-emptive columnDefs update here — loadData() applies them atomically with rowData.
       this.setupCacheSubscription()
       await this.loadData()
     } else {
@@ -327,7 +414,7 @@ export default class extends Controller {
       })
       this.setupCacheSubscription()
       if (this.rows.length) {
-        this.applyConditions()
+        this.refreshConditionMatches()
         this.gridApi.updateGridOptions({ rowData: this.rows })
       }
     }
@@ -343,13 +430,18 @@ export default class extends Controller {
     }))
   }
 
-  private applyConditions() {
+  /**
+   * Full conditions refresh: re-evaluates matches AND rebuilds rowClassRules in AG Grid.
+   * Use when conditions config changes (new/edited/deleted condition).
+   * Mutates conditionMatches in-place so existing closures from prior buildRowClassRules
+   * calls stay in sync.
+   */
+  private refreshConditionMatches() {
     if (!this.currentConfig) return
-    this.conditionMatches = evaluateConditions(this.rows, this.currentConfig.conditions)
+    const newMatches = evaluateConditions(this.rows, this.currentConfig.conditions)
+    this.conditionMatches.clear()
+    for (const [k, v] of newMatches) this.conditionMatches.set(k, v)
     this.injectConditionStyles()
-    this.gridApi?.updateGridOptions({
-      rowClassRules: buildRowClassRules(this.currentConfig.conditions, this.conditionMatches),
-    })
   }
 
   private injectConditionStyles() {
