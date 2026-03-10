@@ -2,6 +2,6 @@
 
 class Api::HealthController < Api::ApplicationController
   def show
-    head :no_content
+    render json: { bitfinex: Utils::BitfinexHealth.reachable? }
   end
 end

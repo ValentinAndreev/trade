@@ -45,6 +45,7 @@ export const SPARKLINE_PADDING = 4
 // Connection status
 export const CONNECTION_ONLINE_COLOR = "#22c55e"
 export const CONNECTION_OFFLINE_COLOR = "#ef4444"
+export const CONNECTION_EXCHANGE_OFFLINE_COLOR = "#f59e0b"
 
 // Label font sizes (index 1–5)
 export const LABEL_FONT_SIZES = [0, 10, 13, 16, 20, 24] as const

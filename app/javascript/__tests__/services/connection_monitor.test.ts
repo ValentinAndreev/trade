@@ -6,6 +6,14 @@ vi.mock("../../config/constants", () => ({
   PING_TIMEOUT_MS: 3000,
   CONNECTION_ONLINE_COLOR: "#22c55e",
   CONNECTION_OFFLINE_COLOR: "#ef4444",
+  CONNECTION_EXCHANGE_OFFLINE_COLOR: "#f59e0b",
+}))
+vi.mock("../../chart/feeds/cable_consumer", () => ({
+  consumer: {
+    subscriptions: {
+      create: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    },
+  },
 }))
 
 describe("ConnectionMonitor", () => {
@@ -22,8 +30,10 @@ describe("ConnectionMonitor", () => {
     monitor = mod.default
     monitor.backendOnline = true
     monitor.internetOnline = true
+    monitor.bitfinexReachable = true
     monitor._started = false
     monitor._interval = null
+    monitor._subscription = null
   })
 
   afterEach(() => {
@@ -112,6 +122,76 @@ describe("ConnectionMonitor", () => {
       expect(fetch).not.toHaveBeenCalled()
       expect(monitor.backendOnline).toBe(false)
     })
+
+    it("updates bitfinexReachable from JSON response", async () => {
+      monitor.bitfinexReachable = true
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(JSON.stringify({ bitfinex: false }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+
+      await monitor._ping()
+      expect(monitor.bitfinexReachable).toBe(false)
+    })
+
+    it("keeps bitfinexReachable true when JSON says true", async () => {
+      monitor.bitfinexReachable = false
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(JSON.stringify({ bitfinex: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+
+      await monitor._ping()
+      expect(monitor.bitfinexReachable).toBe(true)
+    })
+
+    it("ignores non-JSON health responses gracefully", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("", { status: 200 }))
+      await expect(monitor._ping()).resolves.not.toThrow()
+      expect(monitor.bitfinexReachable).toBe(true)
+    })
+  })
+
+  describe("_updateBitfinexStatus", () => {
+    it("emits exchange:change event when status changes", async () => {
+      const spy = vi.fn()
+      window.addEventListener("exchange:change", spy)
+
+      monitor._updateBitfinexStatus(false)
+      expect(spy).toHaveBeenCalled()
+      expect((spy.mock.calls[0][0] as CustomEvent).detail.bitfinex).toBe(false)
+
+      window.removeEventListener("exchange:change", spy)
+    })
+
+    it("shows toast when bitfinex becomes unreachable", async () => {
+      const { showToast } = await import("../../services/toast")
+      monitor.bitfinexReachable = true
+      monitor._updateBitfinexStatus(false)
+      expect(showToast).toHaveBeenCalledWith("Bitfinex unreachable — live data paused")
+    })
+
+    it("shows toast when bitfinex reconnects", async () => {
+      const { showToast } = await import("../../services/toast")
+      monitor.bitfinexReachable = false
+      monitor._updateBitfinexStatus(true)
+      expect(showToast).toHaveBeenCalledWith("Bitfinex reconnected")
+    })
+
+    it("does nothing when status unchanged", async () => {
+      const spy = vi.fn()
+      window.addEventListener("exchange:change", spy)
+
+      monitor.bitfinexReachable = true
+      monitor._updateBitfinexStatus(true)
+      expect(spy).not.toHaveBeenCalled()
+
+      window.removeEventListener("exchange:change", spy)
+    })
   })
 
   describe("start/stop", () => {
@@ -130,6 +210,15 @@ describe("ConnectionMonitor", () => {
       monitor.stop()
       expect(monitor._interval).toBeNull()
       expect(monitor._started).toBe(false)
+    })
+
+    it("unsubscribes from ActionCable on stop", () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("", { status: 200 }))
+      monitor.start()
+      const unsubscribeSpy = monitor._subscription?.unsubscribe
+      monitor.stop()
+      expect(monitor._subscription).toBeNull()
+      if (unsubscribeSpy) expect(unsubscribeSpy).toHaveBeenCalled()
     })
   })
 })

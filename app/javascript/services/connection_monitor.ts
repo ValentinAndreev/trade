@@ -1,20 +1,25 @@
 import { showToast } from "./toast"
+import { consumer } from "../chart/feeds/cable_consumer"
 import {
   PING_INTERVAL_MS, PING_TIMEOUT_MS,
-  CONNECTION_ONLINE_COLOR, CONNECTION_OFFLINE_COLOR,
+  CONNECTION_ONLINE_COLOR, CONNECTION_OFFLINE_COLOR, CONNECTION_EXCHANGE_OFFLINE_COLOR,
 } from "../config/constants"
 
 class ConnectionMonitor {
   backendOnline: boolean
   internetOnline: boolean
+  bitfinexReachable: boolean
   _interval: ReturnType<typeof setInterval> | null
   _started: boolean
+  _subscription: ReturnType<typeof consumer.subscriptions.create> | null
 
   constructor() {
     this.backendOnline = true
     this.internetOnline = navigator.onLine
+    this.bitfinexReachable = true
     this._interval = null
     this._started = false
+    this._subscription = null
   }
 
   get isOnline() {
@@ -30,6 +35,7 @@ class ConnectionMonitor {
 
     this._ping()
     this._interval = setInterval(() => this._ping(), PING_INTERVAL_MS)
+    this._subscribeToExchangeStatus()
     this._updateUI()
   }
 
@@ -39,6 +45,8 @@ class ConnectionMonitor {
     window.removeEventListener("offline", this._onBrowserOffline)
     if (this._interval) clearInterval(this._interval)
     this._interval = null
+    this._subscription?.unsubscribe()
+    this._subscription = null
   }
 
   requireOnline(actionLabel: string): boolean {
@@ -79,6 +87,14 @@ class ConnectionMonitor {
       this.backendOnline = resp.ok || resp.status === 204
       if (wasOffline && this.backendOnline) this._emitChange()
       else if (!wasOffline && !this.backendOnline) this._emitChange()
+
+      // Parse bitfinex status from JSON response
+      if (resp.ok && resp.headers.get("content-type")?.includes("application/json")) {
+        try {
+          const body = await resp.json()
+          if (typeof body.bitfinex === "boolean") this._updateBitfinexStatus(body.bitfinex)
+        } catch { /* ignore parse errors */ }
+      }
     } catch {
       clearTimeout(timeout)
       if (this.backendOnline) {
@@ -88,6 +104,26 @@ class ConnectionMonitor {
     }
   }
 
+  _subscribeToExchangeStatus(): void {
+    this._subscription = consumer.subscriptions.create("ExchangeStatusChannel", {
+      received: (data: { bitfinex?: boolean }) => {
+        if (typeof data.bitfinex === "boolean") this._updateBitfinexStatus(data.bitfinex)
+      },
+    })
+  }
+
+  _updateBitfinexStatus(reachable: boolean): void {
+    if (this.bitfinexReachable === reachable) return
+    this.bitfinexReachable = reachable
+    if (!reachable) {
+      showToast("Bitfinex unreachable — live data paused")
+    } else {
+      showToast("Bitfinex reconnected")
+    }
+    this._emitExchangeChange()
+    this._updateUI()
+  }
+
   _emitChange(): void {
     this._updateUI()
     window.dispatchEvent(
@@ -95,8 +131,22 @@ class ConnectionMonitor {
     )
   }
 
+  _emitExchangeChange(): void {
+    window.dispatchEvent(
+      new CustomEvent("exchange:change", { detail: { bitfinex: this.bitfinexReachable } })
+    )
+  }
+
   _updateUI(): void {
-    const color = this.isOnline ? CONNECTION_ONLINE_COLOR : CONNECTION_OFFLINE_COLOR
+    let color: string
+    if (!this.isOnline) {
+      color = CONNECTION_OFFLINE_COLOR           // red — backend/internet down
+    } else if (!this.bitfinexReachable) {
+      color = CONNECTION_EXCHANGE_OFFLINE_COLOR  // amber — backend ok, exchange unreachable
+    } else {
+      color = CONNECTION_ONLINE_COLOR            // green — all good
+    }
+
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="${color}"/></svg>`
     const url = `data:image/svg+xml,${encodeURIComponent(svg)}`
 
