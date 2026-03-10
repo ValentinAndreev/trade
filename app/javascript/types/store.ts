@@ -6,6 +6,8 @@ export interface Tab {
   type: TabType;
   panels: Panel[];
   dataConfig?: DataConfig;
+  /** ID of the primary panel — stable regardless of panel reorder. Falls back to panels[0] if missing. */
+  primaryPanelId?: string;
 }
 
 export interface DataConfig {

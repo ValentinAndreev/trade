@@ -48,6 +48,7 @@ export default class TabStore {
       id: `tab-${this._nextTabId++}`,
       name: null,
       type: "chart",
+      primaryPanelId: panelId,
       panels: [{
         id: panelId,
         timeframe: "1m",
@@ -118,9 +119,9 @@ export default class TabStore {
       return info ? `${base} (${info})` : base
     }
     if (tab.name) return tab.name
-    const first = tab.panels[0]
-    const firstOverlay = first?.overlays[0]
-    if (firstOverlay?.symbol && first?.timeframe) return `${firstOverlay.symbol} ${first.timeframe}`
+    const primary = this.primaryPanel(tab)
+    const primaryOverlay = primary?.overlays[0]
+    if (primaryOverlay?.symbol && primary?.timeframe) return `${primaryOverlay.symbol} ${primary.timeframe}`
     return "New"
   }
 
@@ -192,6 +193,15 @@ export default class TabStore {
       this.selectedOverlayId = panel.overlays[0]?.id || null
     }
     return true
+  }
+
+  /** Returns the primary panel for a chart tab — stable regardless of panel reorder. */
+  primaryPanel(tab: Tab): Panel | null {
+    if (!tab.panels.length) return null
+    if (tab.primaryPanelId) {
+      return tab.panels.find(p => p.id === tab.primaryPanelId) ?? tab.panels[0]
+    }
+    return tab.panels[0]
   }
 
   movePanelUp(panelId: string): boolean {
@@ -586,12 +596,17 @@ export default class TabStore {
     const chart = this.tabs.find(t => t.id === chartTabId && t.type === "chart")
     if (!chart) return null
 
+    const primary = this.primaryPanel(chart)
     const symbols: string[] = []
     const indicatorColumns: DataColumn[] = []
-    let timeframe = "1m"
+    const timeframe = primary?.timeframe || "1m"
 
-    for (const panel of chart.panels) {
-      timeframe = panel.timeframe || timeframe
+    // Primary panel's symbol comes first (stable, regardless of panel order)
+    const orderedPanels = primary
+      ? [primary, ...chart.panels.filter(p => p.id !== primary.id)]
+      : chart.panels
+
+    for (const panel of orderedPanels) {
       for (const overlay of panel.overlays) {
         if (overlay.symbol && !symbols.includes(overlay.symbol)) {
           symbols.push(overlay.symbol)

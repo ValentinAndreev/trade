@@ -410,7 +410,7 @@ export default class DataTabActions {
     const chartTab = this.store.tabs.find(t => t.id === chartTabId && t.type === "chart")
     if (!chartTab || !chartTab.panels.length) return
 
-    const panelId = chartTab.panels[0].id
+    const panelId = (this.store.primaryPanel(chartTab) ?? chartTab.panels[0]).id
     const alreadyLinked = tab.dataConfig.chartLinks.length === 1
       && tab.dataConfig.chartLinks[0].chartTabId === chartTabId
       && tab.dataConfig.chartLinks[0].panelId === panelId
@@ -629,7 +629,7 @@ export default class DataTabActions {
 
   private _initConfigFromChart(dataTab: { id: string; dataConfig?: DataConfig }, chart: Tab): void {
     if (!dataTab.dataConfig) return
-    const panel = chart.panels[0]
+    const panel = this.store.primaryPanel(chart)
     if (!panel) return
     const primarySymbol = panel.overlays[0]?.symbol
     if (primarySymbol) {

@@ -484,7 +484,7 @@ export default class extends Controller {
     const vp = panel?.volumeProfile ?? { enabled: false, opacity: 0.3 }
     const chartTabOptions = this.store.tabs
       .filter(t => t.type === "chart")
-      .map(t => ({ id: t.id, label: this.store.tabLabel(t), primarySymbol: t.panels[0]?.overlays[0]?.symbol ?? null }))
+      .map(t => ({ id: t.id, label: this.store.tabLabel(t), primarySymbol: this.store.primaryPanel(t)?.overlays[0]?.symbol ?? null }))
     this.renderer.render({
       tabs: this.store.tabs,
       activeTabId: this.store.activeTabId,
