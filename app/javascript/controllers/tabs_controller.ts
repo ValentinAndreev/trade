@@ -25,6 +25,8 @@ export default class extends Controller {
   dataActions!: DataTabActions
   chartActions!: ChartSidebarActions
   private _boundListeners: Record<string, (e: Event) => void> | null = null
+  private _linkedDataRefreshInterval: ReturnType<typeof setInterval> | null = null
+  private _tabDragJustEnded = false
 
   async connect() {
     this.store = new TabStore()
@@ -70,6 +72,8 @@ export default class extends Controller {
       rowClick: (e) => this.dataActions.onDataGridRowClick(e),
       timeRange: (e) => this.dataActions.onDataGridTimeRange(e),
       gridLoaded: () => this.dataActions.onDataGridLoaded(),
+      startLinkedDataRefresh: () => this._startLinkedDataRefreshIfActive(),
+      columnStateChanged: (e: Event) => this._onDataGridColumnStateChanged(e),
     }
     this.element.addEventListener("label:created", this._boundListeners.label)
     this.element.addEventListener("line:created", this._boundListeners.line)
@@ -79,9 +83,34 @@ export default class extends Controller {
     this.element.addEventListener("datagrid:rowclick", this._boundListeners.rowClick)
     this.element.addEventListener("datagrid:timerange", this._boundListeners.timeRange)
     this.element.addEventListener("datagrid:loaded", this._boundListeners.gridLoaded)
+    this.element.addEventListener("tabs:startLinkedDataRefresh", this._boundListeners.startLinkedDataRefresh)
+    this.element.addEventListener("datagrid:columnStateChanged", this._boundListeners.columnStateChanged as EventListener)
+  }
+
+  private _onDataGridColumnStateChanged(e: Event) {
+    const detail = (e as CustomEvent<{ tabId: string; columnIds: string[]; widths?: Record<string, number> }>).detail
+    const tabId = detail?.tabId
+    if (tabId && detail?.columnIds?.length && this.store.reorderDataColumns(tabId, detail.columnIds, detail.widths)) {
+      this.render()
+    }
+  }
+
+  private _startLinkedDataRefreshIfActive() {
+    if (this._linkedDataRefreshInterval) {
+      clearInterval(this._linkedDataRefreshInterval)
+      this._linkedDataRefreshInterval = null
+    }
+    const tab = this.store.activeTab
+    if (tab && this.store.isLinkedDataTab(tab)) {
+      this._linkedDataRefreshInterval = setInterval(() => this.dataActions.loadDataGrid(), 30_000)
+    }
   }
 
   disconnect() {
+    if (this._linkedDataRefreshInterval) {
+      clearInterval(this._linkedDataRefreshInterval)
+      this._linkedDataRefreshInterval = null
+    }
     if (this._boundListeners) {
       this.element.removeEventListener("label:created", this._boundListeners.label)
       this.element.removeEventListener("line:created", this._boundListeners.line)
@@ -91,6 +120,8 @@ export default class extends Controller {
       this.element.removeEventListener("datagrid:rowclick", this._boundListeners.rowClick)
       this.element.removeEventListener("datagrid:timerange", this._boundListeners.timeRange)
       this.element.removeEventListener("datagrid:loaded", this._boundListeners.gridLoaded)
+      this.element.removeEventListener("tabs:startLinkedDataRefresh", this._boundListeners.startLinkedDataRefresh)
+      this.element.removeEventListener("datagrid:columnStateChanged", this._boundListeners.columnStateChanged as EventListener)
       this._boundListeners = null
     }
   }
@@ -133,8 +164,75 @@ export default class extends Controller {
   }
 
   switchTab(e: Event) {
+    if (this._tabDragJustEnded) {
+      this._tabDragJustEnded = false
+      return
+    }
     const tabId = ((e.currentTarget as HTMLElement).closest("[data-tab-id]") as HTMLElement | null)?.dataset.tabId
-    if (tabId && this.store.activateTab(tabId)) this.render()
+    if (!tabId || !this.store.activateTab(tabId)) return
+    this.render()
+
+    if (this._linkedDataRefreshInterval) {
+      clearInterval(this._linkedDataRefreshInterval)
+      this._linkedDataRefreshInterval = null
+    }
+
+    const tab = this.store.activeTab
+    if (tab && this.store.isLinkedDataTab(tab)) {
+      this._linkedDataRefreshInterval = setInterval(() => this.dataActions.loadDataGrid(), 30_000)
+    }
+  }
+
+  tabDragHandleClick(e: Event) {
+    e.stopPropagation()
+  }
+
+  tabDragStart(e: DragEvent) {
+    if (!e.dataTransfer) return
+    const source = (e.currentTarget as HTMLElement).closest("[data-tab-id]") as HTMLElement | null
+    const tabId = source?.dataset.dragTabId || source?.dataset.tabId
+    if (tabId) {
+      e.dataTransfer.setData("text/plain", tabId)
+      e.dataTransfer.effectAllowed = "move"
+      const dragImage = source || (e.currentTarget as HTMLElement)
+      e.dataTransfer.setDragImage(dragImage, 0, 0)
+    }
+  }
+
+  tabDragOver(e: DragEvent) {
+    if (!e.dataTransfer) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+    ;(e.currentTarget as HTMLElement).classList.add("tab-drop-target")
+  }
+
+  tabDragLeave(e: DragEvent) {
+    ;(e.currentTarget as HTMLElement).classList.remove("tab-drop-target")
+  }
+
+  tabDrop(e: DragEvent) {
+    e.preventDefault()
+    ;(e.currentTarget as HTMLElement).classList.remove("tab-drop-target")
+    const dragTabId = e.dataTransfer?.getData("text/plain")
+    const dropEl = e.currentTarget as HTMLElement
+    const dropTargetTabId = dropEl.dataset.tabId || dropEl.dataset.dragTabId
+    if (!dragTabId || !dropTargetTabId || dragTabId === dropTargetTabId) return
+    const tabs = this.store.tabs
+    const dragGroup = this.store.getTabGroupForDrag(dragTabId)
+    const dropGroup = this.store.getTabGroupForDrag(dropTargetTabId)
+    const dragIdx = tabs.findIndex((t) => t.id === dragGroup[0])
+    const dropIdx = tabs.findIndex((t) => t.id === dropGroup[0])
+    if (dragIdx === -1 || dropIdx === -1) return
+    const insertBefore = dropIdx < dragIdx
+    if (this.store.reorderTabs(dragTabId, dropTargetTabId, insertBefore)) {
+      this._tabDragJustEnded = true
+      this.render()
+    }
+  }
+
+  tabDragEnd(_e: DragEvent) {
+    this._tabDragJustEnded = true
+    this.tabBarTarget.querySelectorAll(".tab-drop-target").forEach((el) => el.classList.remove("tab-drop-target"))
   }
 
   startRename(e: Event) {
@@ -144,9 +242,11 @@ export default class extends Controller {
     if (!tabBtn) return
     const tabId = tabBtn.dataset.tabId
 
+    const tab = this.store.tabs.find(t => t.id === tabId)
+
     const input = document.createElement("input")
     input.type = "text"
-    input.value = labelEl.textContent
+    input.value = tab ? this.store.tabBaseName(tab) : (labelEl.textContent || "")
     input.className = "w-36 px-2 py-1 text-base text-white bg-[#2a2a3e] border border-blue-400 rounded outline-none"
     const commit = () => {
       const name = input.value.trim()
@@ -344,6 +444,7 @@ export default class extends Controller {
   updateDataSymbol(e: Event)         { this.dataActions.updateDataSymbol(e) }
   updateDataTimeframe(e: Event)      { this.dataActions.updateDataTimeframe(e) }
   updateDataDateRange()              { this.dataActions.updateDataDateRange() }
+  setDataDateRangeAndLoad()          { this.dataActions.setDataDateRangeAndLoad() }
   toggleDataColumns()                { this.dataActions.toggleDataColumns() }
   toggleDataConditions()             { this.dataActions.toggleDataConditions() }
   showAddColumn()                    { this.dataActions.showAddColumn() }
@@ -351,6 +452,7 @@ export default class extends Controller {
   onNewColumnTypeChange(e: Event)    { this.dataActions.onNewColumnTypeChange(e) }
   addColumn()                        { this.dataActions.addColumn() }
   removeColumn(e: Event)             { this.dataActions.removeColumn(e) }
+  toggleColumnVisibility(e: Event)   { this.dataActions.toggleColumnVisibility(e) }
   editFormulaColumn(e: Event)        { this.dataActions.editFormulaColumn(e) }
   saveFormulaColumn(e: Event)        { this.dataActions.saveFormulaColumn(e) }
   cancelFormulaEdit()                { this.dataActions.cancelFormulaEdit() }
@@ -363,7 +465,9 @@ export default class extends Controller {
   confirmEditCondition()             { this.dataActions.confirmEditCondition() }
   onCondOperatorChange(e: Event)     { this.dataActions.onCondOperatorChange(e) }
   onCondActionTypeChange(e: Event)   { this.dataActions.onCondActionTypeChange(e) }
-  addChartLink()                     { this.dataActions.addChartLink() }
+  showAddChartLink()                 { this.dataActions.showAddChartLink() }
+  confirmAddChartLink()              { this.dataActions.confirmAddChartLink() }
+  cancelAddChartLink()               { this.dataActions.cancelAddChartLink() }
   removeChartLink(e: Event)          { this.dataActions.removeChartLink(e) }
   updateGridSettings()               { this.dataActions.updateGridSettings() }
   loadDataGrid()                     { return this.dataActions.loadDataGrid() }
@@ -379,6 +483,9 @@ export default class extends Controller {
     this.dataActions.syncIndicatorsFromChart()
     const panel = this.store.selectedPanel
     const vp = panel?.volumeProfile ?? { enabled: false, opacity: 0.3 }
+    const chartTabOptions = this.store.tabs
+      .filter(t => t.type === "chart")
+      .map(t => ({ id: t.id, label: this.store.tabLabel(t), primarySymbol: t.panels[0]?.overlays[0]?.symbol ?? null }))
     this.renderer.render({
       tabs: this.store.tabs,
       activeTabId: this.store.activeTabId,
@@ -394,6 +501,7 @@ export default class extends Controller {
       vpOpacity: vp.opacity ?? 0.3,
       hlModeActive: this.drawingActions.modes.hlines,
       vlModeActive: this.drawingActions.modes.vlines,
+      chartTabOptions,
     })
     this._syncSelectedOverlayScale()
     requestAnimationFrame(() => {

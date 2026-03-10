@@ -19,3 +19,21 @@
 .styled-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #60a5fa;
 }
+
+/* Hide number input spinners (hour/minute in date range) */
+.number-no-spinner::-webkit-inner-spin-button,
+.number-no-spinner::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.number-no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Tab bar: drop target highlight when dragging */
+.tab-drop-target {
+  outline: 2px solid rgba(59, 130, 246, 0.8);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

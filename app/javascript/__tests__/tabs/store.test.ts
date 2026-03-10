@@ -39,10 +39,11 @@ describe("TabStore", () => {
       expect(store.selectedOverlayId).toBe(tab.panels[0].overlays[0].id)
     })
 
-    it("addTab with symbol sets overlay symbol and tab name", () => {
+    it("addTab with symbol sets overlay symbol, name is null for dynamic label", () => {
       const tab = store.addTab({ symbol: "BTCUSD" })
-      expect(tab.name).toBe("BTCUSD")
+      expect(tab.name).toBeNull()
       expect(tab.panels[0].overlays[0].symbol).toBe("BTCUSD")
+      expect(store.tabLabel(tab)).toBe("BTCUSD 1m")
     })
 
     it("removeTab returns false when only one tab", () => {
@@ -183,27 +184,51 @@ describe("TabStore", () => {
       expect(store.addOverlay("fake")).toBeNull()
     })
 
-    it("removeOverlay auto-recreates when last removed", () => {
+    it("removeOverlay does not remove primary overlay", () => {
       const tab = store.addTab()
       const panelId = tab.panels[0].id
       const overlayId = tab.panels[0].overlays[0].id
-      store.removeOverlay(panelId, overlayId)
+      const ok = store.removeOverlay(panelId, overlayId)
+      expect(ok).toBe(false)
       expect(tab.panels[0].overlays).toHaveLength(1)
-      expect(tab.panels[0].overlays[0].id).not.toBe(overlayId)
+      expect(tab.panels[0].overlays[0].id).toBe(overlayId)
     })
 
-    it("setOverlayMode changes mode", () => {
+    it("removeOverlay removes non-primary and auto-recreates when last non-primary removed", () => {
+      const tab = store.addTab()
+      const panelId = tab.panels[0].id
+      store.addOverlay(panelId)
+      const secondId = tab.panels[0].overlays[1].id
+      const ok = store.removeOverlay(panelId, secondId)
+      expect(ok).toBe(true)
+      expect(tab.panels[0].overlays).toHaveLength(1)
+    })
+
+    it("setOverlayMode cannot change primary overlay from price", () => {
       const tab = store.addTab()
       const oid = tab.panels[0].overlays[0].id
-      store.setOverlayMode(oid, "volume")
-      expect(tab.panels[0].overlays[0].mode).toBe("volume")
+      const ok = store.setOverlayMode(oid, "volume")
+      expect(ok).toBe(false)
+      expect(tab.panels[0].overlays[0].mode).toBe("price")
     })
 
-    it("setOverlayMode to indicator sets defaults", () => {
+    it("setOverlayMode changes mode for non-primary overlay", () => {
+      const tab = store.addTab()
+      const panelId = tab.panels[0].id
+      store.addOverlay(panelId)
+      const oid = tab.panels[0].overlays[1].id
+      const ok = store.setOverlayMode(oid, "volume")
+      expect(ok).toBe(true)
+      expect(tab.panels[0].overlays[1].mode).toBe("volume")
+    })
+
+    it("setOverlayMode to indicator sets defaults for non-primary", () => {
       const tab = store.addTab({ symbol: "BTCUSD" })
-      const oid = tab.panels[0].overlays[0].id
+      const panelId = tab.panels[0].id
+      store.addOverlay(panelId)
+      const oid = tab.panels[0].overlays[1].id
       store.setOverlayMode(oid, "indicator")
-      const overlay = tab.panels[0].overlays[0]
+      const overlay = tab.panels[0].overlays[1]
       expect(overlay.indicatorType).toBe("sma")
       expect(overlay.indicatorParams).toEqual({ period: 20 })
     })

@@ -23,6 +23,7 @@ export default class PanelRenderer {
   renderDataTab(tabs: Tab[], activeTabId: string | null): void {
     this._ensureWrappers(tabs, activeTabId, (tab, wrapper, isActive) => {
       if (tab.type !== "data" || !tab.dataConfig) return
+      if (wrapper.dataset.tabWrapper !== tab.id) return
       const hasChartLink = !!tab.dataConfig.chartLinks?.length
       if (!isActive && !hasChartLink) return
 

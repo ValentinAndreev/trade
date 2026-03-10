@@ -147,7 +147,8 @@ export function overlayItemHTML(
   ctrl: string,
   o: Overlay,
   isSelected: boolean,
-  panel: Panel
+  panel: Panel,
+  isPrimary = false
 ): string {
   let label, modeLabel
   if (o.mode === "indicator") {
@@ -186,7 +187,7 @@ export function overlayItemHTML(
       >
         <span class="w-2.5 h-2.5 rounded-full ${visibilityClass}" title="${visibilityTitle}" aria-hidden="true"></span>
       </button>
-      ${panel.overlays.length > 1 ? `
+      ${panel.overlays.length > 1 && !isPrimary ? `
         <span data-action="click->${ctrl}#removeOverlay"
               data-remove-overlay="${o.id}"
               title="Remove chart"

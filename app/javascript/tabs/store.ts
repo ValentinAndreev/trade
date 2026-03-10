@@ -1,7 +1,7 @@
 import { OVERLAY_COLORS } from "../config/theme"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import { loadTabs, saveTabs, calcNextId, loadActiveTabId, saveActiveTabId } from "./persistence"
-import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition } from "../types/store"
+import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition, ChartLink } from "../types/store"
 
 const DRAWING_PREFIX: Record<DrawingKind, string> = { labels: "lbl", lines: "ln", hlines: "hl", vlines: "vl" }
 
@@ -46,7 +46,7 @@ export default class TabStore {
     const panelId = `p-${this._nextPanelId++}`
     const tab: Tab = {
       id: `tab-${this._nextTabId++}`,
-      name: symbol || this._newTabName(),
+      name: null,
       type: "chart",
       panels: [{
         id: panelId,
@@ -110,14 +110,29 @@ export default class TabStore {
   }
 
   tabLabel(tab: Tab): string {
-    if (tab.name) return tab.name
     if (tab.type === "data") {
-      const symbols = tab.dataConfig?.symbols || []
-      return symbols.length ? `Data: ${symbols[0]}` : "Data"
+      const base = tab.name || this._autoDataName(tab)
+      const symbol = tab.dataConfig?.symbols?.[0] || ""
+      const tf = tab.dataConfig?.timeframe || ""
+      const info = [symbol, tf].filter(Boolean).join(" ")
+      return info ? `${base} (${info})` : base
     }
+    if (tab.name) return tab.name
     const first = tab.panels[0]
     const firstOverlay = first?.overlays[0]
-    return firstOverlay?.symbol ? `${firstOverlay.symbol} ${first.timeframe}` : "New"
+    if (firstOverlay?.symbol && first?.timeframe) return `${firstOverlay.symbol} ${first.timeframe}`
+    return "New"
+  }
+
+  tabBaseName(tab: Tab): string {
+    if (tab.type === "data") return tab.name || this._autoDataName(tab)
+    return tab.name || this.tabLabel(tab)
+  }
+
+  private _autoDataName(tab: Tab): string {
+    const dataTabs = this.tabs.filter(t => t.type === "data").sort((a, b) => a.id.localeCompare(b.id))
+    const idx = dataTabs.findIndex(t => t.id === tab.id)
+    return `Data${idx >= 0 ? idx + 1 : 1}`
   }
 
   get activeTab() {
@@ -204,8 +219,19 @@ export default class TabStore {
     const panel = this._findPanel(panelId)
     if (!panel || panel.timeframe === timeframe) return false
     panel.timeframe = timeframe
+    this._syncTimeframeToLinkedData(panelId, timeframe)
     this._save()
     return true
+  }
+
+  private _syncTimeframeToLinkedData(panelId: string, timeframe: string): void {
+    const chartTab = this.tabs.find(t => t.type === "chart" && t.panels.some(p => p.id === panelId))
+    if (!chartTab) return
+    for (const dataTab of this.tabs) {
+      if (dataTab.type !== "data" || !dataTab.dataConfig?.chartLinks) continue
+      const linked = dataTab.dataConfig.chartLinks.some(l => l.chartTabId === chartTab.id && l.panelId === panelId)
+      if (linked) dataTab.dataConfig.timeframe = timeframe
+    }
   }
 
   get selectedPanel() {
@@ -225,9 +251,16 @@ export default class TabStore {
     return overlay
   }
 
+  isPrimaryOverlay(panelId: string, overlayId: string): boolean {
+    const panel = this._findPanel(panelId)
+    if (!panel?.overlays.length) return false
+    return panel.overlays[0].id === overlayId
+  }
+
   removeOverlay(panelId: string, overlayId: string): boolean {
     const panel = this._findPanel(panelId)
     if (!panel) return false
+    if (this.isPrimaryOverlay(panelId, overlayId)) return false
     const overlay = panel.overlays.find(o => o.id === overlayId)
     if (!overlay) return false
     const wasPriceOverlay = overlay.mode !== "indicator" && !!overlay.symbol
@@ -265,6 +298,8 @@ export default class TabStore {
   setOverlayMode(overlayId: string, mode: "price" | "volume" | "indicator"): boolean {
     const overlay = this._findOverlay(overlayId)
     if (!overlay || overlay.mode === mode) return false
+    const panel = this._findPanelForOverlay(overlayId)
+    if (panel && this.isPrimaryOverlay(panel.id, overlayId) && mode !== "price") return false
     overlay.mode = mode
     if (mode === "indicator") {
       if (!overlay.indicatorType) {
@@ -490,18 +525,17 @@ export default class TabStore {
   // --- Data Tabs ---
 
   addDataTab({ symbols = [], timeframe = "1m", sourceTabId, extraColumns = [] }: { symbols?: string[]; timeframe?: string; sourceTabId?: string; extraColumns?: DataColumn[] } = {}): Tab {
+    const prefix = (sourceTabId && symbols[0]) ? `${symbols[0].toLowerCase()}_` : ""
     const defaultColumns: DataColumn[] = [
       { id: `col-${this._nextColumnId++}`, type: "datetime", label: "time" },
-      { id: `col-${this._nextColumnId++}`, type: "open", label: "open" },
-      { id: `col-${this._nextColumnId++}`, type: "high", label: "high" },
-      { id: `col-${this._nextColumnId++}`, type: "low", label: "low" },
-      { id: `col-${this._nextColumnId++}`, type: "close", label: "close" },
-      { id: `col-${this._nextColumnId++}`, type: "volume", label: "volume" },
+      { id: `col-${this._nextColumnId++}`, type: "open", label: `${prefix}open` },
+      { id: `col-${this._nextColumnId++}`, type: "high", label: `${prefix}high` },
+      { id: `col-${this._nextColumnId++}`, type: "low", label: `${prefix}low` },
+      { id: `col-${this._nextColumnId++}`, type: "close", label: `${prefix}close` },
+      { id: `col-${this._nextColumnId++}`, type: "volume", label: `${prefix}volume` },
     ]
 
     const chartLinks: { chartTabId: string; panelId: string }[] = []
-    const dataTabCount = this.tabs.filter(t => t.type === "data").length + 1
-    let tabName = `data${dataTabCount}`
 
     if (sourceTabId) {
       const sourceChart = this.tabs.find(t => t.id === sourceTabId && t.type === "chart")
@@ -509,14 +543,13 @@ export default class TabStore {
         for (const panel of sourceChart.panels) {
           chartLinks.push({ chartTabId: sourceTabId, panelId: panel.id })
         }
-        const chartLabel = sourceChart.name || this.tabLabel(sourceChart)
-        tabName = `${tabName} (${chartLabel})`
       }
     }
 
+    const dataTabCount = this.tabs.filter(t => t.type === "data").length
     const tab: Tab = {
       id: `tab-${this._nextTabId++}`,
-      name: tabName,
+      name: `Data${dataTabCount + 1}`,
       type: "data",
       panels: [],
       dataConfig: {
@@ -528,7 +561,20 @@ export default class TabStore {
         sourceTabId,
       },
     }
-    this.tabs.push(tab)
+    if (sourceTabId) {
+      const chartIdx = this.tabs.findIndex(t => t.id === sourceTabId)
+      if (chartIdx !== -1) {
+        let insertIdx = chartIdx + 1
+        while (insertIdx < this.tabs.length && this.tabs[insertIdx].type === "data" && this.tabs[insertIdx].dataConfig?.chartLinks?.some(l => l.chartTabId === sourceTabId)) {
+          insertIdx++
+        }
+        this.tabs.splice(insertIdx, 0, tab)
+      } else {
+        this.tabs.push(tab)
+      }
+    } else {
+      this.tabs.push(tab)
+    }
     this.activeTabId = tab.id
     this.selectedPanelId = null
     this.selectedOverlayId = null
@@ -568,10 +614,144 @@ export default class TabStore {
     return this.addDataTab({ symbols, timeframe, sourceTabId: chartTabId, extraColumns: indicatorColumns })
   }
 
+  moveTabNextToChart(dataTabId: string, chartTabId: string): void {
+    const dataIdx = this.tabs.findIndex(t => t.id === dataTabId)
+    const chartIdx = this.tabs.findIndex(t => t.id === chartTabId)
+    if (dataIdx === -1 || chartIdx === -1) return
+    const [dataTab] = this.tabs.splice(dataIdx, 1)
+    if (!dataTab) return
+    const newChartIdx = this.tabs.findIndex(t => t.id === chartTabId)
+    let insertIdx = newChartIdx + 1
+    while (insertIdx < this.tabs.length && this.tabs[insertIdx].type === "data" && this.tabs[insertIdx].dataConfig?.chartLinks?.some(l => l.chartTabId === chartTabId)) {
+      insertIdx++
+    }
+    this.tabs.splice(insertIdx, 0, dataTab)
+    this._save()
+  }
+
+  isLinkedDataTab(tab: Tab): boolean {
+    return tab.type === "data" && !!tab.dataConfig?.chartLinks?.length
+  }
+
+  /** Move unlinked data tab to right after its former group (chart + remaining linked data tabs). */
+  moveUnlinkedTabAfterGroup(dataTabId: string, chartTabId: string): void {
+    const tabIdx = this.tabs.findIndex((t) => t.id === dataTabId)
+    if (tabIdx === -1) return
+    const [tab] = this.tabs.splice(tabIdx, 1)
+    if (!tab) return
+    const chartIdx = this.tabs.findIndex((t) => t.id === chartTabId && t.type === "chart")
+    if (chartIdx === -1) {
+      this.tabs.push(tab)
+      this._save()
+      return
+    }
+    let insertAfter = chartIdx
+    let i = chartIdx + 1
+    while (i < this.tabs.length && this.tabs[i].type === "data" && this.tabs[i].dataConfig?.chartLinks?.some((l: ChartLink) => l.chartTabId === chartTabId)) {
+      insertAfter = i
+      i++
+    }
+    this.tabs.splice(insertAfter + 1, 0, tab)
+    this._save()
+  }
+
+  /** Returns [chartTabId, ...linkedDataTabIds] if tab is chart or linked data; else [tabId]. */
+  getTabGroupForDrag(tabId: string): string[] {
+    const tab = this.tabs.find(t => t.id === tabId)
+    if (!tab) return [tabId]
+    if (tab.type === "chart") {
+      const group: string[] = [tab.id]
+      let i = this.tabs.findIndex(t => t.id === tabId) + 1
+      while (i < this.tabs.length && this.tabs[i].type === "data" && this.tabs[i].dataConfig?.chartLinks?.some((l: ChartLink) => l.chartTabId === tabId)) {
+        group.push(this.tabs[i].id)
+        i++
+      }
+      return group
+    }
+    if (tab.type === "data" && tab.dataConfig?.chartLinks?.length) {
+      const chartId = tab.dataConfig.chartLinks[0].chartTabId
+      return this.getTabGroupForDrag(chartId)
+    }
+    return [tabId]
+  }
+
+  /**
+   * Normalize drop target so we never insert inside a linked group.
+   * Returns [tabId, insertBefore] to insert before that tab or after it.
+   */
+  private _normalizeDropTarget(dropTargetTabId: string, insertBefore: boolean): [string, boolean] {
+    const group = this.getTabGroupForDrag(dropTargetTabId)
+    if (group.length <= 1) return [dropTargetTabId, insertBefore]
+    const groupSet = new Set(group)
+    const lastGroupIdx = this.tabs.findIndex(t => t.id === group[group.length - 1])
+    if (insertBefore) return [group[0], true]
+    if (lastGroupIdx >= 0 && lastGroupIdx + 1 < this.tabs.length) return [this.tabs[lastGroupIdx + 1].id, true]
+    return [group[group.length - 1], false]
+  }
+
+  /** Move tab (or chart+linked group) to before/after dropTargetTabId. Never inserts inside a linked group. */
+  reorderTabs(dragTabId: string, dropTargetTabId: string, insertBefore: boolean): boolean {
+    const [canonTarget, canonBefore] = this._normalizeDropTarget(dropTargetTabId, insertBefore)
+    const toMove = this.getTabGroupForDrag(dragTabId)
+    if (toMove.includes(canonTarget)) return false
+    const moveSet = new Set(toMove)
+    const rest = this.tabs.filter(t => !moveSet.has(t.id))
+    const movedTabs = this.tabs.filter(t => moveSet.has(t.id))
+    const order = [...toMove]
+    const orderedMoved = order.map(id => movedTabs.find(t => t.id === id)).filter(Boolean) as Tab[]
+    if (orderedMoved.length === 0) return false
+    const dropIdx = rest.findIndex(t => t.id === canonTarget)
+    if (dropIdx === -1) return false
+    const insertIdx = canonBefore ? dropIdx : dropIdx + 1
+    this.tabs = [...rest.slice(0, insertIdx), ...orderedMoved, ...rest.slice(insertIdx)]
+    this._save()
+    return true
+  }
+
   updateDataConfig(tabId: string, updates: Partial<DataConfig>): boolean {
     const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
     if (!tab || !tab.dataConfig) return false
     Object.assign(tab.dataConfig, updates)
+    if (updates.timeframe != null && tab.dataConfig.chartLinks?.length) {
+      const tf = tab.dataConfig.timeframe
+      this._syncTimeframeToChart(tf, tab.dataConfig.chartLinks)
+      this._syncTimeframeToOtherDataTabs(tabId, tf, tab.dataConfig.chartLinks)
+    }
+    this._save()
+    return true
+  }
+
+  private _syncTimeframeToChart(timeframe: string, chartLinks: Array<{ chartTabId: string; panelId: string }>): void {
+    for (const link of chartLinks) {
+      const chartTab = this.tabs.find(t => t.id === link.chartTabId && t.type === "chart")
+      const panel = chartTab?.panels.find(p => p.id === link.panelId)
+      if (panel) panel.timeframe = timeframe
+    }
+  }
+
+  private _syncTimeframeToOtherDataTabs(excludeTabId: string, timeframe: string, chartLinks: Array<{ chartTabId: string; panelId: string }>): void {
+    const linkSet = new Set(chartLinks.map(l => `${l.chartTabId}:${l.panelId}`))
+    for (const dataTab of this.tabs) {
+      if (dataTab.type !== "data" || dataTab.id === excludeTabId || !dataTab.dataConfig?.chartLinks) continue
+      const hasSameLink = dataTab.dataConfig.chartLinks.some(l => linkSet.has(`${l.chartTabId}:${l.panelId}`))
+      if (hasSameLink) dataTab.dataConfig.timeframe = timeframe
+    }
+  }
+
+  reorderDataColumns(tabId: string, columnIds: string[], widths?: Record<string, number>): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig?.columns.length) return false
+    const byId = new Map(tab.dataConfig.columns.map(c => [c.id, c]))
+    const reordered: DataColumn[] = []
+    for (const id of columnIds) {
+      const col = byId.get(id)
+      if (col) {
+        if (widths && widths[id] != null) col.width = widths[id]
+        reordered.push(col)
+      }
+    }
+    const rest = tab.dataConfig.columns.filter(c => !reordered.some(r => r.id === c.id))
+    tab.dataConfig.columns = [...reordered, ...rest]
     this._save()
     return true
   }
@@ -591,6 +771,16 @@ export default class TabStore {
     const idx = tab.dataConfig.columns.findIndex(c => c.id === columnId)
     if (idx === -1) return false
     tab.dataConfig.columns.splice(idx, 1)
+    this._save()
+    return true
+  }
+
+  setDataColumnVisible(tabId: string, columnId: string, visible: boolean): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig) return false
+    const col = tab.dataConfig.columns.find(c => c.id === columnId)
+    if (!col) return false
+    col.visible = visible
     this._save()
     return true
   }

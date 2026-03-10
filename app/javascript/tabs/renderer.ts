@@ -5,6 +5,12 @@ import { tabButtonHTML, addTabButtonHTML } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 
+export interface ChartTabOption {
+  id: string
+  label: string
+  primarySymbol: string | null
+}
+
 export interface TabRenderOpts {
   tabs: Tab[]
   activeTabId: string | null
@@ -20,6 +26,7 @@ export interface TabRenderOpts {
   vpOpacity: number
   hlModeActive: boolean
   vlModeActive: boolean
+  chartTabOptions?: ChartTabOption[]
 }
 
 export default class TabRenderer {
@@ -50,7 +57,7 @@ export default class TabRenderer {
         this.dataSidebar.setColumns(activeTab.dataConfig.columns)
         this.dataSidebar.setConditions(activeTab.dataConfig.conditions)
       }
-      this.dataSidebar.render(activeTab, symbols, timeframes)
+      this.dataSidebar.render(activeTab, symbols, timeframes, opts.chartTabOptions || [])
     } else {
       this.panels.render(tabs, activeTabId, selectedPanelId)
       this.panels.renderDataTab(tabs, activeTabId)
@@ -65,10 +72,33 @@ export default class TabRenderer {
   }
 
   _renderTabBar(tabs: Tab[], activeTabId: string | null, labelFn?: (tab: Tab) => string): void {
-    const buttons = tabs.map(tab =>
-      tabButtonHTML(this.ctrl, tab.id, labelFn ? labelFn(tab) : "New", tab.id === activeTabId, tabs.length > 1, tab.type || "chart")
-    ).join("")
+    const parts: string[] = []
+    let i = 0
 
-    this.tabBarEl.innerHTML = buttons + addTabButtonHTML(this.ctrl)
+    while (i < tabs.length) {
+      const tab = tabs[i]
+      if (tab.type === "chart") {
+        const group: Tab[] = [tab]
+        let j = i + 1
+        while (j < tabs.length && tabs[j].type === "data" && tabs[j].dataConfig?.chartLinks?.some(l => l.chartTabId === tab.id)) {
+          group.push(tabs[j])
+          j++
+        }
+        if (group.length > 1) {
+          const inner = group.map(t =>
+            tabButtonHTML(this.ctrl, t.id, labelFn ? labelFn(t) : "New", t.id === activeTabId, tabs.length > 1, t.type || "chart", true)
+          ).join("")
+          const chartId = tab.id
+          const groupHandle = `<span class="tab-drag-handle inline-flex items-center justify-center w-5 h-5 rounded cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300 hover:bg-white/10 shrink-0" draggable="true" data-action="click->${this.ctrl}#tabDragHandleClick dragstart->${this.ctrl}#tabDragStart dragend->${this.ctrl}#tabDragEnd" title="Drag to reorder">&#8942;</span>`
+          parts.push(`<div data-tab-id="${chartId}" data-drag-tab-id="${chartId}" data-action="dragover->${this.ctrl}#tabDragOver dragleave->${this.ctrl}#tabDragLeave drop->${this.ctrl}#tabDrop" class="inline-flex items-stretch border border-blue-400/40 rounded-lg bg-blue-500/5">${groupHandle}${inner}</div>`)
+          i = j
+          continue
+        }
+      }
+      parts.push(tabButtonHTML(this.ctrl, tab.id, labelFn ? labelFn(tab) : "New", tab.id === activeTabId, tabs.length > 1, tab.type || "chart"))
+      i++
+    }
+
+    this.tabBarEl.innerHTML = parts.join("") + addTabButtonHTML(this.ctrl)
   }
 }

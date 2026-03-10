@@ -7,6 +7,7 @@ import { indicatorFieldColors } from "./series_factory"
 import { RECOMPUTE_DEBOUNCE_MS } from "../config/constants"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import connectionMonitor from "../services/connection_monitor"
+import indicatorCache from "../data/indicator_cache"
 
 export default class IndicatorManager {
   chart: IChartApi
@@ -82,6 +83,10 @@ export default class IndicatorManager {
         return { series, fieldKey: field.key }
       })
 
+      const symbol = this.resolveSymbol(ov)
+      if (symbol) {
+        indicatorCache.set(symbol, this.timeframe, ov.indicatorType, ov.indicatorParams || {}, data)
+      }
       ov.activePriceScaleId = scaleId
       this._onScaleSync()
     } catch (error) {
@@ -189,6 +194,10 @@ export default class IndicatorManager {
           .map(d => ({ time: d.time, value: d[fieldKey] }))
         series.setData(seriesData)
       })
+      const symbol = this.resolveSymbol(ov)
+      if (symbol) {
+        indicatorCache.set(symbol, this.timeframe, ov.indicatorType, ov.indicatorParams || {}, data)
+      }
     } catch (error) {
       console.error(`[indicator] recompute failed:`, error)
     }

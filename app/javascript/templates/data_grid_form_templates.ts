@@ -47,17 +47,45 @@ export function timeframeSelectHTML(ctrl: string, timeframes: string[], current:
   `
 }
 
-export function dateRangeHTML(ctrl: string, startVal: string, endVal: string): string {
+/** Date range with 24h time: startDate, startHour (0–23), startMinute (0–59); same for end when not linked. */
+export function dateRangeHTML(
+  ctrl: string,
+  startDate: string,
+  startHour: number,
+  startMinute: number,
+  endDate: string,
+  endHour: number,
+  endMinute: number,
+  linked: boolean,
+): string {
+  const endRow = linked
+    ? ""
+    : `
+      <div class="flex gap-2 items-center min-w-0 flex-wrap">
+        <input type="date" data-field="dataEndDate" value="${endDate}" class="min-w-0 flex-1 ${INPUT_CLS}">
+        <input type="number" data-field="dataEndHour" min="0" max="23" value="${endHour}" placeholder="HH" title="Hour (0–23)"
+               class="w-12 number-no-spinner ${INPUT_CLS} text-center">
+        <span class="text-gray-500">:</span>
+        <input type="number" data-field="dataEndMinute" min="0" max="59" value="${endMinute}" placeholder="MM" title="Minute (0–59)"
+               class="w-12 number-no-spinner ${INPUT_CLS} text-center">
+      </div>`
   return `
-    <div class="flex flex-col gap-1 text-sm text-gray-400">
-      <span>Date Range (UTC)</span>
-      <div class="flex gap-2">
-        <input type="datetime-local" data-field="dataStartTime" value="${startVal}"
-               data-action="change->${ctrl}#updateDataDateRange"
-               class="flex-1 ${INPUT_CLS}">
-        <input type="datetime-local" data-field="dataEndTime" value="${endVal}"
-               data-action="change->${ctrl}#updateDataDateRange"
-               class="flex-1 ${INPUT_CLS}">
+    <div class="flex flex-col gap-2 text-sm text-gray-400 min-w-0">
+      <span>Date Range (UTC, 24h)${linked ? " — start only" : ""}</span>
+      <div class="flex flex-col gap-2 min-w-0">
+        <div class="flex gap-2 items-center min-w-0 flex-wrap">
+          <input type="date" data-field="dataStartDate" value="${startDate}" class="min-w-0 flex-1 ${INPUT_CLS}">
+          <input type="number" data-field="dataStartHour" min="0" max="23" value="${startHour}" placeholder="HH" title="Hour (0–23)"
+                 class="w-12 number-no-spinner ${INPUT_CLS} text-center">
+          <span class="text-gray-500">:</span>
+          <input type="number" data-field="dataStartMinute" min="0" max="59" value="${startMinute}" placeholder="MM" title="Minute (0–59)"
+                 class="w-12 number-no-spinner ${INPUT_CLS} text-center">
+        </div>
+        ${endRow}
+        <button type="button" data-action="click->${ctrl}#setDataDateRangeAndLoad"
+                class="self-start px-2 py-1.5 text-xs font-medium text-gray-300 bg-[#2a2a3e] hover:bg-[#3a3a4e] rounded cursor-pointer">
+          Set
+        </button>
       </div>
     </div>
   `
@@ -112,8 +140,9 @@ export function formulaParamsHTML(): string {
         <div class="hidden group-hover:block absolute right-0 bottom-full mb-1 z-50 p-2.5 text-xs text-gray-300 bg-[#1a1a2e] border border-[#3a3a4e] rounded-lg shadow-xl font-mono leading-relaxed pointer-events-none" style="width:max-content;max-width:20rem">${helpHTML}</div>
       </span>
     </div>
-    <input type="text" data-field="formulaExpression" placeholder="(close - open) / open * 100"
+    <input type="text" data-field="formulaExpression" placeholder="(btcusd_close - btcusd_open) / btcusd_open * 100"
            class="${INPUT_CLS} font-mono">
+    <div data-formula-error class="hidden text-xs text-red-400 mt-1"></div>
   `
 }
 
@@ -143,19 +172,30 @@ export function columnListHTML(ctrl: string, columns: DataColumn[]): string {
     const editBtn = isEditable
       ? `<button data-action="click->${ctrl}#editFormulaColumn"
                  data-column-id="${col.id}"
-                 class="hidden group-hover:inline-flex w-5 h-5 items-center justify-center rounded text-gray-500 hover:text-blue-300 text-xs cursor-pointer"
+                 class="inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-blue-300 hover:bg-blue-500/10 text-sm shrink-0 cursor-pointer"
                  title="Edit formula">&#9998;</button>`
       : ""
+    const visible = col.visible !== false
+    const visibilityClass = visible ? "bg-emerald-400" : "bg-gray-600"
+    const visibilityTitle = visible ? "Visible" : "Hidden"
     return `
-    <div class="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-[#2a2a3e] group" data-column-id="${col.id}">
-      <span class="text-sm text-gray-300 truncate"${exprHint}>${escapeHTML(col.label)}</span>
-      <span class="flex items-center gap-1">
-        <span class="text-xs text-gray-500">${col.type}</span>
+    <div class="flex items-center justify-between gap-2 py-1.5 px-2 rounded hover:bg-[#2a2a3e] group" data-column-id="${col.id}">
+      <span class="text-sm text-gray-300 truncate min-w-0 flex-1"${exprHint}>${escapeHTML(col.label)}</span>
+      <span class="flex items-center gap-0 shrink-0">
+        <span class="text-xs text-gray-500 shrink-0">${col.type}</span>
+        <button type="button"
+                data-action="click->${ctrl}#toggleColumnVisibility"
+                data-column-id="${col.id}"
+                class="inline-flex w-6 h-6 items-center justify-center rounded hover:bg-[#3a3a4e] cursor-pointer shrink-0"
+                title="${visibilityTitle}"
+                aria-label="${visibilityTitle}">
+          <span class="w-2.5 h-2.5 rounded-full ${visibilityClass}" aria-hidden="true"></span>
+        </button>
         ${editBtn}
         <button data-action="click->${ctrl}#removeColumn"
                 data-column-id="${col.id}"
-                class="hidden group-hover:inline-flex w-5 h-5 items-center justify-center rounded text-gray-500 hover:text-red-300 text-xs cursor-pointer"
-        >&times;</button>
+                class="inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm shrink-0 cursor-pointer"
+                title="Remove column">&times;</button>
       </span>
     </div>`
   }).join("")
@@ -182,16 +222,45 @@ export function addColumnFormHTML(ctrl: string, defaultParamsHTML: string): stri
   `
 }
 
-export function chartLinkItemHTML(ctrl: string, link: { chartTabId: string; panelId: string }, idx: number): string {
+export function chartLinkItemHTML(ctrl: string, link: { chartTabId: string; panelId: string }, idx: number, chartLabel?: string): string {
+  const label = chartLabel || `${link.chartTabId} / ${link.panelId}`
   return `
-    <div class="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-[#2a2a3e] group">
-      <span class="text-sm text-gray-300 truncate">
-        <span class="text-blue-400 text-xs mr-1">&#9636;</span>${escapeHTML(link.chartTabId)} / ${escapeHTML(link.panelId)}
-      </span>
-      <button data-action="click->${ctrl}#removeChartLink"
-              data-link-index="${idx}"
-              class="hidden group-hover:inline-flex w-5 h-5 items-center justify-center rounded text-gray-500 hover:text-red-300 text-xs cursor-pointer"
-      >&times;</button>
+    <div class="flex flex-col gap-1.5 py-1 px-2 rounded bg-[#22223a] border border-blue-500/20">
+      <div class="flex items-center gap-2">
+        <span class="text-blue-400 text-sm">&#9636;</span>
+        <span class="text-sm text-gray-200 truncate flex-1">${escapeHTML(label)}</span>
+      </div>
+      <div class="flex gap-2">
+        <button data-action="click->${ctrl}#showAddChartLink"
+                class="flex-1 px-2 py-1.5 text-xs text-gray-300 bg-[#2a2a3e] hover:bg-[#3a3a4e] rounded cursor-pointer flex items-center justify-center gap-1">
+          <span>&#8635;</span> Change
+        </button>
+        <button data-action="click->${ctrl}#removeChartLink"
+                data-link-index="${idx}"
+                class="flex-1 px-2 py-1.5 text-xs text-red-400 bg-[#2a2a3e] hover:bg-red-500/15 rounded cursor-pointer flex items-center justify-center gap-1">
+          <span>&times;</span> Unlink
+        </button>
+      </div>
+    </div>
+  `
+}
+
+export function chartLinkSelectorHTML(ctrl: string, chartOptions: Array<{ id: string; label: string }>): string {
+  if (!chartOptions.length) {
+    return `<span class="text-xs text-gray-500 italic px-2">No chart tabs available</span>`
+  }
+  const opts = chartOptions.map(c => `<option value="${c.id}">${escapeHTML(c.label)}</option>`).join("")
+  return `
+    <div data-chart-link-selector class="flex flex-col gap-2 p-2 bg-[#22223a] rounded border border-[#3a3a4e]">
+      <select data-field="linkChartTabId" class="${INPUT_CLS}">
+        ${opts}
+      </select>
+      <div class="flex gap-2">
+        <button data-action="click->${ctrl}#confirmAddChartLink"
+                class="flex-1 px-2 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer">Link</button>
+        <button data-action="click->${ctrl}#cancelAddChartLink"
+                class="flex-1 px-2 py-1.5 text-sm text-gray-400 bg-[#2a2a3e] hover:bg-[#3a3a4e] rounded cursor-pointer">Cancel</button>
+      </div>
     </div>
   `
 }
@@ -241,6 +310,7 @@ export function formulaEditHTML(ctrl: string, colId: string, label: string, expr
              class="${INPUT_CLS}">
       <input type="text" data-field="editFormulaExpression" value="${escapeHTML(expression)}"
              class="${INPUT_CLS} font-mono">
+      <div data-formula-error class="hidden text-xs text-red-400 mt-1"></div>
       <div class="flex gap-2">
         <button data-action="click->${ctrl}#saveFormulaColumn" data-column-id="${colId}"
                 class="flex-1 px-2 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer">Save</button>

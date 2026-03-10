@@ -12,6 +12,7 @@ import {
   addColumnFormHTML,
   formulaEditHTML,
   chartLinkItemHTML,
+  chartLinkSelectorHTML,
   settingsHTML,
   actionsHTML,
 } from "../templates/data_grid_form_templates"
@@ -19,6 +20,7 @@ import {
   conditionItemHTML,
   conditionBuilderHTML,
 } from "../templates/condition_templates"
+import type { ChartTabOption } from "../tabs/renderer"
 
 export interface IndicatorInfo {
   key: string
@@ -34,6 +36,7 @@ export default class DataSidebarRenderer {
   conditionsCollapsed = false
   linksCollapsed = false
   showConditionBuilder = false
+  showLinkSelector = false
   editingConditionId: string | null = null
   editingFormulaId: string | null = null
   availableIndicators: IndicatorInfo[] = []
@@ -43,7 +46,7 @@ export default class DataSidebarRenderer {
     this.ctrl = controllerName
   }
 
-  render(tab: Tab, symbols: string[], timeframes: string[]): void {
+  render(tab: Tab, symbols: string[], timeframes: string[], chartTabOptions: ChartTabOption[] = []): void {
     if (!tab.dataConfig) {
       this.sidebarEl.innerHTML = ""
       return
@@ -53,9 +56,10 @@ export default class DataSidebarRenderer {
     this._lastColumns = config.columns
     this._lastConfig = config
     this._lastSymbols = symbols
-    const isLinked = !!config.sourceTabId
+    this._lastChartTabOptions = chartTabOptions
+    const isLinked = !!(config.chartLinks?.length || config.sourceTabId)
 
-    const { startVal, endVal } = this._resolveDateRange(config)
+    const dr = this._resolveDateRange(config)
 
     this.sidebarEl.innerHTML = `
       <div class="flex flex-col gap-4 text-base">
@@ -68,7 +72,7 @@ export default class DataSidebarRenderer {
 
         ${timeframeSelectHTML(this.ctrl, timeframes, config.timeframe)}
 
-        ${dateRangeHTML(this.ctrl, startVal, endVal)}
+        ${dateRangeHTML(this.ctrl, dr.startDate, dr.startHour, dr.startMinute, dr.endDate, dr.endHour, dr.endMinute, isLinked)}
 
         <hr class="border-[#3a3a4e]">
 
@@ -122,6 +126,7 @@ export default class DataSidebarRenderer {
   private _lastColumns: DataColumn[] = []
   private _lastConfig: DataConfig | null = null
   private _lastSymbols: string[] = []
+  private _lastChartTabOptions: ChartTabOption[] = []
 
   get _currentColumns(): DataColumn[] {
     return this._lastColumns || []
@@ -137,18 +142,38 @@ export default class DataSidebarRenderer {
 
   // --- Private sections ---
 
-  private _resolveDateRange(config: DataConfig): { startVal: string; endVal: string } {
-    let startVal = config.startTime ? new Date(config.startTime * 1000).toISOString().slice(0, 16) : ""
-    let endVal = config.endTime ? new Date(config.endTime * 1000).toISOString().slice(0, 16) : ""
-
-    if ((!startVal || !endVal) && config.symbols?.length && config.timeframe) {
+  private _resolveDateRange(config: DataConfig): {
+    startDate: string
+    startHour: number
+    startMinute: number
+    endDate: string
+    endHour: number
+    endMinute: number
+  } {
+    const toParts = (t: number) => {
+      const d = new Date(t * 1000)
+      return {
+        date: d.toISOString().slice(0, 10),
+        hour: d.getUTCHours(),
+        minute: d.getUTCMinutes(),
+      }
+    }
+    let start = config.startTime ? toParts(config.startTime) : null
+    let end = config.endTime ? toParts(config.endTime) : null
+    if ((!start || !end) && config.symbols?.length && config.timeframe) {
       const oldest = candleCache.oldestTime(config.symbols[0], config.timeframe)
       const newest = candleCache.newestTime(config.symbols[0], config.timeframe)
-      if (!startVal && oldest) startVal = new Date(oldest * 1000).toISOString().slice(0, 16)
-      if (!endVal && newest) endVal = new Date(newest * 1000).toISOString().slice(0, 16)
+      if (!start && oldest) start = toParts(oldest)
+      if (!end && newest) end = toParts(newest)
     }
-
-    return { startVal, endVal }
+    return {
+      startDate: start?.date ?? "",
+      startHour: start?.hour ?? 0,
+      startMinute: start?.minute ?? 0,
+      endDate: end?.date ?? "",
+      endHour: end?.hour ?? 23,
+      endMinute: end?.minute ?? 59,
+    }
   }
 
   private _sectionHeader(
@@ -180,7 +205,7 @@ export default class DataSidebarRenderer {
   }
 
   private _conditionsSection(conditions: Condition[]): string {
-    const list = conditions.map(cond => conditionItemHTML(this.ctrl, cond)).join("")
+    const list = conditions.map(cond => conditionItemHTML(this.ctrl, cond, this._currentColumns)).join("")
     return `
       ${this._sectionHeader("Conditions", "showAddCondition", "+ Condition", "toggleDataConditions")}
       ${this.conditionsCollapsed ? "" : `
@@ -191,12 +216,26 @@ export default class DataSidebarRenderer {
   }
 
   private _chartLinksSection(links: Array<{ chartTabId: string; panelId: string }>): string {
-    const list = links.map((link, idx) => chartLinkItemHTML(this.ctrl, link, idx)).join("")
+    const labelMap = new Map(this._lastChartTabOptions.map(o => [o.id, o.label]))
+    const hasLink = links.length > 0
+    const list = links.map((link, idx) =>
+      chartLinkItemHTML(this.ctrl, link, idx, labelMap.get(link.chartTabId))
+    ).join("")
+    const dataSymbol = this._lastConfig?.symbols?.[0] || null
+    const filteredOptions = dataSymbol
+      ? this._lastChartTabOptions.filter(o => o.primarySymbol === dataSymbol)
+      : this._lastChartTabOptions
+    const selectorHTML = this.showLinkSelector
+      ? chartLinkSelectorHTML(this.ctrl, filteredOptions)
+      : ""
+    const addAction = hasLink ? undefined : "showAddChartLink"
+    const addLabel = hasLink ? undefined : "+ Link"
     return `
-      ${this._sectionHeader("Chart Links", "addChartLink", "+ Link")}
-      <div class="flex flex-col gap-0.5">
+      ${this._sectionHeader("Chart Links", addAction, addLabel)}
+      <div class="flex flex-col gap-1">
         ${list || '<span class="text-sm text-gray-500 italic px-2">No linked charts</span>'}
       </div>
+      ${selectorHTML}
     `
   }
 }

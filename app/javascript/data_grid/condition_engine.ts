@@ -26,8 +26,8 @@ export function evaluateConditions(
       }
     }
 
-    if (triggered.length) {
-      matches.set(idx, {
+    if (triggered.length && row.time != null) {
+      matches.set(row.time, {
         rowIndex: idx,
         time: row.time,
         actions: triggered.map(t => t.action),
@@ -96,6 +96,35 @@ function resolveColumnValue(row: Record<string, any>, column: string): number | 
 }
 
 const MATH_CONTEXT = "{abs,sqrt,min,max,pow,log,floor,ceil,round,sign,PI,E}=Math"
+
+const RESERVED_IDENTIFIERS = new Set([
+  "abs", "sqrt", "min", "max", "pow", "log", "floor", "ceil", "round", "sign", "PI", "E",
+])
+
+/**
+ * Extracts column names referenced in a formula (col('name') and bare identifiers).
+ */
+export function getFormulaColumnReferences(expr: string): string[] {
+  const refs = new Set<string>()
+  const colCalls = expr.matchAll(/col\s*\(\s*['"]([^'"]+)['"]\s*\)/g)
+  for (const m of colCalls) refs.add(m[1].trim())
+  const words = expr.matchAll(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g)
+  for (const m of words) {
+    const w = m[1]
+    if (!RESERVED_IDENTIFIERS.has(w)) refs.add(w)
+  }
+  return [...refs]
+}
+
+/**
+ * Returns the first column name in the formula that is not in validKeys, or null if all are valid.
+ */
+export function validateFormulaReferences(expr: string, validKeys: Set<string>): string | null {
+  for (const ref of getFormulaColumnReferences(expr)) {
+    if (!validKeys.has(ref)) return ref
+  }
+  return null
+}
 
 function resolveVariables(expr: string, row: Record<string, any>): string {
   let resolved = expr.replace(/col\(['"]([^'"]+)['"]\)/g, (_match, colName) => {

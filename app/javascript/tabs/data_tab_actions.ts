@@ -2,8 +2,11 @@ import TabStore from "./store"
 import type TabRenderer from "./renderer"
 import type ChartBridge from "../data_grid/chart_bridge"
 import { parseConditionFromBuilder } from "../templates/condition_templates"
-import { getHighlightStyles } from "../data_grid/condition_engine"
+import { getHighlightStyles, validateFormulaReferences } from "../data_grid/condition_engine"
+import type { DataColumn, DataConfig } from "../types/store"
+import { columnFieldKey } from "../types/store"
 import { injectConditionStyles } from "../utils/dom"
+import candleCache from "../data/candle_cache"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 
 interface DataTabDeps {
@@ -35,7 +38,10 @@ export default class DataTabActions {
   updateDataSymbol(e: Event) {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "data" || !tab.dataConfig) return
-    const symbol = (e.currentTarget as HTMLSelectElement).value
+    const symbol = (e.currentTarget as HTMLSelectElement).value?.trim() || ""
+    if (symbol && tab.dataConfig.columns?.length) {
+      this._renameOhlcvColumnLabels(tab.dataConfig.columns, symbol)
+    }
     this.store.updateDataConfig(tab.id, { symbols: symbol ? [symbol] : [] })
     this.render()
   }
@@ -48,14 +54,47 @@ export default class DataTabActions {
     this.render()
   }
 
+  /** Read date + hour (0–23) + minute from sidebar inputs, return UTC unix seconds or undefined. */
+  private _readDateTimeFromInputs(
+    dateField: string,
+    hourField: string,
+    minuteField: string,
+    endOfMinute = false,
+  ): number | undefined {
+    const dateEl = this.sidebar.querySelector(`[data-field='${dateField}']`) as HTMLInputElement | null
+    const hourEl = this.sidebar.querySelector(`[data-field='${hourField}']`) as HTMLInputElement | null
+    const minuteEl = this.sidebar.querySelector(`[data-field='${minuteField}']`) as HTMLInputElement | null
+    const date = dateEl?.value
+    const hour = hourEl?.value != null && hourEl.value !== "" ? parseInt(hourEl.value, 10) : 0
+    const minute = minuteEl?.value != null && minuteEl.value !== "" ? parseInt(minuteEl.value, 10) : 0
+    if (!date) return undefined
+    const h = Math.min(23, Math.max(0, isNaN(hour) ? 0 : hour))
+    const m = Math.min(59, Math.max(0, isNaN(minute) ? 0 : minute))
+    const sec = endOfMinute ? 59 : 0
+    const iso = `${date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}.000Z`
+    return Math.floor(new Date(iso).getTime() / 1000)
+  }
+
   updateDataDateRange() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "data" || !tab.dataConfig) return
-    const startEl = this.sidebar.querySelector("[data-field='dataStartTime']") as HTMLInputElement | null
-    const endEl = this.sidebar.querySelector("[data-field='dataEndTime']") as HTMLInputElement | null
-    const startTime = startEl?.value ? Math.floor(new Date(startEl.value + "Z").getTime() / 1000) : undefined
-    const endTime = endEl?.value ? Math.floor(new Date(endEl.value + "Z").getTime() / 1000) : undefined
+    const startTime = this._readDateTimeFromInputs("dataStartDate", "dataStartHour", "dataStartMinute")
+    const endTime = this._readDateTimeFromInputs("dataEndDate", "dataEndHour", "dataEndMinute", true)
     this.store.updateDataConfig(tab.id, { startTime, endTime })
+  }
+
+  setDataDateRangeAndLoad() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "data" || !tab.dataConfig) return
+    const startTime = this._readDateTimeFromInputs("dataStartDate", "dataStartHour", "dataStartMinute")
+    const isLinked = this.store.isLinkedDataTab(tab)
+    const updates: { startTime?: number; endTime?: number } = { startTime }
+    if (!isLinked) {
+      updates.endTime = this._readDateTimeFromInputs("dataEndDate", "dataEndHour", "dataEndMinute", true)
+    }
+    this.store.updateDataConfig(tab.id, updates)
+    this.render()
+    this.loadDataGrid()
   }
 
   // --- Collapse toggles ---
@@ -117,6 +156,21 @@ export default class DataTabActions {
       const expression = exprEl?.value?.trim() || ""
       if (!expression) return
       const label = this._uniqueLabel(tab, rawLabel)
+      const validKeys = this._validFormulaColumnKeys(tab)
+      validKeys.add(label)
+      const invalidRef = validateFormulaReferences(expression, validKeys)
+      const errEl = this.sidebar.querySelector("[data-field='formulaExpression']")?.parentElement?.querySelector("[data-formula-error]") as HTMLElement | null
+      if (invalidRef) {
+        if (errEl) {
+          errEl.textContent = `Unknown column: ${invalidRef}`
+          errEl.classList.remove("hidden")
+        }
+        return
+      }
+      if (errEl) {
+        errEl.textContent = ""
+        errEl.classList.add("hidden")
+      }
       this.store.addDataColumn(tab.id, { type: "formula", label, expression })
     } else if (colType === "instrument") {
       const symbolEl = this.sidebar.querySelector("[data-field='instrumentSymbol']") as HTMLSelectElement | null
@@ -154,6 +208,25 @@ export default class DataTabActions {
     this.render()
   }
 
+  toggleColumnVisibility(e: Event) {
+    e.stopPropagation()
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "data" || !tab.dataConfig) return
+    const columnId = (e.currentTarget as HTMLElement).dataset.columnId
+    if (!columnId) return
+    const col = tab.dataConfig.columns.find(c => c.id === columnId)
+    if (!col) return
+    const visible = col.visible !== false
+    this.store.setDataColumnVisible(tab.id, columnId, !visible)
+    this.render()
+    const updated = this.store.activeTab
+    if (updated?.type === "data" && updated.dataConfig) {
+      const gridEl = this.panels.querySelector(`[data-tab-wrapper="${updated.id}"] [data-controller='data-grid']`)
+      const gridCtrl = gridEl ? this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as { applyColumnDefsOnly?(c: DataConfig): void } | undefined : undefined
+      if (gridCtrl?.applyColumnDefsOnly) gridCtrl.applyColumnDefsOnly(updated.dataConfig)
+    }
+  }
+
   editFormulaColumn(e: Event) {
     e.stopPropagation()
     const el = e.currentTarget as HTMLElement
@@ -178,8 +251,27 @@ export default class DataTabActions {
 
     const col = tab.dataConfig.columns.find(c => c.id === colId)
     if (col && col.type === "formula") {
+      if (expression !== undefined) {
+        const toValidate = expression.trim()
+        if (toValidate !== "") {
+          const validKeys = this._validFormulaColumnKeys(tab)
+          const invalidRef = validateFormulaReferences(expression, validKeys)
+          const errEl = this.sidebar.querySelector("[data-field='editFormulaExpression']")?.parentElement?.querySelector("[data-formula-error]") as HTMLElement | null
+          if (invalidRef) {
+            if (errEl) {
+              errEl.textContent = `Unknown column: ${invalidRef}`
+              errEl.classList.remove("hidden")
+            }
+            return
+          }
+          if (errEl) {
+            errEl.textContent = ""
+            errEl.classList.add("hidden")
+          }
+        }
+        col.expression = expression
+      }
       if (rawLabel) col.label = this._uniqueLabel(tab, rawLabel, colId)
-      if (expression !== undefined) col.expression = expression
       this.store.updateDataConfig(tab.id, { columns: [...tab.dataConfig.columns] })
     }
 
@@ -196,11 +288,12 @@ export default class DataTabActions {
 
   toggleCondition(e: Event) {
     const tab = this.store.activeTab
-    if (!tab || tab.type !== "data") return
+    if (!tab || tab.type !== "data" || !tab.dataConfig) return
     const condId = (e.currentTarget as HTMLElement).dataset.conditionId
     if (!condId) return
-    const checked = (e.currentTarget as HTMLInputElement).checked
-    this.store.updateCondition(tab.id, condId, { enabled: checked })
+    const cond = tab.dataConfig.conditions.find(c => c.id === condId)
+    if (!cond) return
+    this.store.updateCondition(tab.id, condId, { enabled: !cond.enabled })
     this.updateConditionStyles()
     this.render()
     requestAnimationFrame(() => this.syncChartBridge())
@@ -299,26 +392,47 @@ export default class DataTabActions {
 
   // --- Chart links ---
 
-  addChartLink() {
+  showAddChartLink() {
+    this.renderer.dataSidebar.showLinkSelector = true
+    this.render()
+  }
+
+  cancelAddChartLink() {
+    this.renderer.dataSidebar.showLinkSelector = false
+    this.render()
+  }
+
+  confirmAddChartLink() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "data" || !tab.dataConfig) return
 
-    const chartTabs = this.store.tabs.filter(t => t.type === "chart" && t.panels.length > 0)
-    if (!chartTabs.length) return
+    const selectEl = this.sidebar.querySelector("[data-field='linkChartTabId']") as HTMLSelectElement | null
+    const chartTabId = selectEl?.value
+    if (!chartTabId) return
 
-    const firstChart = chartTabs[0]
-    const panelId = firstChart.panels[0]?.id
-    if (!panelId) return
+    const chartTab = this.store.tabs.find(t => t.id === chartTabId && t.type === "chart")
+    if (!chartTab || !chartTab.panels.length) return
 
-    const exists = tab.dataConfig.chartLinks.some(
-      l => l.chartTabId === firstChart.id && l.panelId === panelId,
-    )
-    if (exists) return
+    const panelId = chartTab.panels[0].id
+    const alreadyLinked = tab.dataConfig.chartLinks.length === 1
+      && tab.dataConfig.chartLinks[0].chartTabId === chartTabId
+      && tab.dataConfig.chartLinks[0].panelId === panelId
+    if (alreadyLinked) {
+      this.renderer.dataSidebar.showLinkSelector = false
+      this.render()
+      return
+    }
 
-    tab.dataConfig.chartLinks.push({ chartTabId: firstChart.id, panelId })
+    tab.dataConfig.chartLinks = [{ chartTabId, panelId }]
+    this._syncFromChart(tab, chartTab)
     this.store.updateDataConfig(tab.id, { chartLinks: tab.dataConfig.chartLinks })
-    this.syncChartBridge()
+    this.store.moveTabNextToChart(tab.id, chartTabId)
+    this.renderer.dataSidebar.showLinkSelector = false
     this.render()
+    requestAnimationFrame(() => {
+      this.loadDataGrid()
+      this.sidebar.dispatchEvent(new CustomEvent("tabs:startLinkedDataRefresh", { bubbles: true }))
+    })
   }
 
   removeChartLink(e: Event) {
@@ -327,9 +441,47 @@ export default class DataTabActions {
     if (!tab || tab.type !== "data" || !tab.dataConfig) return
 
     const linkIdx = parseInt((e.currentTarget as HTMLElement).dataset.linkIndex || "0", 10)
+    const chartTabId = tab.dataConfig.chartLinks[linkIdx]?.chartTabId
     tab.dataConfig.chartLinks.splice(linkIdx, 1)
-    this.store.updateDataConfig(tab.id, { chartLinks: tab.dataConfig.chartLinks })
-    this.render()
+    const updates: Partial<DataConfig> = { chartLinks: tab.dataConfig.chartLinks }
+    if (!tab.dataConfig.chartLinks.length) {
+      updates.sourceTabId = undefined
+      const range = this._getGridTimeRange(tab.id)
+      if (range) {
+        updates.startTime = range.startTime
+        updates.endTime = range.endTime
+      }
+      this.store.updateDataConfig(tab.id, updates)
+      if (chartTabId) this.store.moveUnlinkedTabAfterGroup(tab.id, chartTabId)
+      const unlinkedTabId = tab.id
+      const unlinkedConfig = tab.dataConfig
+      this.render()
+      this._applyConfigOnlyToGrid(unlinkedTabId, unlinkedConfig)
+    } else {
+      this.store.updateDataConfig(tab.id, updates)
+      this.render()
+    }
+  }
+
+  /** Read current row time range from grid so we can persist it on unlink (data survives reload). */
+  private _getGridTimeRange(tabId: string): { startTime: number; endTime: number } | null {
+    const gridEl = this.panels.querySelector(`[data-tab-wrapper="${tabId}"] [data-controller='data-grid']`)
+    if (!gridEl) return null
+    const ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as { getData?: () => Array<Record<string, unknown>> } | null
+    const data = ctrl?.getData?.()
+    if (!data?.length) return null
+    const times = data.map(r => r.time).filter((t): t is number => typeof t === "number").sort((a, b) => a - b)
+    if (!times.length) return null
+    return { startTime: times[0], endTime: times[times.length - 1] }
+  }
+
+  /** Update grid config without reloading data (keeps current rows after unlink). */
+  private _applyConfigOnlyToGrid(tabId: string, config: DataConfig | undefined): void {
+    if (!config) return
+    const gridEl = this.panels.querySelector(`[data-tab-wrapper="${tabId}"] [data-controller='data-grid']`)
+    if (!gridEl) return
+    const ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as { applyConfigOnly?: (c: DataConfig) => void } | null
+    if (typeof ctrl?.applyConfigOnly === "function") ctrl.applyConfigOnly(config)
   }
 
   // --- Grid sync & export ---
@@ -338,7 +490,9 @@ export default class DataTabActions {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "data" || !tab.dataConfig) return
 
-    const gridEl = this.panels.querySelector("[data-controller='data-grid']")
+    const gridEl = tab.id
+      ? this.panels.querySelector(`[data-tab-wrapper="${tab.id}"] [data-controller='data-grid']`)
+      : this.panels.querySelector("[data-controller='data-grid']")
     if (!gridEl) return
     const ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as any
     const data = ctrl?.getData() as Array<Record<string, any>> | undefined
@@ -359,19 +513,36 @@ export default class DataTabActions {
   }
 
   async loadDataGrid() {
-    const gridEl = this.panels.querySelector("[data-controller='data-grid']")
+    let tab = this.store.activeTab
+    if (tab?.type === "data" && tab.dataConfig && this.store.isLinkedDataTab(tab)) {
+      this._syncLinkedDataFromChart(tab)
+      this._syncTimeRangeFromCache(tab)
+      this.render()
+      tab = this.store.activeTab!
+    }
+
+    const activeId = tab?.id
+    let gridEl = activeId
+      ? this.panels.querySelector(`[data-tab-wrapper="${activeId}"] [data-controller='data-grid']`)
+      : this.panels.querySelector("[data-controller='data-grid']")
     if (!gridEl) return
 
     let ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as any
-    if (!ctrl) {
+    for (let i = 0; i < 4 && !ctrl; i++) {
       await new Promise(r => requestAnimationFrame(r))
-      ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as any
+      gridEl = activeId
+        ? this.panels.querySelector(`[data-tab-wrapper="${activeId}"] [data-controller='data-grid']`)
+        : this.panels.querySelector("[data-controller='data-grid']")
+      if (gridEl) ctrl = this.deps.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as any
     }
     if (!ctrl) return
 
-    await ctrl.loadData()
+    if (tab?.type === "data" && tab.dataConfig && typeof ctrl.loadWithConfig === "function") {
+      await ctrl.loadWithConfig(tab.dataConfig)
+    } else {
+      await ctrl.loadData()
+    }
 
-    const tab = this.store.activeTab
     if (tab?.type === "data" && tab.dataConfig) {
       const data = ctrl.getData() as Array<Record<string, any>>
       if (data?.length) {
@@ -476,6 +647,8 @@ export default class DataTabActions {
     if (!startTime || !endTime) return
     const tab = this.store.activeTab
     if (!tab?.dataConfig) return
+    // Do not overwrite user-set range (e.g. after Set): only sync when config has no range yet
+    if (tab.dataConfig.startTime != null || tab.dataConfig.endTime != null) return
 
     if (tab.dataConfig.startTime !== startTime || tab.dataConfig.endTime !== endTime) {
       this.store.updateDataConfig(tab.id, { startTime, endTime })
@@ -492,9 +665,86 @@ export default class DataTabActions {
 
   // --- Private helpers ---
 
+  private _syncFromChart(dataTab: { id: string; dataConfig?: { symbols: string[]; timeframe: string; chartLinks: any[]; sourceTabId?: string; columns: any[] } }, chart: { id: string; panels: Array<{ timeframe: string; overlays: Array<{ symbol: string | null; mode: string; indicatorType: string | null; indicatorParams: Record<string, any> | null }> }> }): void {
+    if (!dataTab.dataConfig) return
+    const panel = chart.panels[0]
+    if (!panel) return
+    const primarySymbol = panel.overlays[0]?.symbol
+    if (primarySymbol) {
+      dataTab.dataConfig.symbols = [primarySymbol]
+      this._renameOhlcvColumnLabels(dataTab.dataConfig.columns, primarySymbol)
+    }
+    dataTab.dataConfig.timeframe = panel.timeframe
+    dataTab.dataConfig.sourceTabId = chart.id
+    this._addMissingIndicators(dataTab as any, chart as any)
+  }
+
+  private _renameOhlcvColumnLabels(columns: Array<{ type: string; label: string }>, symbol: string): void {
+    const prefix = `${symbol.toLowerCase()}_`
+    const map: Record<string, string> = { open: "open", high: "high", low: "low", close: "close", volume: "volume" }
+    for (const col of columns) {
+      if (map[col.type]) col.label = `${prefix}${col.type}`
+    }
+  }
+
+  private _addMissingIndicators(tab: { id: string; dataConfig?: { columns: Array<{ type: string; indicatorType?: string; indicatorParams?: Record<string, any> }> } }, chart: { panels: Array<{ overlays: Array<{ mode: string; indicatorType: string | null; indicatorParams: Record<string, any> | null }> }> }): void {
+    if (!tab.dataConfig) return
+    const existingIndicators = new Set(
+      tab.dataConfig.columns
+        .filter(c => c.type === "indicator")
+        .map(c => `${c.indicatorType}:${JSON.stringify(c.indicatorParams || {})}`)
+    )
+    for (const panel of chart.panels) {
+      for (const overlay of panel.overlays) {
+        if (overlay.mode !== "indicator" || !overlay.indicatorType) continue
+        const params = overlay.indicatorParams || {}
+        const key = `${overlay.indicatorType}:${JSON.stringify(params)}`
+        if (existingIndicators.has(key)) continue
+        const paramStr = Object.values(params).join("_")
+        const fieldName = paramStr ? `${overlay.indicatorType}_${paramStr}` : overlay.indicatorType
+        this.store.addDataColumn(tab.id, {
+          type: "indicator", label: fieldName, indicatorType: overlay.indicatorType, indicatorParams: params,
+        })
+        existingIndicators.add(key)
+      }
+    }
+  }
+
+  private _syncLinkedDataFromChart(tab: { id: string; dataConfig?: { symbols: string[]; timeframe: string; chartLinks: Array<{ chartTabId: string; panelId: string }> } }): void {
+    const link = tab.dataConfig?.chartLinks?.[0]
+    if (!link) return
+    const chartTab = this.store.tabs.find(t => t.id === link.chartTabId && t.type === "chart")
+    const panel = chartTab?.panels.find(p => p.id === link.panelId)
+    if (!panel?.overlays.length) return
+    const primarySymbol = panel.overlays[0].symbol
+    const updates: { symbols?: string[]; timeframe?: string } = {}
+    if (primarySymbol) updates.symbols = [primarySymbol]
+    if (panel.timeframe) updates.timeframe = panel.timeframe
+    if (Object.keys(updates).length) this.store.updateDataConfig(tab.id, updates)
+  }
+
+  private _syncTimeRangeFromCache(tab: { id: string; dataConfig?: { symbols: string[]; timeframe: string; startTime?: number; endTime?: number } }): void {
+    if (!tab.dataConfig?.symbols?.length) return
+    if (tab.dataConfig.startTime != null && tab.dataConfig.endTime != null) return
+    const symbol = tab.dataConfig.symbols[0]
+    const tf = tab.dataConfig.timeframe
+    const oldest = candleCache.oldestTime(symbol, tf)
+    const newest = candleCache.newestTime(symbol, tf)
+    if (oldest && newest) {
+      this.store.updateDataConfig(tab.id, { startTime: oldest, endTime: newest })
+    }
+  }
+
   private _columnLabelExists(tab: { dataConfig?: { columns: Array<{ label: string; id: string }> } }, label: string, excludeId?: string): boolean {
     if (!tab.dataConfig) return false
     return tab.dataConfig.columns.some(c => c.label === label && c.id !== excludeId)
+  }
+
+  private _validFormulaColumnKeys(tab: { dataConfig?: { columns: DataColumn[] } }): Set<string> {
+    const keys = new Set<string>(["time"])
+    if (!tab.dataConfig?.columns) return keys
+    for (const col of tab.dataConfig.columns) keys.add(columnFieldKey(col))
+    return keys
   }
 
   private _uniqueLabel(tab: { dataConfig?: { columns: Array<{ label: string; id: string }> } }, base: string, excludeId?: string): string {

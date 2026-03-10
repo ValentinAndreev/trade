@@ -86,8 +86,9 @@ export default class SidebarRenderer {
 
   _chartsSectionHTML(panel: Panel, selectedOverlay: Overlay | undefined, symbols: string[], mode: string): string {
     const overlayList = panel.overlays
-      .map(o => overlayItemHTML(this.ctrl, o, o.id === selectedOverlay?.id, panel))
+      .map((o, idx) => overlayItemHTML(this.ctrl, o, o.id === selectedOverlay?.id, panel, idx === 0))
       .join("")
+    const isPrimary = selectedOverlay && panel.overlays[0]?.id === selectedOverlay.id
 
     return `
       <div class="flex items-center justify-between">
@@ -106,12 +107,12 @@ export default class SidebarRenderer {
       ${this.chartsCollapsed ? "" : `
         <div class="flex flex-col gap-0.5">${overlayList}</div>
         <hr class="border-[#3a3a4e]">
-        ${this._selectedChartHTML(panel, selectedOverlay, symbols, mode)}
+        ${this._selectedChartHTML(panel, selectedOverlay, symbols, mode, isPrimary)}
       `}
     `
   }
 
-  _selectedChartHTML(panel: Panel, selectedOverlay: Overlay | undefined, symbols: string[], mode: string): string {
+  _selectedChartHTML(panel: Panel, selectedOverlay: Overlay | undefined, symbols: string[], mode: string, isPrimary = false): string {
     const currentSymbol = selectedOverlay?.symbol || ""
     const chartType = selectedOverlay?.chartType || "Candlestick"
     const colorScheme = selectedOverlay?.colorScheme ?? 0
@@ -150,11 +151,13 @@ export default class SidebarRenderer {
 
       ${opacitySliderHTML(opacityPercent, `${this.ctrl}#adjustOverlayOpacity`, "Opacity", "data-opacity-value")}
 
+      ${!isPrimary ? `
       <div class="flex gap-1">
         ${modeBtnHTML(this.ctrl, "price", "Price", priceActive)}
         ${modeBtnHTML(this.ctrl, "volume", "Volume", volumeActive)}
         ${modeBtnHTML(this.ctrl, "indicator", "Indicator", indicatorActive)}
       </div>
+      ` : ""}
 
       ${indicatorActive ? indicatorSettingsHTML(this.ctrl, indicatorType, indicatorParams, selectedOverlay, panel, this.indicators, this.indicatorFilter) : `
         <label class="flex flex-col gap-1 text-sm text-gray-400">

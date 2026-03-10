@@ -1,8 +1,8 @@
 import { Controller } from "@hotwired/stimulus"
 import { createGrid, type GridApi, themeQuartz } from "ag-grid-community"
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community"
-import { buildGridOptions, buildColDefs, buildRowClassRules, computeSelectionStats, type SelectionStats } from "../data_grid/grid_config"
-import { loadDataTable, loadFromCache, type DataTableRow } from "../data_grid/data_loader"
+import { buildGridOptions, buildColDefs, buildRowClassRules, computeSelectionStats, getInitialColumnState, type SelectionStats } from "../data_grid/grid_config"
+import { loadDataTable, getRowsFromCache, type DataTableRow } from "../data_grid/data_loader"
 import { evaluateConditions, getHighlightStyles, type ConditionMatch } from "../data_grid/condition_engine"
 import { injectConditionStyles } from "../utils/dom"
 import candleCache from "../data/candle_cache"
@@ -73,7 +73,7 @@ export default class extends Controller {
     if (this.gridApi) {
       this.gridApi.updateGridOptions({
         columnDefs: buildColDefs(this.currentConfig.columns),
-        rowClassRules: buildRowClassRules(this.currentConfig.conditions),
+        rowClassRules: buildRowClassRules(this.currentConfig.conditions, this.conditionMatches),
       })
 
       if (symbolChanged || timeframeChanged || serverColsChanged) {
@@ -127,6 +127,7 @@ export default class extends Controller {
     const gridOptions = buildGridOptions(
       this.currentConfig.columns,
       this.currentConfig.conditions,
+      this.conditionMatches,
     )
     gridOptions.theme = darkTheme
     gridOptions.rowData = []
@@ -143,7 +144,37 @@ export default class extends Controller {
 
     gridOptions.onSelectionChanged = () => this.onSelectionChanged()
 
+    const dispatchColumnState = () => {
+      setTimeout(() => {
+        const tabWrapper = this.element.closest?.("[data-tab-wrapper]") as HTMLElement | null
+        const tabId = tabWrapper?.getAttribute?.("data-tab-wrapper")
+        if (!tabId) return
+        const api = this.gridApi as { getColumnState?: () => Array<{ colId: string; width?: number | null }> } | null
+        const state = api?.getColumnState?.()
+        if (!state?.length) return
+        const columnIds = state.map(c => c.colId).filter(Boolean) as string[]
+        const widths: Record<string, number> = {}
+        state.forEach(c => { if (c.colId && c.width != null) widths[c.colId] = c.width })
+        this.element.dispatchEvent(new CustomEvent("datagrid:columnStateChanged", {
+          bubbles: true,
+          detail: { tabId, columnIds, widths },
+        }))
+      }, 0)
+    }
+
+    gridOptions.onColumnMoved = (params: any) => {
+      if (params.finished) dispatchColumnState()
+    }
+
+    gridOptions.onColumnResized = (params: any) => {
+      if (params.finished) dispatchColumnState()
+    }
+
     this.gridApi = createGrid(this.element as HTMLElement, gridOptions)
+    if (this.currentConfig?.columns?.length) {
+      const state = getInitialColumnState(this.currentConfig.columns)
+      this.gridApi.applyColumnState({ state })
+    }
     this.ensureStatsEl()
     this.setupCacheSubscription()
     this.loadData()
@@ -222,19 +253,19 @@ export default class extends Controller {
     this.cacheUnsub = candleCache.subscribe(symbol, this.currentConfig.timeframe, () => {
       if (!this.currentConfig?.sourceTabId || !this.gridApi) return
 
-      if (hasServerCalcs) {
-        if (!this.rows.length) {
-          this.loadData()
-        }
+      const newest = candleCache.newestTime(symbol, this.currentConfig.timeframe)
+      const config = {
+        ...this.currentConfig,
+        endTime: newest ?? this.currentConfig.endTime,
+      }
+      const cached = getRowsFromCache(config)
+      if (!cached?.length) {
+        if (hasServerCalcs && !this.rows.length) this.loadData()
         return
       }
-
-      const cached = loadFromCache(this.currentConfig)
-      if (cached && cached.length > this.rows.length) {
-        this.rows = cached
-        this.applyConditions()
-        this.gridApi.updateGridOptions({ rowData: this.rows })
-      }
+      this.rows = cached
+      this.applyConditions()
+      this.gridApi.updateGridOptions({ rowData: this.rows })
     })
   }
 
@@ -255,6 +286,53 @@ export default class extends Controller {
     }
   }
 
+  async loadWithConfig(config: DataConfig): Promise<void> {
+    this.currentConfig = config
+    this.prevSymbol = config.symbols[0] ?? null
+    this.prevTimeframe = config.timeframe ?? null
+    this.prevServerColsKey = this.serverColsKey(config)
+    if (this.gridApi) {
+      this.gridApi.updateGridOptions({
+        columnDefs: buildColDefs(config.columns),
+        rowClassRules: buildRowClassRules(config.conditions, this.conditionMatches),
+      })
+      this.setupCacheSubscription()
+      await this.loadData()
+    } else {
+      this.initGrid()
+    }
+  }
+
+  /** Updates only column defs and row class rules; does not reload data. Use for visibility/order changes offline. */
+  applyColumnDefsOnly(config: DataConfig): void {
+    this.currentConfig = config
+    if (this.gridApi) {
+      this.gridApi.updateGridOptions({
+        columnDefs: buildColDefs(config.columns),
+        rowClassRules: buildRowClassRules(config.conditions, this.conditionMatches),
+      })
+    }
+  }
+
+  /** Apply config (columns, subscription) without loading data. Use when unlinking so current rows are kept. */
+  applyConfigOnly(config: DataConfig): void {
+    this.currentConfig = config
+    this.prevSymbol = config.symbols[0] ?? null
+    this.prevTimeframe = config.timeframe ?? null
+    this.prevServerColsKey = this.serverColsKey(config)
+    if (this.gridApi) {
+      this.gridApi.updateGridOptions({
+        columnDefs: buildColDefs(config.columns),
+        rowClassRules: buildRowClassRules(config.conditions, this.conditionMatches),
+      })
+      this.setupCacheSubscription()
+      if (this.rows.length) {
+        this.applyConditions()
+        this.gridApi.updateGridOptions({ rowData: this.rows })
+      }
+    }
+  }
+
   private dispatchTimeRange() {
     if (!this.rows.length) return
     const times = this.rows.map(r => r.time).filter(Boolean).sort((a, b) => a - b)
@@ -269,6 +347,9 @@ export default class extends Controller {
     if (!this.currentConfig) return
     this.conditionMatches = evaluateConditions(this.rows, this.currentConfig.conditions)
     this.injectConditionStyles()
+    this.gridApi?.updateGridOptions({
+      rowClassRules: buildRowClassRules(this.currentConfig.conditions, this.conditionMatches),
+    })
   }
 
   private injectConditionStyles() {

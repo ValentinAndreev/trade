@@ -1,7 +1,7 @@
 import type { ColDef, GridOptions, ValueFormatterParams, CellClassParams, ValueGetterParams } from "ag-grid-community"
 import { columnFieldKey } from "../types/store"
 import type { DataColumn, Condition } from "../types/store"
-import { evaluateFormulaExpression, evaluateSingleCondition } from "./condition_engine"
+import { evaluateFormulaExpression, type ConditionMatch } from "./condition_engine"
 
 const PRICE_PRECISION = 2
 const CHANGE_PRECISION = 2
@@ -39,36 +39,63 @@ function formatDateTime(params: ValueFormatterParams): string {
   })
 }
 
+function defaultWidth(col: DataColumn): number {
+  const widthByTitle = (col.label?.length ?? 0) * 12
+  const widthByContent: Record<string, number> = {
+    datetime: 160,
+    open: 100,
+    high: 100,
+    low: 100,
+    close: 100,
+    volume: 110,
+    change: 90,
+    indicator: 100,
+    formula: 110,
+    instrument: 100,
+  }
+  const contentWidth = widthByContent[col.type] ?? 100
+  return Math.max(80, Math.min(400, Math.max(widthByTitle, contentWidth)))
+}
+
+/** Column state (colId + width) so grid actually applies widths from title/content. */
+export function getInitialColumnState(columns: DataColumn[]): Array<{ colId: string; width: number }> {
+  return columns.map(col => ({ colId: col.id, width: col.width ?? defaultWidth(col) }))
+}
+
 export function buildColDefs(columns: DataColumn[]): ColDef[] {
   return columns.map(col => {
+    const w = col.width ?? defaultWidth(col)
     const base: ColDef = {
       colId: col.id,
       headerName: col.label,
       sortable: true,
       filter: true,
       resizable: true,
+      minWidth: 50,
+      width: w,
+      suppressSizeToFit: true,
+      hide: col.visible === false,
     }
 
     switch (col.type) {
       case "datetime":
-        return { ...base, field: "time", valueFormatter: formatDateTime, width: 160, sort: "desc" as const }
+        return { ...base, field: "time", valueFormatter: formatDateTime, sort: "desc" as const }
       case "open":
-        return { ...base, field: "open", valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+        return { ...base, field: columnFieldKey(col), valueFormatter: formatPrice, type: "numericColumn" }
       case "high":
-        return { ...base, field: "high", valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+        return { ...base, field: columnFieldKey(col), valueFormatter: formatPrice, type: "numericColumn" }
       case "low":
-        return { ...base, field: "low", valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+        return { ...base, field: columnFieldKey(col), valueFormatter: formatPrice, type: "numericColumn" }
       case "close":
-        return { ...base, field: "close", valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+        return { ...base, field: columnFieldKey(col), valueFormatter: formatPrice, type: "numericColumn" }
       case "volume":
-        return { ...base, field: "volume", valueFormatter: formatVolume, type: "numericColumn", width: 110 }
+        return { ...base, field: columnFieldKey(col), valueFormatter: formatVolume, type: "numericColumn" }
       case "change":
         return {
           ...base,
           field: columnFieldKey(col),
           valueFormatter: formatChange,
           type: "numericColumn",
-          width: 90,
           cellStyle: (params: CellClassParams) => {
             const v = params.value
             if (v == null) return null
@@ -76,14 +103,13 @@ export function buildColDefs(columns: DataColumn[]): ColDef[] {
           },
         }
       case "indicator":
-        return { ...base, field: columnFieldKey(col), valueFormatter: formatPrice, type: "numericColumn", width: 100 }
+        return { ...base, field: columnFieldKey(col), valueFormatter: formatPrice, type: "numericColumn" }
       case "formula": {
         const expression = col.expression || ""
         return {
           ...base,
           field: columnFieldKey(col),
           type: "numericColumn",
-          width: 110,
           valueGetter: (params: ValueGetterParams) => {
             if (!params.data) return null
             return evaluateFormulaExpression(expression, params.data)
@@ -97,7 +123,6 @@ export function buildColDefs(columns: DataColumn[]): ColDef[] {
           field: columnFieldKey(col),
           valueFormatter: formatPrice,
           type: "numericColumn",
-          width: 100,
         }
       }
       default:
@@ -106,14 +131,17 @@ export function buildColDefs(columns: DataColumn[]): ColDef[] {
   })
 }
 
-export function buildRowClassRules(conditions: Condition[]): Record<string, (params: any) => boolean> {
+export function buildRowClassRules(
+  conditions: Condition[],
+  matchesByTime: Map<number, ConditionMatch>,
+): Record<string, (params: any) => boolean> {
   const rules: Record<string, (params: any) => boolean> = {}
 
   conditions.filter(c => c.enabled && c.action.rowHighlight).forEach(cond => {
     const cssClass = `data-grid-highlight-${cond.id}`
     rules[cssClass] = (params: any) => {
-      if (!params.data) return false
-      return evaluateSingleCondition(cond, params.data)
+      if (!params.data?.time) return false
+      return matchesByTime.get(params.data.time)?.conditionNames.includes(cond.name) ?? false
     }
   })
 
@@ -169,10 +197,14 @@ export function computeSelectionStats(selectedRows: Array<Record<string, any>>, 
   }
 }
 
-export function buildGridOptions(columns: DataColumn[], conditions: Condition[]): GridOptions {
+export function buildGridOptions(
+  columns: DataColumn[],
+  conditions: Condition[],
+  matchesByTime: Map<number, ConditionMatch> = new Map(),
+): GridOptions {
   return {
     columnDefs: buildColDefs(columns),
-    rowClassRules: buildRowClassRules(conditions),
+    rowClassRules: buildRowClassRules(conditions, matchesByTime),
     defaultColDef: {
       sortable: true,
       filter: true,

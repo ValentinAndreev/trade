@@ -22,7 +22,12 @@ const ACTION_TYPES = [
 
 export const DEFAULT_COLORS = ["#ef5350", "#26a69a", "#ff9800", "#42a5f5", "#ab47bc", "#fdd835"]
 
-export function conditionSummary(cond: Condition): string {
+function columnIdToLabel(columns: DataColumn[], id: string): string {
+  const col = columns.find(c => columnFieldKey(c) === id)
+  return col ? col.label : id
+}
+
+export function conditionSummary(cond: Condition, columns?: DataColumn[]): string {
   const r = cond.rule
   const opMap: Record<string, string> = {
     value_gt: ">", value_lt: "<", change_gt: "Δ>", change_lt: "Δ<",
@@ -30,12 +35,16 @@ export function conditionSummary(cond: Condition): string {
   }
   const op = opMap[r.type] || r.type
   if (r.type === "expression") return `ƒ ${r.expression?.slice(0, 30) || ""}`
-  const compare = r.compareColumn ? ` ${r.compareColumn}` : ""
-  return `${r.column} ${op} ${r.value}${compare}`
+  const colLabel = columns ? columnIdToLabel(columns, r.column) : r.column
+  const compareLabel = r.compareColumn
+    ? (columns ? columnIdToLabel(columns, r.compareColumn) : r.compareColumn)
+    : ""
+  const compare = compareLabel ? ` ${compareLabel}` : ""
+  return `${colLabel} ${op} ${r.value}${compare}`
 }
 
-export function conditionItemHTML(ctrl: string, cond: Condition): string {
-  const summary = conditionSummary(cond)
+export function conditionItemHTML(ctrl: string, cond: Condition, columns?: DataColumn[]): string {
+  const summary = conditionSummary(cond, columns)
   const actionBadge = cond.action.rowHighlight
     ? `<span class="w-3 h-3 rounded-sm inline-block" style="background:${cond.action.rowHighlight}"></span>`
     : cond.action.chartMarker
@@ -43,39 +52,38 @@ export function conditionItemHTML(ctrl: string, cond: Condition): string {
       : cond.action.chartColorZone
         ? `<span class="text-xs" style="color:${cond.action.chartColorZone.color}">&#9632;</span>`
         : ""
+  const visibilityClass = cond.enabled ? "bg-emerald-400" : "bg-gray-600"
+  const visibilityTitle = cond.enabled ? "Visible" : "Hidden"
   return `
     <div class="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-[#2a2a3e] group" data-condition-id="${cond.id}">
-      <label class="flex items-center gap-2 text-sm text-gray-300 truncate cursor-pointer min-w-0">
-        <input type="checkbox" ${cond.enabled ? "checked" : ""}
-               data-action="change->${ctrl}#toggleCondition"
-               data-condition-id="${cond.id}"
-               class="rounded shrink-0">
+      <div class="flex items-center gap-2 min-w-0 flex-1">
         ${actionBadge}
         <span data-action="click->${ctrl}#editCondition"
               data-condition-id="${cond.id}"
-              class="cursor-pointer hover:text-blue-300 truncate" title="${escapeHTML(summary)}">
-          <span class="text-gray-300">${escapeHTML(cond.name)}</span>
-          <span class="text-gray-500 text-xs ml-1">${escapeHTML(summary)}</span>
+              class="cursor-pointer hover:text-blue-300 truncate text-gray-300 min-w-0" title="${escapeHTML(summary)}">
+          <span class="text-gray-300 text-[15px]">${escapeHTML(cond.name)}</span>
+          <span class="text-gray-500 text-sm ml-1">${escapeHTML(summary)}</span>
         </span>
-      </label>
-      <button data-action="click->${ctrl}#removeConditionBtn"
-              data-condition-id="${cond.id}"
-              class="hidden group-hover:inline-flex w-5 h-5 items-center justify-center rounded text-gray-500 hover:text-red-300 text-xs cursor-pointer shrink-0"
-      >&times;</button>
+      </div>
+      <div class="flex items-center gap-0 shrink-0">
+        <button type="button"
+                data-action="click->${ctrl}#toggleCondition"
+                data-condition-id="${cond.id}"
+                class="inline-flex w-6 h-6 items-center justify-center rounded hover:bg-[#3a3a4e] cursor-pointer"
+                title="${visibilityTitle}"
+                aria-label="${visibilityTitle}">
+          <span class="w-2.5 h-2.5 rounded-full ${visibilityClass}" aria-hidden="true"></span>
+        </button>
+        <button data-action="click->${ctrl}#removeConditionBtn"
+                data-condition-id="${cond.id}"
+                class="inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-red-300 hover:bg-red-500/10 text-sm cursor-pointer"
+                title="Remove condition">&times;</button>
+      </div>
     </div>`
 }
 
 function buildColumnOpts(columns: DataColumn[]): Array<{ id: string; label: string }> {
-  return [
-    { id: "close", label: "close" },
-    { id: "open", label: "open" },
-    { id: "high", label: "high" },
-    { id: "low", label: "low" },
-    { id: "volume", label: "volume" },
-    ...columns
-      .filter(c => ["indicator", "change", "formula", "instrument"].includes(c.type))
-      .map(c => ({ id: columnFieldKey(c), label: c.label })),
-  ]
+  return columns.map(c => ({ id: columnFieldKey(c), label: c.label }))
 }
 
 export function conditionBuilderHTML(ctrl: string, columns: DataColumn[], editing?: Condition): string {
@@ -86,7 +94,8 @@ export function conditionBuilderHTML(ctrl: string, columns: DataColumn[], editin
   const submitAction = isEditing ? "confirmEditCondition" : "confirmAddCondition"
 
   const name = editing?.name ?? "Condition"
-  const selCol = editing?.rule?.column ?? "close"
+  const firstColId = columnOpts[0]?.id ?? "close"
+  const selCol = editing?.rule?.column ?? firstColId
   const selOp = editing?.rule?.type ?? "value_gt"
   const val = editing?.rule?.value ?? ""
   const compCol = editing?.rule?.compareColumn ?? ""
@@ -104,8 +113,8 @@ export function conditionBuilderHTML(ctrl: string, columns: DataColumn[], editin
   const showExpr = selOp === "expression"
   const showText = actionType === "chartMarker"
 
-  const exprColNames = columnOpts.map(c => c.id).join(", ")
-  const exprPlaceholder = `close > sma_20 * 1.05`
+  const exprColNames = columnOpts.map(c => c.label).join(", ")
+  const exprPlaceholder = columnOpts.length ? `${columnOpts[0].label} > 0` : "col > 0"
 
   return `
     <div data-condition-builder class="flex flex-col gap-3 p-3 bg-[#22223a] rounded border border-[#3a3a4e]">
@@ -118,7 +127,7 @@ export function conditionBuilderHTML(ctrl: string, columns: DataColumn[], editin
       <div class="flex gap-2">
         <select data-field="condColumn"
                 class="flex-1 ${INPUT_CLS}">
-          ${columnOpts.map(c => `<option value="${c.id}" ${c.id === selCol ? "selected" : ""}>${escapeHTML(c.id)}</option>`).join("")}
+          ${columnOpts.map(c => `<option value="${c.id}" ${c.id === selCol ? "selected" : ""}>${escapeHTML(c.label)}</option>`).join("")}
         </select>
 
         <select data-field="condOperator"
@@ -134,7 +143,7 @@ export function conditionBuilderHTML(ctrl: string, columns: DataColumn[], editin
                class="flex-1 ${INPUT_CLS}">
         <select data-field="condCompareColumn"
                 class="flex-1 ${INPUT_CLS} ${selOp === "between" ? "" : "hidden"}">
-          ${columnOpts.map(c => `<option value="${c.id}" ${c.id === compCol ? "selected" : ""}>${escapeHTML(c.id)}</option>`).join("")}
+          ${columnOpts.map(c => `<option value="${c.id}" ${c.id === compCol ? "selected" : ""}>${escapeHTML(c.label)}</option>`).join("")}
         </select>
       </div>
 
@@ -142,7 +151,7 @@ export function conditionBuilderHTML(ctrl: string, columns: DataColumn[], editin
         <span class="text-xs text-gray-500 shrink-0">${selOp === "cross_below" ? "↘" : "↗"}</span>
         <select data-field="condCrossColumn"
                 class="flex-1 ${INPUT_CLS}">
-          ${columnOpts.map(c => `<option value="${c.id}" ${c.id === compCol ? "selected" : ""}>${escapeHTML(c.id)}</option>`).join("")}
+          ${columnOpts.map(c => `<option value="${c.id}" ${c.id === compCol ? "selected" : ""}>${escapeHTML(c.label)}</option>`).join("")}
         </select>
       </div>
 

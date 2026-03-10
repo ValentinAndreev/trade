@@ -24,6 +24,9 @@ export interface DataColumn {
   type: "datetime" | "open" | "high" | "low" | "close" | "volume"
       | "indicator" | "change" | "custom" | "formula" | "instrument";
   label: string;
+  width?: number;
+  /** When false, column is hidden in the grid. Default true. */
+  visible?: boolean;
   indicatorType?: string;
   indicatorParams?: Record<string, number | string>;
   changePeriod?: string;

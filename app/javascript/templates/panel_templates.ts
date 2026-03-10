@@ -116,10 +116,9 @@ export function tabButtonHTML(
   isActive: boolean,
   canRemove: boolean,
   tabType: string = "chart",
+  insideGroup: boolean = false,
 ): string {
-  const typeIcon = tabType === "data"
-    ? `<span class="text-green-400 text-xs mr-0.5" title="Data tab">&#9638;</span>`
-    : ""
+  const typeIcon = ""
 
   const contextMenu = tabType === "chart"
     ? `<span
@@ -129,16 +128,29 @@ export function tabButtonHTML(
        >&#9638;</span>`
     : ""
 
+  const dropActions = insideGroup ? "" : ` dragover->${ctrl}#tabDragOver dragleave->${ctrl}#tabDragLeave drop->${ctrl}#tabDrop`
+  const dragHandle = insideGroup
+    ? ""
+    : `<span
+        class="tab-drag-handle inline-flex items-center justify-center w-5 h-5 rounded cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300 hover:bg-white/10"
+        draggable="true"
+        data-action="click->${ctrl}#tabDragHandleClick dragstart->${ctrl}#tabDragStart dragend->${ctrl}#tabDragEnd"
+        title="Drag to reorder"
+      >&#8942;</span>`
+
   return `
     <button
+      type="button"
       data-tab-id="${tabId}"
+      data-drag-tab-id="${tabId}"
       data-tab-type="${tabType}"
-      data-action="click->${ctrl}#switchTab"
+      data-action="click->${ctrl}#switchTab${dropActions}"
       class="flex items-center gap-1 px-4 py-2 text-base font-medium cursor-pointer whitespace-nowrap
              ${isActive
                ? "text-white border-b-2 border-blue-400"
                : "text-gray-400 hover:text-gray-200 border-b-2 border-transparent"}"
     >
+      ${dragHandle}
       ${typeIcon}
       <span
         data-tab-label
