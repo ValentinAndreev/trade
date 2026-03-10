@@ -1,0 +1,10 @@
+class DataTable::CorrelationCalculator
+  def initialize: (Array[Numeric] series_a, Array[Numeric] series_b) -> void
+  def calculate: () -> Float?
+  def self.from_candles: (Array[ohlcv] candles_a, Array[ohlcv] candles_b, ?field: Symbol) -> Float?
+
+  private
+
+  attr_reader series_a: Array[Float]
+  attr_reader series_b: Array[Float]
+end

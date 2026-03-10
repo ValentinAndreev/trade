@@ -1,0 +1,27 @@
+type statistics_result = {
+  count: Integer,
+  sum: Float,
+  mean: Float,
+  median: Float,
+  std_dev: Float,
+  variance: Float,
+  min: Float,
+  max: Float,
+  range: Float,
+  p25: Float,
+  p75: Float,
+  p90: Float,
+  p95: Float
+}
+
+class DataTable::Statistics
+  def initialize: (Array[Numeric?] values) -> void
+  def calculate: () -> (statistics_result | Hash[Symbol, untyped])
+  def self.from_rows: (Array[data_table_row] rows, String | Symbol field) -> (statistics_result | Hash[Symbol, untyped])
+  def self.correlation_matrix: (Array[data_table_row] rows, Array[String | Symbol] fields) -> Hash[String, Float?]
+
+  private
+
+  attr_reader values: Array[Float]
+  def self.row_value: (data_table_row row, String | Symbol field) -> untyped
+end

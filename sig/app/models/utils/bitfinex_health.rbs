@@ -1,0 +1,13 @@
+class Utils::BitfinexHealth
+  CACHE_KEY: String
+  CACHE_TTL: ActiveSupport::Duration
+  TIMEOUT: Integer
+
+  def self.reachable?: () -> bool
+  def self.check!: () -> bool
+  def self.invalidate!: () -> void
+
+  private
+
+  def self.ping: () -> bool
+end

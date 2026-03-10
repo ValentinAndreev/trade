@@ -1,0 +1,24 @@
+type data_table_row = Hash[Symbol, untyped]
+type indicator_spec = Hash[Symbol, untyped]
+
+class DataTable::Builder
+  COMPOSITE_INDICATORS: Array[Symbol]
+
+  def initialize: (Array[ohlcv] candles) -> void
+  def with_indicators: (Array[indicator_spec] | indicator_spec specs) -> self
+  def with_changes: (Array[String | Symbol] periods) -> self
+  def build: () -> Array[data_table_row]
+
+  private
+
+  attr_reader candles: Array[ohlcv]
+  attr_reader indicator_specs: Array[indicator_spec]
+  attr_reader change_periods: Array[String | Symbol]
+
+  def attach_indicators: (Array[data_table_row] rows) -> void
+  def attach_changes: (Array[data_table_row] rows) -> void
+  def indicator_column_key: (Symbol type, Hash[Symbol, untyped] params) -> Symbol
+  def extract_indicator_value: (Hash[Symbol, untyped] result, Symbol type) -> untyped
+  def parse_period_seconds: (String | Symbol period) -> Integer
+  def find_closest_close: (Hash[Integer, untyped] close_by_time, Array[Integer] times, Integer target_time) -> Float?
+end

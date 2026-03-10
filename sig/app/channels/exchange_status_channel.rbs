@@ -1,0 +1,3 @@
+class ExchangeStatusChannel < ApplicationCable::Channel
+  def subscribed: () -> void
+end
