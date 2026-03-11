@@ -5,6 +5,7 @@ export interface ConditionMatch {
   time: number
   actions: ConditionAction[]
   conditionNames: string[]
+  conditionIds: string[]
 }
 
 export function evaluateConditions(
@@ -32,6 +33,7 @@ export function evaluateConditions(
         time: row.time,
         actions: triggered.map(t => t.action),
         conditionNames: triggered.map(t => t.cond.name),
+        conditionIds: triggered.map(t => t.cond.id),
       })
     }
   })

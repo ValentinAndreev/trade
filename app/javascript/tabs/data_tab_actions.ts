@@ -1,7 +1,7 @@
 import TabStore from "./store"
 import type TabRenderer from "./renderer"
 import type ChartBridge from "../data_grid/chart_bridge"
-import { parseConditionFromBuilder } from "../templates/condition_templates"
+import { parseConditionFromBuilder, nextFilterMode } from "../templates/condition_templates"
 import { getHighlightStyles, validateFormulaReferences, evaluateFormulaExpression } from "../data_grid/condition_engine"
 import type { DataColumn, DataConfig, DataGridControllerAPI, DataTableRow, ChartLink, StimulusApp, Tab, Panel } from "../types/store"
 import { columnFieldKey } from "../types/store"
@@ -166,12 +166,21 @@ export default class DataTabActions {
     return this._addIndicatorColumn(tab)
   }
 
+  private _nextFormulaLabel(tab: { dataConfig?: { columns: Array<{ label: string }> } }): string {
+    const existing = new Set((tab.dataConfig?.columns ?? []).map(c => c.label))
+    for (let i = 1; i < 1000; i++) {
+      const candidate = `formula${i}`
+      if (!existing.has(candidate)) return candidate
+    }
+    return `formula_${Date.now()}`
+  }
+
   private _addFormulaColumn(tab: { id: string; dataConfig?: DataConfig }): boolean {
-    const rawLabel = (this.sidebar.querySelector("[data-field='formulaLabel']") as HTMLInputElement | null)?.value?.trim() || "formula"
+    const rawLabel = (this.sidebar.querySelector("[data-field='formulaLabel']") as HTMLInputElement | null)?.value?.trim()
     const expression = (this.sidebar.querySelector("[data-field='formulaExpression']") as HTMLInputElement | null)?.value?.trim() || ""
     if (!expression) return false
 
-    const label = this._uniqueLabel(tab, rawLabel)
+    const label = rawLabel ? this._uniqueLabel(tab, rawLabel) : this._nextFormulaLabel(tab)
     const validKeys = this._validFormulaColumnKeys(tab)
     validKeys.add(label)
     if (!this._checkFormulaValid(expression, validKeys, "[data-field='formulaExpression']")) return false
@@ -298,6 +307,18 @@ export default class DataTabActions {
     requestAnimationFrame(() => this.syncChartBridge())
   }
 
+  cycleConditionFilter(e: Event) {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "data" || !tab.dataConfig) return
+    const condId = (e.currentTarget as HTMLElement).dataset.conditionId
+    if (!condId) return
+    const cond = tab.dataConfig.conditions.find(c => c.id === condId)
+    if (!cond) return
+    this.store.updateCondition(tab.id, condId, { filterMode: nextFilterMode(cond.filterMode) })
+    this._getGridCtrl(tab.id)?.refreshConditionMatches?.()
+    this.render()
+  }
+
   removeConditionBtn(e: Event) {
     e.stopPropagation()
     const tab = this.store.activeTab
@@ -386,7 +407,9 @@ export default class DataTabActions {
   onCondActionTypeChange(e: Event) {
     const type = (e.currentTarget as HTMLSelectElement).value
     const textEl = this.sidebar.querySelector("[data-field='condText']") as HTMLElement | null
+    const colorEl = this.sidebar.querySelector("[data-field='condColor']") as HTMLElement | null
     if (textEl) textEl.classList.toggle("hidden", type !== "chartMarker")
+    if (colorEl) colorEl.classList.toggle("hidden", type === "nothing")
   }
 
   // --- Chart links ---
@@ -635,7 +658,8 @@ export default class DataTabActions {
 
     // Linked tabs: never auto-save startTime/endTime — stale values cause data rollback on reload.
     // startTime is only saved when user explicitly clicks "Set" (sets userConfiguredStart flag).
-    if (tab.dataConfig.sourceTabId) return
+    // But re-render the sidebar so _resolveDateRange can pick up dates from candle cache.
+    if (tab.dataConfig.sourceTabId) { this.render(); return }
 
     if (tab.dataConfig.startTime !== startTime || tab.dataConfig.endTime !== endTime) {
       this.store.updateDataConfig(tab.id, { startTime, endTime })

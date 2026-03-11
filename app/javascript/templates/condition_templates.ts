@@ -1,7 +1,18 @@
 import { escapeHTML } from "../utils/dom"
 import { columnFieldKey } from "../types/store"
-import type { DataColumn, Condition, ConditionRule, ConditionAction } from "../types/store"
+import type { DataColumn, Condition, ConditionRule, ConditionAction, ConditionFilterMode } from "../types/store"
 import { INPUT_CLS } from "./data_grid_form_templates"
+
+const FILTER_MODE_META: Record<ConditionFilterMode, { icon: string; cls: string; title: string }> = {
+  none:          { icon: "⊡", cls: "text-gray-500",   title: "No row filter" },
+  show_only:     { icon: "▼", cls: "text-blue-400",   title: "Show only matching rows" },
+  hide_matching: { icon: "⊘", cls: "text-orange-400", title: "Hide matching rows" },
+}
+const FILTER_MODE_CYCLE: ConditionFilterMode[] = ["none", "show_only", "hide_matching"]
+export function nextFilterMode(current: ConditionFilterMode | undefined): ConditionFilterMode {
+  const idx = FILTER_MODE_CYCLE.indexOf(current ?? "none")
+  return FILTER_MODE_CYCLE[(idx + 1) % FILTER_MODE_CYCLE.length]
+}
 
 export const OPERATORS: Array<{ value: ConditionRule["type"]; label: string; hint: string }> = [
   { value: "value_gt", label: "> greater than", hint: "Column value > threshold" },
@@ -15,6 +26,7 @@ export const OPERATORS: Array<{ value: ConditionRule["type"]; label: string; hin
 ]
 
 const ACTION_TYPES = [
+  { value: "nothing", label: "Nothing" },
   { value: "rowHighlight", label: "Highlight row" },
   { value: "chartMarker", label: "Chart marker" },
   { value: "chartColorZone", label: "Chart color zone" },
@@ -54,6 +66,8 @@ export function conditionItemHTML(ctrl: string, cond: Condition, columns?: DataC
         : ""
   const visibilityClass = cond.enabled ? "bg-emerald-400" : "bg-gray-600"
   const visibilityTitle = cond.enabled ? "Visible" : "Hidden"
+  const filterMode: ConditionFilterMode = cond.filterMode ?? "none"
+  const fm = FILTER_MODE_META[filterMode]
   return `
     <div class="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-[#2a2a3e] group" data-condition-id="${cond.id}">
       <div class="flex items-center gap-2 min-w-0 flex-1">
@@ -66,6 +80,12 @@ export function conditionItemHTML(ctrl: string, cond: Condition, columns?: DataC
         </span>
       </div>
       <div class="flex items-center gap-0 shrink-0">
+        <button type="button"
+                data-action="click->${ctrl}#cycleConditionFilter"
+                data-condition-id="${cond.id}"
+                class="inline-flex w-6 h-6 items-center justify-center rounded hover:bg-[#3a3a4e] cursor-pointer text-sm font-bold ${fm.cls}"
+                title="${fm.title}"
+                aria-label="${fm.title}">${fm.icon}</button>
         <button type="button"
                 data-action="click->${ctrl}#toggleCondition"
                 data-condition-id="${cond.id}"
@@ -102,16 +122,18 @@ export function conditionBuilderHTML(ctrl: string, columns: DataColumn[], editin
   const expr = editing?.rule?.expression ?? ""
 
   const actionType = editing?.action
-    ? (editing.action.rowHighlight ? "rowHighlight" : editing.action.chartMarker ? "chartMarker" : "chartColorZone")
-    : "rowHighlight"
+    ? (editing.action.rowHighlight ? "rowHighlight" : editing.action.chartMarker ? "chartMarker" : editing.action.chartColorZone ? "chartColorZone" : "nothing")
+    : "nothing"
   const color = editing?.action?.rowHighlight ?? editing?.action?.chartMarker?.color ?? editing?.action?.chartColorZone?.color ?? DEFAULT_COLORS[0]
   const text = editing?.action?.chartMarker?.text ?? ""
+  const filterMode: ConditionFilterMode = editing?.filterMode ?? "none"
 
   const isCross = ["cross_above", "cross_below"].includes(selOp)
   const showCompare = isCross || selOp === "between"
   const showValue = !isCross && selOp !== "expression"
   const showExpr = selOp === "expression"
   const showText = actionType === "chartMarker"
+  const showColor = actionType !== "nothing"
 
   const exprColNames = columnOpts.map(c => c.label).join(", ")
   const exprPlaceholder = columnOpts.length ? `${columnOpts[0].label} > 0` : "col > 0"
@@ -162,7 +184,8 @@ export function conditionBuilderHTML(ctrl: string, columns: DataColumn[], editin
         <div class="text-xs text-gray-600 mt-1">Columns: ${escapeHTML(exprColNames)}</div>
       </div>
 
-      <div class="flex gap-2 items-center">
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-gray-500 shrink-0">Action:</span>
         <select data-field="condActionType"
                 data-action="change->${ctrl}#onCondActionTypeChange"
                 class="flex-1 ${INPUT_CLS}">
@@ -170,12 +193,21 @@ export function conditionBuilderHTML(ctrl: string, columns: DataColumn[], editin
         </select>
 
         <input type="color" data-field="condColor" value="${color}"
-               class="w-8 h-8 rounded border border-[#3a3a4e] cursor-pointer bg-transparent">
+               class="w-8 h-8 rounded border border-[#3a3a4e] cursor-pointer bg-transparent ${showColor ? "" : "hidden"}">
       </div>
 
       <input type="text" data-field="condText" placeholder="Marker text (optional)"
              value="${escapeHTML(String(text))}"
              class="${INPUT_CLS} ${showText ? "" : "hidden"}">
+
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-gray-500 shrink-0">Row filter:</span>
+        <select data-field="condFilterMode" class="flex-1 ${INPUT_CLS}">
+          <option value="none"          ${filterMode === "none"          ? "selected" : ""}>No filter</option>
+          <option value="show_only"     ${filterMode === "show_only"     ? "selected" : ""}>Show only matching</option>
+          <option value="hide_matching" ${filterMode === "hide_matching" ? "selected" : ""}>Hide matching</option>
+        </select>
+      </div>
 
       <div class="flex gap-2">
         <button data-action="click->${ctrl}#${submitAction}"
@@ -232,5 +264,7 @@ export function parseConditionFromBuilder(container: HTMLElement): Omit<Conditio
       break
   }
 
-  return { name, enabled: true, rule, action }
+  const filterMode = ((container.querySelector("[data-field='condFilterMode']") as HTMLSelectElement)?.value || "none") as ConditionFilterMode
+
+  return { name, enabled: true, filterMode, rule, action }
 }

@@ -3,7 +3,7 @@ import { createGrid, type GridApi, themeQuartz } from "ag-grid-community"
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community"
 import { buildGridOptions, buildColDefs, buildRowClassRules, computeSelectionStats, getInitialColumnState, type SelectionStats } from "../data_grid/grid_config"
 import { loadDataTable, getRowsFromCache, type DataTableRow } from "../data_grid/data_loader"
-import { evaluateConditions, getHighlightStyles, type ConditionMatch } from "../data_grid/condition_engine"
+import { evaluateConditions, evaluateFormulaExpression, getHighlightStyles, type ConditionMatch } from "../data_grid/condition_engine"
 import { injectConditionStyles } from "../utils/dom"
 import candleCache from "../data/candle_cache"
 import type { Candle } from "../types/candle"
@@ -173,6 +173,28 @@ export default class extends Controller {
     gridOptions.theme = darkTheme
     gridOptions.rowData = []
 
+    gridOptions.isExternalFilterPresent = () => {
+      return (this.currentConfig?.conditions ?? []).some(
+        c => c.enabled && c.filterMode && c.filterMode !== "none"
+      )
+    }
+
+    gridOptions.doesExternalFilterPass = (node: { data?: DataTableRow }) => {
+      if (!this.currentConfig || !node.data) return true
+      const { conditions } = this.currentConfig
+      const time = node.data.time
+      const match = this.conditionMatches.get(time)
+      const matchedIds = new Set(match?.conditionIds ?? [])
+
+      const showOnlyConds = conditions.filter(c => c.enabled && c.filterMode === "show_only")
+      if (showOnlyConds.length && !showOnlyConds.some(c => matchedIds.has(c.id))) return false
+
+      const hideConds = conditions.filter(c => c.enabled && c.filterMode === "hide_matching")
+      if (hideConds.some(c => matchedIds.has(c.id))) return false
+
+      return true
+    }
+
     gridOptions.onRowClicked = (event: { data?: DataTableRow }) => {
       const time = event.data?.time
       if (time) {
@@ -242,29 +264,42 @@ export default class extends Controller {
     }
 
     const allFields = [...NUMERIC_FIELDS]
+    const formulaCols: Array<{ label: string; expression: string }> = []
+
     if (this.currentConfig) {
       for (const col of this.currentConfig.columns) {
-        if (col.type === "indicator" && col.indicatorType) {
-          const params = col.indicatorParams || {}
-          const suffix = Object.values(params)[0]
-          allFields.push(suffix ? `${col.indicatorType}_${suffix}` : col.indicatorType)
-        } else if (col.type === "change" && col.changePeriod) {
-          allFields.push(`change_${col.changePeriod}`)
+        if (col.type === "indicator" || col.type === "change") {
+          allFields.push(columnFieldKey(col))
+        } else if (col.type === "instrument") {
+          allFields.push(col.label)
+        } else if (col.type === "formula" && col.expression) {
+          allFields.push(col.label)
+          formulaCols.push({ label: col.label, expression: col.expression })
         }
       }
     }
 
-    const stats = computeSelectionStats(selected, allFields)
+    const rows: DataTableRow[] = formulaCols.length
+      ? selected.map(row => {
+          const augmented = { ...row } as Record<string, unknown>
+          for (const { label, expression } of formulaCols) {
+            augmented[label] = evaluateFormulaExpression(expression, row)
+          }
+          return augmented as DataTableRow
+        })
+      : selected
+
+    const stats = computeSelectionStats(rows, allFields)
     if (!stats) {
       this.selectionStatsEl.innerHTML = ""
       return
     }
 
-    const fieldEntries = Object.entries(stats.fields)
-      .filter(([k]) => ["close", "high", "low", "volume"].includes(k) || !NUMERIC_FIELDS.includes(k))
-      .slice(0, 6)
-      .map(([k, v]) => {
-        const label = k.length > 10 ? k.slice(0, 10) + "…" : k
+    const displayFields = allFields.filter(f => stats.fields[f])
+    const fieldEntries = displayFields
+      .map(f => {
+        const v = stats.fields[f]
+        const label = f.length > 12 ? f.slice(0, 12) + "…" : f
         return `<span class="text-gray-400">${label}:</span> ${v.min.toFixed(2)} — ${v.max.toFixed(2)} <span class="text-gray-500">avg</span> ${v.avg.toFixed(2)}`
       })
       .join(" | ")
@@ -436,12 +471,13 @@ export default class extends Controller {
    * Mutates conditionMatches in-place so existing closures from prior buildRowClassRules
    * calls stay in sync.
    */
-  private refreshConditionMatches() {
+  refreshConditionMatches() {
     if (!this.currentConfig) return
     const newMatches = evaluateConditions(this.rows, this.currentConfig.conditions)
     this.conditionMatches.clear()
     for (const [k, v] of newMatches) this.conditionMatches.set(k, v)
     this.injectConditionStyles()
+    this.gridApi?.onFilterChanged()
   }
 
   private injectConditionStyles() {

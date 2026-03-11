@@ -49,10 +49,13 @@ export function columnFieldKey(col: DataColumn): string {
   return col.label
 }
 
+export type ConditionFilterMode = "none" | "show_only" | "hide_matching"
+
 export interface Condition {
   id: string;
   name: string;
   enabled: boolean;
+  filterMode?: ConditionFilterMode;
   rule: ConditionRule;
   action: ConditionAction;
 }
@@ -197,7 +200,7 @@ export interface DataGridControllerAPI {
   getData(): DataTableRow[]
   applyConfigOnly(config: DataConfig): void
   applyColumnDefsOnly(config: DataConfig): void
-  applyConditions(): void
+  refreshConditionMatches?(): void
   getConditionMatches(): Map<number, unknown>
   getRowByTime(time: number): DataTableRow | undefined
   scrollToTime(time: number): void
