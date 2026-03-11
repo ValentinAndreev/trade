@@ -1,4 +1,5 @@
 import type { Candle } from "../types/candle"
+import { idbPutCandles, idbGetCandles, idbClearCandles } from "./idb_store"
 
 type CacheKey = string
 type Listener = (candles: Candle[]) => void
@@ -60,6 +61,7 @@ class CandleCache {
     const entry = this.getOrCreate(key)
     entry.candles = candles
     this.notify(key, entry)
+    idbPutCandles(symbol, timeframe, candles)
   }
 
   prependCandles(symbol: string, timeframe: string, newCandles: Candle[]): void {
@@ -71,6 +73,7 @@ class CandleCache {
     if (!filtered.length) return
     entry.candles = [...filtered, ...entry.candles]
     this.notify(key, entry)
+    idbPutCandles(symbol, timeframe, filtered)
   }
 
   updateCandle(symbol: string, timeframe: string, candle: Candle): void {
@@ -83,6 +86,7 @@ class CandleCache {
       entry.candles.push(candle)
     }
     this.notify(key, entry)
+    idbPutCandles(symbol, timeframe, [candle])
   }
 
   subscribe(symbol: string, timeframe: string, listener: Listener): () => void {
@@ -90,6 +94,27 @@ class CandleCache {
     const entry = this.getOrCreate(key)
     entry.listeners.add(listener)
     return () => entry.listeners.delete(listener)
+  }
+
+  /**
+   * Cold-start: populate in-memory cache from IndexedDB if currently empty.
+   * Called before the first API fetch so the chart/grid can render immediately.
+   * Notifies listeners if data is restored.
+   */
+  async hydrate(symbol: string, timeframe: string): Promise<void> {
+    const key = cacheKey(symbol, timeframe)
+    const existing = this.entries.get(key)
+    if (existing?.candles.length) return   // already warm
+
+    try {
+      const candles = await idbGetCandles(symbol, timeframe)
+      if (!candles.length) return
+      const entry = this.getOrCreate(key)
+      entry.candles = candles
+      this.notify(key, entry)
+    } catch {
+      // IDB unavailable (private mode etc.) — silent fallback to empty cache
+    }
   }
 
   private notify(key: CacheKey, entry: CacheEntry): void {
@@ -100,10 +125,12 @@ class CandleCache {
 
   clear(symbol: string, timeframe: string): void {
     this.entries.delete(cacheKey(symbol, timeframe))
+    idbClearCandles(symbol, timeframe)
   }
 
   clearAll(): void {
     this.entries.clear()
+    // Note: full IDB clear is handled separately via idbClearAll() if needed
   }
 }
 

@@ -30,13 +30,55 @@ export default class DataLoader {
   }
 
   async loadInitial(): Promise<Candle[]> {
+    // 1. Restore from IndexedDB — chart renders immediately without waiting for server.
+    if (this.symbol && this.timeframe) {
+      await candleCache.hydrate(this.symbol, this.timeframe)
+      const cached = candleCache.get(this.symbol, this.timeframe)
+      if (cached.length) {
+        this.candles = cached
+        this.oldestTime = cached[0].time
+      }
+    }
+
+    // 2. Smart server fetch based on what IDB had.
+    if (this.candles.length > 0 && this.timeframe) {
+      return this.loadIncrementalUpdate()
+    }
+
+    // 3. No IDB data — full initial load.
     const response = await apiFetch(this.baseUrl, {}, { silent: true })
     if (!response) return this.candles
-    const data = await response.json()
+    const data: Candle[] = await response.json()
     this.candles = data
-    if (data.length > 0) {
-      this.oldestTime = data[0].time
-    }
+    if (data.length > 0) this.oldestTime = data[0].time
+    this.syncToCache()
+    return this.candles
+  }
+
+  /**
+   * Fetch only candles newer than what we already have in the cache.
+   * - If cache is fresh (newest candle within 2 periods of now) → skip request entirely.
+   * - Otherwise → fetch the gap and merge, replacing the last (possibly incomplete) candle.
+   */
+  private async loadIncrementalUpdate(): Promise<Candle[]> {
+    const newestTime = this.candles[this.candles.length - 1].time
+    const startIso = new Date(newestTime * 1000).toISOString()
+    const url = new URL(this.baseUrl, window.location.origin)
+    url.searchParams.delete("limit")   // no limit needed — fetching a small known gap
+    url.searchParams.set("start_time", startIso)
+
+    const response = await apiFetch(url, {}, { silent: true })
+    if (!response) return this.candles
+
+    const fresh: Candle[] = await response.json()
+    if (!fresh.length) return this.candles
+
+    // Replace last known candle (may have been incomplete at the time of save)
+    // and append everything newer.
+    const base = this.candles.slice(0, -1)
+    const merged = [...base, ...fresh.filter(c => c.time >= newestTime)]
+    this.candles = merged
+    this.oldestTime = merged[0].time
     this.syncToCache()
     return this.candles
   }

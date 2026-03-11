@@ -340,22 +340,22 @@ export default class extends Controller {
     this.applyIncrementalCacheUpdate(candles)
   }
 
-  private populateFromCache() {
-    const cached = getRowsFromCache(this.currentConfig!)
+  private async populateFromCache() {
+    const cached = await getRowsFromCache(this.currentConfig!)
     if (!cached?.length) return
     this.rows = cached
     this.refreshConditionMatches()
     this.gridApi!.updateGridOptions({ rowData: this.rows })
   }
 
-  private applyIncrementalCacheUpdate(candles: Candle[]) {
+  private async applyIncrementalCacheUpdate(candles: Candle[]) {
     const config = this.currentConfig!
     const hasServerCalcs = config.columns.some(c =>
       (c.type === "indicator" && c.indicatorType) ||
       (c.type === "change" && c.changePeriod) ||
       (c.type === "instrument" && c.instrumentSymbol)
     )
-    const freshRows = getRowsFromCache({ ...config, startTime: candles.at(-2)?.time, endTime: undefined })
+    const freshRows = await getRowsFromCache({ ...config, startTime: candles.at(-2)?.time, endTime: undefined })
     if (!freshRows?.length) return
 
     const byTime = new Map<number, number>()

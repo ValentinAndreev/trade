@@ -82,13 +82,25 @@ function fillInstrumentsFromCache(
 }
 
 /** Rows from cache with OHLCV mapped, indicators and instrument columns filled from live cache. */
-export function getRowsFromCache(config: DataConfig): DataTableRow[] | null {
+export async function getRowsFromCache(config: DataConfig): Promise<DataTableRow[] | null> {
   const rows = loadFromCache(config)
   if (!rows?.length || !config.symbols[0]) return rows
   mapOhlcvToColumnKeys(rows, config.columns)
-  fillIndicatorsFromCache(rows, config.columns, config.symbols[0], config.timeframe)
+  await fillIndicatorsFromCache(rows, config.columns, config.symbols[0], config.timeframe)
   fillInstrumentsFromCache(rows, getInstrumentColumns(config), config.timeframe)
   return rows
+}
+
+/**
+ * Ensure in-memory candle cache is populated from IndexedDB for all symbols in config.
+ * Call before getRowsFromCache() on cold start.
+ */
+export async function hydrateFromIdb(config: DataConfig): Promise<void> {
+  const symbols = [
+    ...config.symbols,
+    ...getInstrumentColumns(config).map(c => c.instrumentSymbol!),
+  ].filter(Boolean)
+  await Promise.all([...new Set(symbols)].map(sym => candleCache.hydrate(sym, config.timeframe)))
 }
 
 async function fetchInstrumentData(
@@ -192,14 +204,14 @@ function mergeIndicatorIntoRows(
 
 /**
  * Fill indicator columns from the shared indicator cache (same source as chart).
- * On cache miss, compute once and write to cache so chart and data stay in sync.
+ * On in-memory miss, tries IndexedDB (getOrHydrate). On full miss, computes and caches.
  */
-function fillIndicatorsFromCache(
+async function fillIndicatorsFromCache(
   rows: DataTableRow[],
   columns: DataColumn[],
   symbol: string,
   timeframe: string,
-): void {
+): Promise<void> {
   const indicatorCols = columns.filter(
     (c): c is DataColumn & { type: "indicator"; indicatorType: string } =>
       c.type === "indicator" && !!c.indicatorType,
@@ -208,7 +220,7 @@ function fillIndicatorsFromCache(
 
   for (const col of indicatorCols) {
     const params = (col.indicatorParams || {}) as Record<string, unknown>
-    let data = indicatorCache.get(symbol, timeframe, col.indicatorType, params)
+    let data = await indicatorCache.getOrHydrate(symbol, timeframe, col.indicatorType, params)
     if (!data?.length && INDICATOR_META[col.indicatorType]?.lib) {
       const computed = computeOneIndicator(rows, col)
       if (computed?.length) {
@@ -261,16 +273,19 @@ async function fetchAndMergeInstruments(
 export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]> {
   if (!config.symbols.length) return []
 
+  // Hydrate in-memory cache from IndexedDB on cold start (no-op if already warm).
+  await hydrateFromIdb(config)
+
   const symbol = config.symbols[0]
   const isLinked = !!config.sourceTabId
   const useCacheOnly = isLinked && !needsServerData(config)
 
   if (useCacheOnly) {
-    const cached = getRowsFromCache(config)
+    const cached = await getRowsFromCache(config)
     if (cached?.length) return cached
   }
 
-  const cacheFallback = (): DataTableRow[] => getRowsFromCache(config) ?? []
+  const cacheFallback = async (): Promise<DataTableRow[]> => (await getRowsFromCache(config)) ?? []
 
   try {
     const response = await apiFetch(buildApiUrl(config))

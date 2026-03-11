@@ -18,6 +18,7 @@
     "@hotwired/turbo-rails": "^8.0.23",
     "@tailwindcss/cli": "^4.2.0",
     "ag-grid-community": "^35.1.0",
+    "idb": "^8.0.3",
     "lightweight-charts": "^5.1.0",
     "tailwindcss": "^4.2.0",
     "technicalindicators": "^3.1.0"

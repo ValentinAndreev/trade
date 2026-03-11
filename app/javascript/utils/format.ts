@@ -49,3 +49,25 @@ export function formatDateTimeShort(iso: string): string {
   const mm = String(d.getMinutes()).padStart(2, "0")
   return `${dd}.${mo} ${hh}:${mm}`
 }
+
+const UNIT_SECONDS: Record<string, number> = {
+  s: 1,
+  m: 60,
+  h: 3600,
+  d: 86400,
+  w: 604800,
+  M: 2592000,
+}
+
+/**
+ * Parse any timeframe string into seconds.
+ * Supports arbitrary multipliers: "1m" → 60, "45m" → 2700, "2h" → 7200, "3d" → 259200, etc.
+ * Falls back to 60 if format is unrecognised.
+ */
+export function timeframeSeconds(timeframe: string): number {
+  const match = timeframe.match(/^(\d+)([smhdwM])$/)
+  if (!match) return 60
+  const n = parseInt(match[1], 10)
+  const unit = UNIT_SECONDS[match[2]] ?? 60
+  return n * unit
+}
