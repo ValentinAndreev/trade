@@ -7,8 +7,9 @@ import DrawingActions from "../tabs/drawing_actions"
 import DataTabActions from "../tabs/data_tab_actions"
 import ChartSidebarActions from "../tabs/chart_sidebar_actions"
 import ChartBridge from "../data_grid/chart_bridge"
+import { generateTrades, computeSystemStats } from "../data_grid/system_engine"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
-import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput } from "../types/store"
+import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, DataGridControllerAPI, StimulusApp } from "../types/store"
 
 export default class extends Controller {
   static targets = ["tabBar", "panels", "sidebar"]
@@ -47,6 +48,7 @@ export default class extends Controller {
       chartBridge: this.chartBridge,
       sidebarTarget: this.sidebarTarget,
       panelsTarget: this.panelsTarget,
+      element: this.element as HTMLElement,
       config: this.config,
       application: this.application,
       renderFn: () => this.render(),
@@ -74,6 +76,8 @@ export default class extends Controller {
       gridLoaded: () => this.dataActions.onDataGridLoaded(),
       startLinkedDataRefresh: () => this._startLinkedDataRefreshIfActive(),
       columnStateChanged: (e: Event) => this._onDataGridColumnStateChanged(e),
+      openSystemStats: (e: Event) => this._onOpenSystemStats(e),
+      requestStats: (e: Event) => this._onSystemStatsRequest(e),
     }
     this.element.addEventListener("label:created", this._boundListeners.label)
     this.element.addEventListener("line:created", this._boundListeners.line)
@@ -85,6 +89,8 @@ export default class extends Controller {
     this.element.addEventListener("datagrid:loaded", this._boundListeners.gridLoaded)
     this.element.addEventListener("tabs:startLinkedDataRefresh", this._boundListeners.startLinkedDataRefresh)
     this.element.addEventListener("datagrid:columnStateChanged", this._boundListeners.columnStateChanged as EventListener)
+    this.element.addEventListener("datatab:openSystemStats", this._boundListeners.openSystemStats as EventListener)
+    this.element.addEventListener("systemstats:requestStats", this._boundListeners.requestStats as EventListener)
   }
 
   private _onDataGridColumnStateChanged(e: Event) {
@@ -93,6 +99,56 @@ export default class extends Controller {
     if (tabId && detail?.columnIds?.length && this.store.reorderDataColumns(tabId, detail.columnIds, detail.widths)) {
       this.render()
     }
+  }
+
+  private _onOpenSystemStats(e: Event) {
+    const { systemId } = (e as CustomEvent<{ systemId: string }>).detail
+    const dataTab = this.store.activeTab
+    if (!dataTab || dataTab.type !== "data" || !dataTab.dataConfig) return
+    const system = (dataTab.dataConfig.systems ?? []).find(s => s.id === systemId)
+    if (!system) return
+    this.store.addSystemStatsTab(systemId, dataTab.id, system.name)
+    this.render()
+    // Immediately provide stats
+    this._deliverSystemStats(systemId, dataTab.id)
+  }
+
+  private _onSystemStatsRequest(e: Event) {
+    const { systemId, dataTabId } = (e as CustomEvent<{ systemId: string; dataTabId: string }>).detail
+    this._deliverSystemStats(systemId, dataTabId)
+  }
+
+  private _deliverSystemStats(systemId: string, dataTabId: string, attempt = 0) {
+    const dataTab = this.store.tabs.find(t => t.id === dataTabId)
+    if (!dataTab?.dataConfig) return
+    const system = (dataTab.dataConfig.systems ?? []).find(s => s.id === systemId)
+    if (!system) return
+
+    const app = this.application as StimulusApp
+
+    // Find the data grid controller for this data tab
+    const dataWrapper = this.panelsTarget.querySelector(`[data-tab-wrapper="${dataTabId}"]`) as HTMLElement | null
+    const gridEl = dataWrapper?.querySelector("[data-controller='data-grid']") as HTMLElement | null
+    const gridCtrl = gridEl
+      ? app.getControllerForElementAndIdentifier(gridEl, "data-grid") as DataGridControllerAPI | null
+      : null
+
+    const rows = gridCtrl?.getData() ?? []
+
+    // Retry up to 20 times (6 seconds) if grid isn't ready or has no data yet
+    if ((!gridCtrl || !rows.length) && attempt < 20) {
+      setTimeout(() => this._deliverSystemStats(systemId, dataTabId, attempt + 1), 300)
+      return
+    }
+
+    const trades = generateTrades(system, rows)
+    const stats = computeSystemStats(trades)
+
+    // Find stats controller
+    const statsWrapper = this.panelsTarget.querySelector(`[data-system-stats-system-id-value="${systemId}"]`) as HTMLElement | null
+    if (!statsWrapper) return
+    const statsCtrl = app.getControllerForElementAndIdentifier(statsWrapper, "system-stats") as { setStats(stats: unknown, trades: unknown): void } | null
+    statsCtrl?.setStats(stats, trades)
   }
 
   private _startLinkedDataRefreshIfActive() {
@@ -122,6 +178,8 @@ export default class extends Controller {
       this.element.removeEventListener("datagrid:loaded", this._boundListeners.gridLoaded)
       this.element.removeEventListener("tabs:startLinkedDataRefresh", this._boundListeners.startLinkedDataRefresh)
       this.element.removeEventListener("datagrid:columnStateChanged", this._boundListeners.columnStateChanged as EventListener)
+      this.element.removeEventListener("datatab:openSystemStats", this._boundListeners.openSystemStats as EventListener)
+      this.element.removeEventListener("systemstats:requestStats", this._boundListeners.requestStats as EventListener)
       this._boundListeners = null
     }
   }
@@ -345,6 +403,7 @@ export default class extends Controller {
 
   toggleChartsSection()     { this._toggleSidebarSection("chartsCollapsed") }
   toggleLabelsSection()     { this._toggleSidebarSection("labelsCollapsed") }
+  toggleSystemsSection()    { this._toggleSidebarSection("systemsCollapsed") }
   toggleTextSublist()       { this._toggleSidebarSection("textCollapsed") }
   toggleTrendLinesSublist() { this._toggleSidebarSection("trendLinesCollapsed") }
   toggleHLinesSublist()     { this._toggleSidebarSection("hlinesCollapsed") }
@@ -465,6 +524,18 @@ export default class extends Controller {
   confirmEditCondition()             { this.dataActions.confirmEditCondition() }
   onCondOperatorChange(e: Event)     { this.dataActions.onCondOperatorChange(e) }
   onCondActionTypeChange(e: Event)   { this.dataActions.onCondActionTypeChange(e) }
+  toggleDataSystems()                { this.dataActions.toggleDataSystems() }
+  addSystem()                        { this.dataActions.addSystem() }
+  cancelSystem()                     { this.dataActions.cancelSystem() }
+  confirmAddSystem()                 { this.dataActions.confirmAddSystem() }
+  editSystem(e: Event)               { this.dataActions.editSystem(e) }
+  confirmEditSystem()                { this.dataActions.confirmEditSystem() }
+  toggleSystem(e: Event)             { this.dataActions.toggleSystem(e) }
+  toggleSystemOnChart(e: Event)      { this.dataActions.toggleSystemOnChart(e) }
+  removeSystem(e: Event)             { this.dataActions.removeSystem(e) }
+  openSystemStats(e: Event)          { this.dataActions.openSystemStats(e) }
+  onSystemRuleOperatorChange(e: Event)  { this.dataActions.onSystemRuleOperatorChange(e) }
+  onSystemDirectionToggle(e: Event)     { this.dataActions.onSystemDirectionToggle(e) }
   showAddChartLink()                 { this.dataActions.showAddChartLink() }
   confirmAddChartLink()              { this.dataActions.confirmAddChartLink() }
   cancelAddChartLink()               { this.dataActions.cancelAddChartLink() }

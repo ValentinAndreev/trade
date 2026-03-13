@@ -3,7 +3,8 @@ import type TabRenderer from "./renderer"
 import type ChartBridge from "../data_grid/chart_bridge"
 import { parseConditionFromBuilder, nextFilterMode } from "../templates/condition_templates"
 import { getHighlightStyles, validateFormulaReferences, evaluateFormulaExpression } from "../data_grid/condition_engine"
-import type { DataColumn, DataConfig, DataGridControllerAPI, DataTableRow, ChartLink, StimulusApp, Tab, Panel } from "../types/store"
+import { parseSystemFromBuilder } from "../templates/system_templates"
+import type { DataColumn, DataConfig, DataGridControllerAPI, DataTableRow, ChartLink, StimulusApp, Tab, Panel, TradingSystem } from "../types/store"
 import { columnFieldKey } from "../types/store"
 import { injectConditionStyles } from "../utils/dom"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
@@ -14,6 +15,7 @@ interface DataTabDeps {
   chartBridge: ChartBridge
   sidebarTarget: HTMLElement
   panelsTarget: HTMLElement
+  element: HTMLElement
   config: { symbols: string[]; indicators: IndicatorInfo[] }
   application: StimulusApp
   renderFn: () => void
@@ -30,6 +32,7 @@ export default class DataTabActions {
   private get renderer() { return this.deps.renderer }
   private get sidebar() { return this.deps.sidebarTarget }
   private get panels() { return this.deps.panelsTarget }
+  private get element() { return this.deps.element }
   private get render() { return this.deps.renderFn }
 
   // --- Symbol / Timeframe / Date ---
@@ -412,6 +415,160 @@ export default class DataTabActions {
     if (colorEl) colorEl.classList.toggle("hidden", type === "nothing")
   }
 
+  // --- Systems ---
+
+  toggleDataSystems() {
+    this.renderer.dataSidebar.systemsCollapsed = !this.renderer.dataSidebar.systemsCollapsed
+    this.render()
+  }
+
+  addSystem() {
+    this.renderer.dataSidebar.showSystemBuilder = true
+    this.renderer.dataSidebar.editingSystemId = null
+    this.render()
+  }
+
+  cancelSystem() {
+    this.renderer.dataSidebar.showSystemBuilder = false
+    this.renderer.dataSidebar.editingSystemId = null
+    this.render()
+  }
+
+  confirmAddSystem() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "data") return
+    const builder = this.sidebar.querySelector("[data-system-builder]") as HTMLElement | null
+    if (!builder) return
+    const system = parseSystemFromBuilder(builder)
+    if (!system) return
+    this.store.addSystem(tab.id, system)
+    this.renderer.dataSidebar.showSystemBuilder = false
+    this.render()
+    this._refreshSystemSignals(tab.id)
+  }
+
+  editSystem(e: Event) {
+    const systemId = (e.currentTarget as HTMLElement).dataset.systemId
+    if (!systemId) return
+    this.renderer.dataSidebar.editingSystemId = systemId
+    this.renderer.dataSidebar.showSystemBuilder = true
+    this.render()
+  }
+
+  confirmEditSystem() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "data") return
+    const systemId = this.renderer.dataSidebar.editingSystemId
+    if (!systemId) return
+    const builder = this.sidebar.querySelector("[data-system-builder]") as HTMLElement | null
+    if (!builder) return
+    const updates = parseSystemFromBuilder(builder)
+    if (!updates) return
+    this.store.updateSystem(tab.id, systemId, updates)
+    this.renderer.dataSidebar.showSystemBuilder = false
+    this.renderer.dataSidebar.editingSystemId = null
+    this.render()
+    this._refreshSystemSignals(tab.id)
+  }
+
+  toggleSystem(e: Event) {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "data" || !tab.dataConfig) return
+    const systemId = (e.currentTarget as HTMLElement).dataset.systemId
+    if (!systemId) return
+    const sys = (tab.dataConfig.systems ?? []).find(s => s.id === systemId)
+    if (!sys) return
+    this.store.updateSystem(tab.id, systemId, { enabled: !sys.enabled })
+    this.render()
+    this._refreshSystemSignals(tab.id)
+    requestAnimationFrame(() => this.syncChartBridge())
+  }
+
+  toggleSystemOnChart(e: Event) {
+    const el = e.currentTarget as HTMLElement
+    const systemId = el.dataset.systemId
+    if (!systemId) return
+
+    // When called from chart sidebar, dataTabId is on the button element
+    const dataTabId = el.dataset.dataTabId
+    const tab = dataTabId
+      ? this.store.tabs.find(t => t.id === dataTabId && t.type === "data")
+      : this.store.activeTab
+
+    if (!tab || tab.type !== "data" || !tab.dataConfig) return
+    const sys = (tab.dataConfig.systems ?? []).find(s => s.id === systemId)
+    if (!sys) return
+    this.store.updateSystem(tab.id, systemId, { showOnChart: !sys.showOnChart })
+    this.render()
+    requestAnimationFrame(() => this.syncChartBridge())
+  }
+
+  removeSystem(e: Event) {
+    e.stopPropagation()
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "data") return
+    const systemId = (e.currentTarget as HTMLElement).dataset.systemId
+    if (!systemId) return
+    this.store.removeSystem(tab.id, systemId)
+    this.render()
+    this._refreshSystemSignals(tab.id)
+    requestAnimationFrame(() => this.syncChartBridge())
+  }
+
+  openSystemStats(e: Event) {
+    const systemId = (e.currentTarget as HTMLElement).dataset.systemId
+    if (!systemId) return
+    this.element.dispatchEvent(new CustomEvent("datatab:openSystemStats", {
+      bubbles: true,
+      detail: { systemId },
+    }))
+  }
+
+  onSystemRuleOperatorChange(e: Event) {
+    const select = e.currentTarget as HTMLSelectElement
+    const prefix = select.dataset.prefix
+    if (!prefix) return
+    const op = select.value
+    const isCross = ["cross_above", "cross_below"].includes(op)
+
+    const container = select.closest("[data-system-builder]") as HTMLElement | null
+    if (!container) return
+
+    const valueRow = container.querySelector(`[data-field="${prefix}ValueRow"]`) as HTMLElement | null
+    const crossRow = container.querySelector(`[data-field="${prefix}CrossRow"]`) as HTMLElement | null
+    if (valueRow) valueRow.classList.toggle("hidden", isCross)
+    if (crossRow) crossRow.classList.toggle("hidden", !isCross)
+
+    if (valueRow) {
+      const betweenCol = container.querySelector(`[data-field="${prefix}BetweenCol"]`) as HTMLElement | null
+      if (betweenCol) betweenCol.classList.toggle("hidden", op !== "between")
+    }
+
+    // Update cross-indicator arrow sign
+    const arrow = crossRow?.querySelector("span") as HTMLElement | null
+    if (arrow) arrow.textContent = op === "cross_below" ? "↘" : "↗"
+  }
+
+  onSystemDirectionToggle(e: Event) {
+    const cb = e.currentTarget as HTMLInputElement
+    const direction = cb.dataset.direction as "long" | "short" | undefined
+    if (!direction) return
+    const container = cb.closest("[data-system-builder]") as HTMLElement | null
+    if (!container) return
+    const section = container.querySelector(`[data-section-${direction}]`) as HTMLElement | null
+    if (section) section.classList.toggle("hidden", !cb.checked)
+  }
+
+  private _refreshSystemSignals(tabId: string) {
+    const gridCtrl = this._getGridCtrl(tabId)
+    gridCtrl?.refreshSystemSignals?.()
+    const tab = this.store.activeTab
+    if (tab?.dataConfig) {
+      const updated = this.store.tabs.find(t => t.id === tabId)
+      if (updated?.dataConfig) gridCtrl?.applyColumnDefsOnly?.(updated.dataConfig)
+    }
+  }
+
   // --- Chart links ---
 
   showAddChartLink() {
@@ -463,7 +620,10 @@ export default class DataTabActions {
     if (!tab || tab.type !== "data" || !tab.dataConfig) return
 
     const linkIdx = parseInt((e.currentTarget as HTMLElement).dataset.linkIndex || "0", 10)
-    const chartTabId = tab.dataConfig.chartLinks[linkIdx]?.chartTabId
+    const link = tab.dataConfig.chartLinks[linkIdx]
+    const chartTabId = link?.chartTabId
+    // Clear markers/zones on the chart being unlinked
+    if (link) this.deps.chartBridge.clearChartMarkers(link.chartTabId, link.panelId)
     tab.dataConfig.chartLinks.splice(linkIdx, 1)
     const updates: Partial<DataConfig> = { chartLinks: tab.dataConfig.chartLinks }
     if (!tab.dataConfig.chartLinks.length) {
@@ -537,7 +697,6 @@ export default class DataTabActions {
     let tab = this.store.activeTab
     if (tab?.type === "data" && tab.dataConfig && this.store.isLinkedDataTab(tab)) {
       this._refreshLinkedSymbolAndTimeframe(tab)
-      this.render()
       tab = this.store.activeTab!
     }
 
@@ -564,7 +723,6 @@ export default class DataTabActions {
         const isLinked = !!tab.dataConfig.sourceTabId
         if (!isLinked && times.length && (!tab.dataConfig.startTime || !tab.dataConfig.endTime)) {
           this.store.updateDataConfig(tab.id, { startTime: times[0], endTime: times[times.length - 1] })
-          this.render()
         }
       }
     }

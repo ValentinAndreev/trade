@@ -8,7 +8,25 @@ export function loadTabs(): Tab[] {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
       const tabs = JSON.parse(stored)
-      if (Array.isArray(tabs)) return tabs as Tab[]
+      if (Array.isArray(tabs)) {
+        const normalized = (tabs as Tab[]).map(tab => {
+          if (tab.type === "data" && tab.dataConfig && !Array.isArray(tab.dataConfig.systems)) {
+            tab.dataConfig.systems = []
+          }
+          return tab
+        })
+        // Build set of all valid system IDs across all data tabs
+        const validSystemIds = new Set<string>()
+        for (const tab of normalized) {
+          if (tab.type === "data" && tab.dataConfig?.systems) {
+            for (const sys of tab.dataConfig.systems) validSystemIds.add(sys.id)
+          }
+        }
+        // Drop orphaned system_stats tabs whose system no longer exists
+        return normalized.filter(tab =>
+          tab.type !== "system_stats" || validSystemIds.has(tab.systemStatsConfig?.systemId ?? "")
+        )
+      }
     }
   } catch { /* ignore */ }
   return []

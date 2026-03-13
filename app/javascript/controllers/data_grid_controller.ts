@@ -1,9 +1,11 @@
 import { Controller } from "@hotwired/stimulus"
 import { createGrid, type GridApi, themeQuartz } from "ag-grid-community"
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community"
-import { buildGridOptions, buildColDefs, buildRowClassRules, computeSelectionStats, getInitialColumnState, type SelectionStats } from "../data_grid/grid_config"
+import { buildGridOptions, buildColDefs, buildRowClassRules, buildSystemColDef, computeSelectionStats, getInitialColumnState, type SelectionStats } from "../data_grid/grid_config"
 import { loadDataTable, getRowsFromCache, type DataTableRow } from "../data_grid/data_loader"
 import { evaluateConditions, evaluateFormulaExpression, getHighlightStyles, type ConditionMatch } from "../data_grid/condition_engine"
+import { generateTrades, getSystemSignals, computeSystemStats, type SystemSignal } from "../data_grid/system_engine"
+import type { TradingSystem, SystemStats } from "../types/store"
 import { injectConditionStyles } from "../utils/dom"
 import candleCache from "../data/candle_cache"
 import type { Candle } from "../types/candle"
@@ -42,6 +44,8 @@ export default class extends Controller {
   private prevTimeframe: string | null = null
   private prevServerColsKey: string = ""
   private conditionMatches: Map<number, ConditionMatch> = new Map()
+  private systemSignalMaps: Map<string, Map<number, SystemSignal>> = new Map()
+  private systemStatsByTabId: Map<string, SystemStats> = new Map()
   private cacheUnsub: (() => void) | null = null
   private selectionStatsEl: HTMLElement | null = null
   private isLoadingData = false
@@ -115,14 +119,13 @@ export default class extends Controller {
         this.loadData()
       } else {
         // No data reload: apply column/condition config changes immediately.
+        this.refreshConditionMatches()
+        this.refreshSystemSignals()
         this.gridApi.updateGridOptions({
-          columnDefs: buildColDefs(this.currentConfig.columns),
+          columnDefs: this.buildAllColDefs(this.currentConfig),
           rowClassRules: buildRowClassRules(this.currentConfig.conditions, this.conditionMatches),
+          rowData: this.rows.length ? this.rows : undefined,
         })
-        if (this.rows.length) {
-          this.refreshConditionMatches()
-          this.gridApi.updateGridOptions({ rowData: this.rows })
-        }
       }
     } else {
       this.initGrid()
@@ -345,6 +348,7 @@ export default class extends Controller {
     if (!cached?.length) return
     this.rows = cached
     this.refreshConditionMatches()
+    this.refreshSystemSignals()
     this.gridApi!.updateGridOptions({ rowData: this.rows })
   }
 
@@ -374,6 +378,7 @@ export default class extends Controller {
     }
     if (!toAdd.length && !toUpdate.length) return
     this.refreshConditionMatches()
+    this.refreshSystemSignals()
     this.gridApi!.applyTransaction({ add: toAdd, update: toUpdate })
   }
 
@@ -392,10 +397,11 @@ export default class extends Controller {
       const config = this.currentConfig
       this.rows = await loadDataTable(config)
       this.refreshConditionMatches()
+      this.refreshSystemSignals()
       // Atomic update: columnDefs + rowClassRules + rowData in one call so AG Grid
       // never renders a state with new columns but empty/old rows (the visual flicker).
       this.gridApi?.updateGridOptions({
-        columnDefs: buildColDefs(config.columns),
+        columnDefs: this.buildAllColDefs(config),
         rowClassRules: buildRowClassRules(config.conditions, this.conditionMatches),
         rowData: this.rows,
       })
@@ -429,8 +435,9 @@ export default class extends Controller {
   applyColumnDefsOnly(config: DataConfig): void {
     this.currentConfig = config
     if (this.gridApi) {
+      this.refreshSystemSignals()
       this.gridApi.updateGridOptions({
-        columnDefs: buildColDefs(config.columns),
+        columnDefs: this.buildAllColDefs(config),
         rowClassRules: buildRowClassRules(config.conditions, this.conditionMatches),
       })
     }
@@ -443,13 +450,14 @@ export default class extends Controller {
     this.prevTimeframe = config.timeframe ?? null
     this.prevServerColsKey = this.serverColsKey(config)
     if (this.gridApi) {
+      this.refreshConditionMatches()
+      this.refreshSystemSignals()
       this.gridApi.updateGridOptions({
-        columnDefs: buildColDefs(config.columns),
+        columnDefs: this.buildAllColDefs(config),
         rowClassRules: buildRowClassRules(config.conditions, this.conditionMatches),
       })
       this.setupCacheSubscription()
       if (this.rows.length) {
-        this.refreshConditionMatches()
         this.gridApi.updateGridOptions({ rowData: this.rows })
       }
     }
@@ -483,6 +491,35 @@ export default class extends Controller {
   private injectConditionStyles() {
     if (!this.currentConfig) return
     injectConditionStyles(getHighlightStyles(this.currentConfig.conditions))
+  }
+
+  private buildAllColDefs(config: DataConfig) {
+    const base = buildColDefs(config.columns)
+    const sysCols = (config.systems ?? [])
+      .filter(s => s.enabled)
+      .map(s => buildSystemColDef(s, this.systemSignalMaps.get(s.id) ?? new Map()))
+    return [...base, ...sysCols]
+  }
+
+  refreshSystemSignals() {
+    if (!this.currentConfig) return
+    this.systemSignalMaps.clear()
+    for (const system of (this.currentConfig.systems ?? [])) {
+      if (!system.enabled) continue
+      const trades = generateTrades(system, this.rows)
+      const signals = getSystemSignals(system, this.rows, trades)
+      this.systemSignalMaps.set(system.id, signals)
+      const stats = computeSystemStats(trades)
+      this.systemStatsByTabId.set(system.id, stats)
+    }
+    this.element.dispatchEvent(new CustomEvent("datagrid:systemsUpdated", {
+      bubbles: true,
+      detail: { systemIds: [...this.systemSignalMaps.keys()] },
+    }))
+  }
+
+  getSystemStats(systemId: string): SystemStats | null {
+    return this.systemStatsByTabId.get(systemId) ?? null
   }
 
   getConditionMatches(): Map<number, ConditionMatch> {

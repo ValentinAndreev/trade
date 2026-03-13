@@ -7,7 +7,7 @@ import {
   chartTypeOptsHTML, colorSchemeDropdownHTML, comboHTML,
   overlayItemHTML, indicatorSettingsHTML,
 } from "../templates/sidebar_templates"
-import type { Panel, Overlay, DrawingItem } from "../types/store"
+import type { Panel, Overlay, DrawingItem, Tab, TradingSystem } from "../types/store"
 
 const LINE_COLOR_INDICATOR = (item: DrawingItem, color: string, width: number): string =>
   `<span class="block rounded-sm border border-black/20" style="background:${escapeHTML(color)};width:${width * 4}px;height:${width * 2}px"></span>`
@@ -22,7 +22,9 @@ export default class SidebarRenderer {
   trendLinesCollapsed: boolean
   hlinesCollapsed: boolean
   vlinesCollapsed: boolean
+  systemsCollapsed: boolean
   indicators: Array<{ key: string }> = []
+  private _linkedSystems: Array<{ system: TradingSystem; dataTabId: string }> = []
 
   constructor(sidebarEl: HTMLElement, controllerName: string) {
     this.sidebarEl = sidebarEl
@@ -34,6 +36,20 @@ export default class SidebarRenderer {
     this.trendLinesCollapsed = false
     this.hlinesCollapsed = false
     this.vlinesCollapsed = false
+    this.systemsCollapsed = false
+  }
+
+  /** Call before render() to supply linked systems for the current chart tab */
+  setLinkedSystems(chartTabId: string, allTabs: Tab[]): void {
+    this._linkedSystems = []
+    for (const tab of allTabs) {
+      if (tab.type !== "data" || !tab.dataConfig?.systems?.length) continue
+      const linked = tab.dataConfig.chartLinks?.some(l => l.chartTabId === chartTabId)
+      if (!linked) continue
+      for (const sys of tab.dataConfig.systems) {
+        if (sys.enabled) this._linkedSystems.push({ system: sys, dataTabId: tab.id })
+      }
+    }
   }
 
   render(panel: Panel | null, selectedOverlayId: string | null, symbols: string[], timeframes: string[], indicators: unknown[], labelModeActive: boolean, lineModeActive: boolean, vpEnabled: boolean, vpOpacity: number, hlModeActive: boolean, vlModeActive: boolean): void {
@@ -58,6 +74,10 @@ export default class SidebarRenderer {
         <hr class="border-[#3a3a4e]">
 
         ${this._volumeProfileHTML(vpEnabled, vpOpacity)}
+
+        <hr class="border-[#3a3a4e]">
+
+        ${this._systemsSectionHTML()}
 
         <hr class="border-[#3a3a4e]">
 
@@ -191,6 +211,51 @@ export default class SidebarRenderer {
         "data-vp-opacity-value"
       ) : ""}
     `
+  }
+
+  _systemsSectionHTML(): string {
+    if (!this._linkedSystems.length) {
+      return `
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-gray-500 uppercase tracking-wide">Systems</span>
+          <span class="text-xs text-gray-600 italic">No linked systems</span>
+        </div>`
+    }
+
+    const list = this._linkedSystems.map(({ system, dataTabId }) => {
+      const longClr  = system.longColor  ?? "#26a69a"
+      const shortClr = system.shortColor ?? "#ef5350"
+      const shown = system.showOnChart === true
+      const dotClass = shown ? "bg-blue-400" : "bg-gray-600"
+      return `
+        <div class="flex items-center justify-between gap-2 py-0.5 px-1 rounded hover:bg-[#2a2a3e]">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span class="shrink-0 flex gap-0.5">
+              <span class="inline-block w-2 h-2 rounded-full" style="background:${longClr}"></span>
+              <span class="inline-block w-2 h-2 rounded-full" style="background:${shortClr}"></span>
+            </span>
+            <span class="text-sm text-gray-300 truncate">${escapeHTML(system.name)}</span>
+          </div>
+          <button type="button"
+                  data-action="click->${this.ctrl}#toggleSystemOnChart"
+                  data-system-id="${system.id}"
+                  data-data-tab-id="${dataTabId}"
+                  class="inline-flex w-6 h-6 items-center justify-center rounded hover:bg-[#3a3a4e] cursor-pointer shrink-0"
+                  title="${shown ? "Hide on chart" : "Show on chart"}">
+            <span class="w-2.5 h-2.5 rounded-full ${dotClass}"></span>
+          </button>
+        </div>`
+    }).join("")
+
+    return `
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-1.5">
+          ${collapseBtnHTML(this.ctrl, "toggleSystemsSection", this.systemsCollapsed)}
+          <span class="text-sm text-gray-500 uppercase tracking-wide cursor-pointer"
+                data-action="click->${this.ctrl}#toggleSystemsSection">Systems</span>
+        </div>
+      </div>
+      ${this.systemsCollapsed ? "" : `<div class="flex flex-col gap-0.5">${list}</div>`}`
   }
 
   _drawingSectionHTML(panel: Panel, labelModeActive: boolean, lineModeActive: boolean, hlModeActive: boolean, vlModeActive: boolean): string {

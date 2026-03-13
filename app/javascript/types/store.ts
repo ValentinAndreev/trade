@@ -1,4 +1,4 @@
-export type TabType = "chart" | "data"
+export type TabType = "chart" | "data" | "system_stats"
 
 export interface Tab {
   id: string;
@@ -8,6 +8,8 @@ export interface Tab {
   dataConfig?: DataConfig;
   /** ID of the primary panel — stable regardless of panel reorder. Falls back to panels[0] if missing. */
   primaryPanelId?: string;
+  /** For system_stats tabs: the system being analysed and the data tab it came from. */
+  systemStatsConfig?: { systemId: string; dataTabId: string };
 }
 
 export interface DataConfig {
@@ -15,6 +17,7 @@ export interface DataConfig {
   timeframe: string;
   columns: DataColumn[];
   conditions: Condition[];
+  systems?: TradingSystem[];
   chartLinks: ChartLink[];
   sourceTabId?: string;
   startTime?: number;
@@ -81,6 +84,71 @@ export interface ChartLink {
   panelId: string;
 }
 
+// --- Trading Systems ---
+
+export type TradeDirection = "long" | "short"
+
+export interface TradingSystem {
+  id: string;
+  name: string;
+  enabled: boolean;
+  showOnChart?: boolean;
+  /** Colour for long entry/exit markers */
+  longColor?: string;
+  /** Colour for short entry/exit markers */
+  shortColor?: string;
+  /** @deprecated — use longColor/shortColor instead */
+  color?: string;
+  /** Slippage added/subtracted from the fill price on cross-type conditions (absolute value) */
+  slippage?: number;
+  /** ID of the stats tab created for this system, if any. */
+  statsTabId?: string;
+  longEntryRule?: ConditionRule;
+  longExitRule?: ConditionRule;
+  shortEntryRule?: ConditionRule;
+  shortExitRule?: ConditionRule;
+}
+
+export interface Trade {
+  entryTime: number;
+  entryPrice: number;
+  exitTime: number | null;    // null = still open
+  exitPrice: number | null;
+  direction: TradeDirection;
+  pnl: number | null;          // absolute P&L (1 unit), null if open
+  pnlPercent: number | null;
+  bars: number | null;         // duration in candles, null if open
+}
+
+export interface SystemStats {
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  profitFactor: number;
+  netProfit: number;
+  netProfitPercent: number;
+  grossProfit: number;
+  grossLoss: number;
+  avgWin: number;
+  avgLoss: number;
+  avgWinPercent: number;
+  avgLossPercent: number;
+  expectancy: number;
+  maxConsecutiveWins: number;
+  maxConsecutiveLosses: number;
+  maxDrawdown: number;
+  maxDrawdownPercent: number;
+  sharpeRatio: number;
+  sortinoRatio: number;
+  calmarRatio: number;
+  recoveryFactor: number;
+  avgBarsInTrade: number;
+  bestTrade: number;
+  worstTrade: number;
+  equityCurve: Array<{ time: number; equity: number }>;
+}
+
 export interface Panel {
   id: string;
   timeframe: string;
@@ -136,11 +204,14 @@ export interface LabelMarkerInput {
   id?: string
   time: number
   text: string
+  subtext?: string
   color?: string
   position?: string
   price?: number
   overlayId?: string
   fontSize?: number
+  below?: boolean
+  stackIndex?: number
 }
 
 export interface ChartControllerAPI {
@@ -201,7 +272,9 @@ export interface DataGridControllerAPI {
   applyConfigOnly(config: DataConfig): void
   applyColumnDefsOnly(config: DataConfig): void
   refreshConditionMatches?(): void
+  refreshSystemSignals?(): void
   getConditionMatches(): Map<number, unknown>
+  getSystemStats(systemId: string): SystemStats | null
   getRowByTime(time: number): DataTableRow | undefined
   scrollToTime(time: number): void
 }

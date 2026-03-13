@@ -22,3 +22,6 @@ application.register("auth", AuthController)
 import DataGridController from "./data_grid_controller"
 application.register("data-grid", DataGridController)
 
+import SystemStatsController from "./system_stats_controller"
+application.register("system-stats", SystemStatsController)
+

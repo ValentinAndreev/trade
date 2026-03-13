@@ -1,5 +1,6 @@
 import candleCache from "../data/candle_cache"
-import type { Tab, DataColumn, Condition, DataConfig } from "../types/store"
+import type { Tab, DataColumn, Condition, DataConfig, TradingSystem } from "../types/store"
+import { systemBuilderHTML, systemItemHTML } from "../templates/system_templates"
 import {
   symbolSelectHTML,
   timeframeSelectHTML,
@@ -33,12 +34,17 @@ export default class DataSidebarRenderer {
   ctrl: string
   columnsCollapsed = false
   conditionsCollapsed = false
+  systemsCollapsed = false
   linksCollapsed = false
   showConditionBuilder = false
+  showSystemBuilder = false
   showLinkSelector = false
   editingConditionId: string | null = null
+  editingSystemId: string | null = null
   editingFormulaId: string | null = null
   availableIndicators: IndicatorInfo[] = []
+  private _activeTabId: string | null = null
+  private _builderWasOpen = false
 
   constructor(sidebarEl: HTMLElement, controllerName: string) {
     this.sidebarEl = sidebarEl
@@ -50,6 +56,24 @@ export default class DataSidebarRenderer {
       this.sidebarEl.innerHTML = ""
       return
     }
+
+    // If the user switched to a different tab, discard any open builder state
+    if (this._activeTabId !== tab.id) {
+      this.showSystemBuilder = false
+      this.showConditionBuilder = false
+      this.editingSystemId = null
+      this.editingConditionId = null
+      this._activeTabId = tab.id
+      this._builderWasOpen = false
+    }
+
+    // Block re-renders only when a builder was ALREADY open before this call
+    // (background updates while user fills in the form).
+    // Allow renders when the builder state just changed (opening or closing).
+    const builderNowOpen = this.showSystemBuilder || this.showConditionBuilder
+    const block = this._builderWasOpen && builderNowOpen
+    this._builderWasOpen = builderNowOpen
+    if (block) return
 
     const config = tab.dataConfig
     this._lastColumns = config.columns
@@ -80,6 +104,10 @@ export default class DataSidebarRenderer {
         <hr class="border-[#3a3a4e]">
 
         ${this._conditionsSection(config.conditions)}
+
+        <hr class="border-[#3a3a4e]">
+
+        ${this._systemsSection(config.systems ?? [])}
 
         <hr class="border-[#3a3a4e]">
 
@@ -118,6 +146,7 @@ export default class DataSidebarRenderer {
   }
 
   private _lastConditions: Condition[] = []
+  private _lastSystems: TradingSystem[] = []
   private _lastColumns: DataColumn[] = []
   private _lastConfig: DataConfig | null = null
   private _lastSymbols: string[] = []
@@ -131,8 +160,17 @@ export default class DataSidebarRenderer {
     this._lastConditions = conditions
   }
 
+  setSystems(systems: TradingSystem[]): void {
+    this._lastSystems = systems
+  }
+
   setColumns(columns: DataColumn[]): void {
     this._lastColumns = columns
+  }
+
+  get _editingSystem(): TradingSystem | undefined {
+    if (!this.editingSystemId) return undefined
+    return this._lastSystems.find(s => s.id === this.editingSystemId)
   }
 
   // --- Private sections ---
@@ -206,6 +244,18 @@ export default class DataSidebarRenderer {
       ${this.conditionsCollapsed ? "" : `
         <div class="flex flex-col gap-0.5">${list || '<span class="text-sm text-gray-500 italic px-2">No conditions</span>'}</div>
         ${this.showConditionBuilder ? conditionBuilderHTML(this.ctrl, this._currentColumns, this._editingCondition) : ""}
+      `}
+    `
+  }
+
+  private _systemsSection(systems: TradingSystem[]): string {
+    return `
+      ${this._sectionHeader("Systems", "addSystem", "+ System", "toggleDataSystems")}
+      ${this.systemsCollapsed ? "" : `
+        ${systems.length
+          ? systems.map(s => systemItemHTML(this.ctrl, s, this._currentColumns)).join("")
+          : '<span class="text-sm text-gray-500 italic px-2">No systems</span>'}
+        ${this.showSystemBuilder ? systemBuilderHTML(this.ctrl, this._currentColumns, this._editingSystem) : ""}
       `}
     `
   }

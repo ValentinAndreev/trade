@@ -10,10 +10,14 @@ export interface LabelMarker {
   id?: string
   time: number
   text: string
+  subtext?: string
   color?: string
   position?: "aboveBar" | "belowBar"
   price?: number
   overlayId?: string
+  fontSize?: number
+  below?: boolean
+  stackIndex?: number
 }
 
 export interface TrendLineItem {

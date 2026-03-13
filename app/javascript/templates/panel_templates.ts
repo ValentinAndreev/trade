@@ -205,3 +205,16 @@ export function dataGridPanelHTML(
     </div>
   `
 }
+
+export function systemStatsPanelHTML(
+  systemId: string,
+  dataTabId: string,
+): string {
+  return `
+    <div class="relative flex-1 min-h-0 overflow-hidden"
+         data-controller="system-stats"
+         data-system-stats-system-id-value="${systemId}"
+         data-system-stats-data-tab-id-value="${dataTabId}">
+    </div>
+  `
+}

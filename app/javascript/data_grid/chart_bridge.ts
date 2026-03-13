@@ -1,5 +1,6 @@
-import { evaluateConditions, getChartMarkers, getColorZones, type ConditionMatch } from "./condition_engine"
-import type { Tab, DataTableRow, StimulusApp, ChartControllerAPI } from "../types/store"
+import { evaluateConditions, getChartMarkers, getColorZones } from "./condition_engine"
+import { generateTrades } from "./system_engine"
+import type { Tab, DataTableRow, StimulusApp, ChartControllerAPI, TradingSystem, LabelMarkerInput } from "../types/store"
 
 export interface ChartBridgeMarker {
   time: number
@@ -49,15 +50,13 @@ export default class ChartBridge {
         continue
       }
 
-      if (!conditions.length || !markers.length) {
-        chartCtrl.setConditionLabels([])
-      } else {
-        const dataByTime = new Map<number, DataTableRow>()
-        for (const row of data) {
-          if (row.time != null) dataByTime.set(row.time, row)
-        }
+      const dataByTime = new Map<number, DataTableRow>()
+      for (const row of data) {
+        if (row.time != null) dataByTime.set(row.time, row)
+      }
 
-        const labelMarkers = markers.map(m => {
+      const conditionMarkers: LabelMarkerInput[] = (!conditions.length || !markers.length) ? [] :
+        markers.map(m => {
           const row = dataByTime.get(m.time)
           return {
             time: m.time,
@@ -68,8 +67,14 @@ export default class ChartBridge {
           }
         }).filter(m => m.price > 0)
 
-        chartCtrl.setConditionLabels(labelMarkers)
-      }
+      const systemMarkers = this._buildSystemMarkers(
+        (dataTab.dataConfig?.systems ?? []),
+        data,
+        dataByTime,
+      )
+
+      const allMarkers = [...conditionMarkers, ...systemMarkers]
+      chartCtrl.setConditionLabels(allMarkers)
 
       if (!conditions.length || !colorZones.length) {
         if (chartCtrl.applyColorZones) chartCtrl.applyColorZones([])
@@ -77,6 +82,79 @@ export default class ChartBridge {
         chartCtrl.applyColorZones(colorZones)
       }
     }
+  }
+
+  private _buildSystemMarkers(
+    systems: TradingSystem[],
+    data: DataTableRow[],
+    dataByTime: Map<number, DataTableRow>,
+  ): LabelMarkerInput[] {
+    // Collect raw markers; price = actual low/high of the candle (no % offset — pixel offset
+    // is applied in TextLabelsPaneView.update() via stackIndex + below fields).
+    type RawMarker = { time: number; price: number; below: boolean; color: string; text: string; subtext: string }
+    const raw: RawMarker[] = []
+
+    for (const sys of systems) {
+      if (!sys.enabled || !sys.showOnChart) continue
+
+      const trades = generateTrades(sys, data)
+
+      // Build directly from trades (not getSystemSignals) so that exit+entry
+      // on the same bar both appear — a Map would silently overwrite one of them.
+      const longClr  = sys.longColor  ?? "#26a69a"
+      const shortClr = sys.shortColor ?? "#ef5350"
+
+      for (const trade of trades) {
+        const entryRow = dataByTime.get(trade.entryTime)
+        if (entryRow) {
+          const isLong = trade.direction === "long"
+          const clr = isLong ? longClr : shortClr
+          raw.push({
+            time: trade.entryTime,
+            price: isLong ? Number(entryRow.low || entryRow.close) : Number(entryRow.high || entryRow.close),
+            below: isLong,
+            color: clr,
+            text: isLong ? `▲ ${trade.entryPrice.toFixed(2)}` : `▼ ${trade.entryPrice.toFixed(2)}`,
+            subtext: sys.name,
+          })
+        }
+
+        if (trade.exitTime != null && trade.exitPrice != null) {
+          const exitRow = dataByTime.get(trade.exitTime)
+          if (exitRow) {
+            const isLong = trade.direction === "long"
+            const pnl = trade.pnl ?? 0
+            const pct = trade.pnlPercent ?? 0
+            const sign = pnl >= 0 ? "+" : ""
+            raw.push({
+              time: trade.exitTime,
+              price: isLong ? Number(exitRow.high || exitRow.close) : Number(exitRow.low || exitRow.close),
+              below: !isLong,
+              color: pnl >= 0 ? longClr : shortClr,
+              text: `${sign}${pnl.toFixed(2)} (${sign}${pct.toFixed(2)}%)`,
+              subtext: sys.name,
+            })
+          }
+        }
+      }
+    }
+
+    // Assign stackIndex per (time, below) slot so the primitive can offset in pixel space
+    const slotCount = new Map<string, number>()
+
+    return raw.map(m => {
+      const key = `${m.time}:${m.below ? "b" : "a"}`
+      const stackIndex = slotCount.get(key) ?? 0
+      slotCount.set(key, stackIndex + 1)
+      return { time: m.time, price: m.price, color: m.color, text: m.text, subtext: m.subtext, fontSize: 3, below: m.below, stackIndex }
+    })
+  }
+
+  clearChartMarkers(chartTabId: string, panelId: string): void {
+    const ctrl = this._findChartController(chartTabId, panelId)
+    if (!ctrl) return
+    ctrl.setConditionLabels([])
+    if (ctrl.applyColorZones) ctrl.applyColorZones([])
   }
 
   navigateChartToTime(chartTabId: string, panelId: string, time: number): void {

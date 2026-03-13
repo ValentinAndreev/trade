@@ -1,7 +1,7 @@
 import { OVERLAY_COLORS } from "../config/theme"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import { loadTabs, saveTabs, calcNextId, loadActiveTabId, saveActiveTabId } from "./persistence"
-import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition, ChartLink } from "../types/store"
+import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition, ChartLink, TradingSystem } from "../types/store"
 
 const DRAWING_PREFIX: Record<DrawingKind, string> = { labels: "lbl", lines: "ln", hlines: "hl", vlines: "vl" }
 
@@ -17,6 +17,7 @@ export default class TabStore {
 
   _nextConditionId: number
   _nextColumnId: number
+  _nextSystemId: number
 
   constructor() {
     this.tabs = loadTabs()
@@ -30,6 +31,7 @@ export default class TabStore {
     }
     this._nextConditionId = this._calcNextDataId("cond")
     this._nextColumnId = this._calcNextDataId("col")
+    this._nextSystemId = this._calcNextSystemId()
 
     const savedTabId = loadActiveTabId()
     const savedTab = savedTabId && this.tabs.find(t => t.id === savedTabId)
@@ -111,6 +113,9 @@ export default class TabStore {
   }
 
   tabLabel(tab: Tab): string {
+    if (tab.type === "system_stats") {
+      return tab.name || "Stats"
+    }
     if (tab.type === "data") {
       const base = tab.name || this._autoDataName(tab)
       const symbol = tab.dataConfig?.symbols?.[0] || ""
@@ -567,6 +572,7 @@ export default class TabStore {
         timeframe,
         columns: [...defaultColumns, ...extraColumns],
         conditions: [],
+        systems: [],
         chartLinks,
         sourceTabId,
       },
@@ -829,6 +835,43 @@ export default class TabStore {
     return true
   }
 
+  addSystem(tabId: string, system: Omit<TradingSystem, "id">): TradingSystem | null {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig) return null
+    if (!tab.dataConfig.systems) tab.dataConfig.systems = []
+    const sys: TradingSystem = { id: `sys-${this._nextSystemId++}`, ...system }
+    tab.dataConfig.systems.push(sys)
+    this._save()
+    return sys
+  }
+
+  updateSystem(tabId: string, systemId: string, updates: Partial<TradingSystem>): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig) return false
+    const sys = (tab.dataConfig.systems ?? []).find(s => s.id === systemId)
+    if (!sys) return false
+    Object.assign(sys, updates)
+    this._save()
+    return true
+  }
+
+  removeSystem(tabId: string, systemId: string): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
+    if (!tab?.dataConfig) return false
+    const arr = tab.dataConfig.systems ?? []
+    const idx = arr.findIndex(s => s.id === systemId)
+    if (idx === -1) return false
+    arr.splice(idx, 1)
+    tab.dataConfig.systems = arr
+    // Remove associated system_stats tab
+    const statsIdx = this.tabs.findIndex(
+      t => t.type === "system_stats" && t.systemStatsConfig?.systemId === systemId
+    )
+    if (statsIdx !== -1) this.tabs.splice(statsIdx, 1)
+    this._save()
+    return true
+  }
+
   _calcNextDataId(prefix: string): number {
     let max = 0
     for (const tab of this.tabs) {
@@ -838,6 +881,48 @@ export default class TabStore {
         const parts = item.id.split("-")
         const num = parseInt(parts[parts.length - 1])
         if (num > max) max = num
+      }
+    }
+    return max + 1
+  }
+
+  addSystemStatsTab(systemId: string, dataTabId: string, systemName: string): Tab {
+    const existing = this.tabs.find(
+      t => t.type === "system_stats" && t.systemStatsConfig?.systemId === systemId
+    )
+    if (existing) {
+      this.activeTabId = existing.id
+      this._save()
+      return existing
+    }
+
+    const tab: Tab = {
+      id: `tab-${this._nextTabId++}`,
+      name: `Stats: ${systemName}`,
+      type: "system_stats",
+      panels: [],
+      systemStatsConfig: { systemId, dataTabId },
+    }
+
+    // Insert after the data tab
+    const dataIdx = this.tabs.findIndex(t => t.id === dataTabId)
+    if (dataIdx !== -1) {
+      this.tabs.splice(dataIdx + 1, 0, tab)
+    } else {
+      this.tabs.push(tab)
+    }
+    this.activeTabId = tab.id
+    this._save()
+    return tab
+  }
+
+  private _calcNextSystemId(): number {
+    let max = 0
+    for (const tab of this.tabs) {
+      if (tab.type !== "data" || !tab.dataConfig) continue
+      for (const sys of (tab.dataConfig.systems ?? [])) {
+        const n = parseInt(sys.id.split("-").pop() ?? "0")
+        if (n > max) max = n
       }
     }
     return max + 1

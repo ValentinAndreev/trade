@@ -1,6 +1,6 @@
 import {
   panelLegendHTML, controlButtonsHTML,
-  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML,
+  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML, systemStatsPanelHTML,
 } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
 
@@ -22,8 +22,17 @@ export default class PanelRenderer {
 
   renderDataTab(tabs: Tab[], activeTabId: string | null): void {
     this._ensureWrappers(tabs, activeTabId, (tab, wrapper, isActive) => {
-      if (tab.type !== "data" || !tab.dataConfig) return
       if (wrapper.dataset.tabWrapper !== tab.id) return
+
+      if (tab.type === "system_stats" && tab.systemStatsConfig) {
+        if (!isActive) return
+        if (!wrapper.querySelector("[data-controller='system-stats']")) {
+          wrapper.innerHTML = systemStatsPanelHTML(tab.systemStatsConfig.systemId, tab.systemStatsConfig.dataTabId)
+        }
+        return
+      }
+
+      if (tab.type !== "data" || !tab.dataConfig) return
       const hasChartLink = !!tab.dataConfig.chartLinks?.length
       if (!isActive && !hasChartLink) return
 
