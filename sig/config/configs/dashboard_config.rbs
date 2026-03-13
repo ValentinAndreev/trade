@@ -1,0 +1,14 @@
+class DashboardConfig < ApplicationConfig
+  def self.config_path: () -> Pathname
+  def self.current_path: () -> Pathname
+  def self.dashboard_all_symbols: () -> Array[String]
+  def self.dashboard_default_symbols: () -> Array[String]
+  def self.market_all_symbols: () -> Hash[String, Array[String]]
+  def self.market_default_symbols: () -> Hash[String, Array[String]]
+  def self.market_labels: () -> Hash[String, String]
+  def self.current_dashboard_symbols: () -> Array[String]
+  def self.current_market_symbols: () -> Hash[String, Array[String]]
+  def self.update_current!: (?dashboard_symbols: Array[String]?, ?market_symbols: Hash[String, Array[String]]?) -> void
+  def self.reset_current!: () -> void
+  def self.ensure_current!: () -> void
+end

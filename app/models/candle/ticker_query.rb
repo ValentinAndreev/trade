@@ -15,9 +15,7 @@ class Candle::TickerQuery
   IDX_HIGH            = 9
   IDX_LOW             = 10
 
-  def initialize(symbols)
-    @symbols = Array(symbols)
-  end
+  def initialize(symbols) = @symbols = Array(symbols)
 
   def call
     live = fetch_live_tickers

@@ -97,8 +97,11 @@ RSpec.describe 'Api::Presets', :symbol_store do
   describe 'POST /api/presets/reset_state' do
     it 'resets symbol store' do
       Utils::SymbolStore.save_dashboard_symbols(%w[BTCUSD])
+      Utils::SymbolStore.save_market_symbols('forex' => %w[EURUSD=X])
       post '/api/presets/reset_state'
       expect(response).to have_http_status(:ok)
+      expect(Utils::SymbolStore.dashboard_symbols).to eq(BitfinexConfig.default_symbols)
+      expect(Utils::SymbolStore.market_symbols).to eq(MarketsConfig.default_symbols)
     end
   end
 

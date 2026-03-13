@@ -4,8 +4,6 @@ class ApplicationConfig < Anyway::Config
 
     private
 
-    def instance
-      @instance ||= new
-    end
+    def instance = @instance ||= new
   end
 end

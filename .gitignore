@@ -39,9 +39,7 @@
 
 /node_modules
 
-# User-customized symbol lists (defaults come from BitfinexConfig / MarketsConfig)
-/config/dashboard.yml
-/config/markets.yml
+/config/dashboard.current.yml
 
 # RBS collection (generated, re-created by `bundle exec rbs collection install`)
 /.gem_rbs_collection/

@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
 class Api::DataTablesController < Api::ApplicationController
-  def show
-    render json: build_rows
-  end
+  def show = render json: build_rows
 
   def correlations
     symbol_a = params.require(:symbol_a)

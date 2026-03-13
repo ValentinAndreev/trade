@@ -9,9 +9,7 @@ class Api::PresetsController < Api::ApplicationController
     render json: presets.map { |p| preset_json(p) }
   end
 
-  def show
-    render json: preset_json(@preset, full: true)
-  end
+  def show = render json: preset_json(@preset, full: true)
 
   def create
     preset = current_user.presets.find_or_initialize_by(name: params[:name])
@@ -37,9 +35,7 @@ class Api::PresetsController < Api::ApplicationController
     render json: { ok: true }
   end
 
-  def state
-    render json: Utils::SymbolStore.snapshot
-  end
+  def state = render json: Utils::SymbolStore.snapshot
 
   def reset_state
     Utils::SymbolStore.reset!
@@ -56,9 +52,7 @@ class Api::PresetsController < Api::ApplicationController
 
   private
 
-  def set_preset
-    @preset = current_user.presets.find(params[:id])
-  end
+  def set_preset = @preset = current_user.presets.find(params[:id])
 
   def preset_params
     permitted = params.permit(:name, :is_default)

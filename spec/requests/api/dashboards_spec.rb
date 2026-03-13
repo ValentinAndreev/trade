@@ -5,7 +5,7 @@ require 'rails_helper'
 RSpec.describe 'Api::Dashboards', :symbol_store do
   describe 'POST /api/dashboard/add' do
     it 'adds a known symbol' do
-      symbol = BitfinexConfig.symbols.first
+      symbol = BitfinexConfig.available_symbols.first
       post '/api/dashboard/add', params: { symbol: symbol }
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body['symbols']).to include(symbol)

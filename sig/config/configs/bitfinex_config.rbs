@@ -1,6 +1,8 @@
 class BitfinexConfig < ApplicationConfig
   def self.api_url: () -> String
   def self.symbols: () -> Array[String]
+  def self.available_symbols: () -> Array[String]
+  def self.default_symbols: () -> Array[String]
   def self.timeframes: () -> Array[String]
   def self.rate_limit_pause: () -> Integer
   def self.batch_size: () -> Integer
@@ -8,6 +10,8 @@ class BitfinexConfig < ApplicationConfig
 
   def api_url: () -> String
   def symbols: () -> Array[String]
+  def available_symbols: () -> Array[String]
+  def default_symbols: () -> Array[String]
   def timeframes: () -> Array[String]
   def rate_limit_pause: () -> Integer
   def batch_size: () -> Integer

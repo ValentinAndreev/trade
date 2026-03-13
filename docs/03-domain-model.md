@@ -58,19 +58,24 @@
 
 ## Dashboard Symbols
 
-Это не отдельная таблица БД. Список crypto-плиток хранится в YAML:
+Это не отдельная таблица БД. Dashboard-конфигурация живет в двух YAML:
 
 - `config/dashboard.yml`
+- `config/dashboard.current.yml`
 
-Если файл отсутствует, используются дефолты из `BitfinexConfig`.
+В `config/dashboard.yml` лежат `all` и `default`.
+
+В `config/dashboard.current.yml` лежит текущее отображаемое состояние; если файла нет, он генерируется из `default`.
 
 ## Market Symbols
 
-Список плиток по индексам, forex и commodities тоже хранится в YAML:
+Market symbols живут в тех же двух файлах внутри секции `markets`:
 
-- `config/markets.yml`
+- `markets.symbols.all`
+- `markets.symbols.default`
+- `markets.labels`
 
-Если файл отсутствует, используются дефолты из `MarketsConfig`.
+Текущее отображаемое состояние рынков хранится в `config/dashboard.current.yml` и тоже генерируется из `default`, если текущего файла нет.
 
 ## Tab
 

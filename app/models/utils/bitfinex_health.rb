@@ -22,9 +22,7 @@ class Utils::BitfinexHealth
       result
     end
 
-    def invalidate!
-      Rails.cache.delete(CACHE_KEY)
-    end
+    def invalidate! = Rails.cache.delete(CACHE_KEY)
 
     private
 

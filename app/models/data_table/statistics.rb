@@ -5,9 +5,7 @@ require 'enumerable/statistics'
 class DataTable::Statistics
   private attr_reader :values
 
-  def initialize(values)
-    @values = values.compact.map(&:to_f)
-  end
+  def initialize(values) = @values = values.compact.map(&:to_f)
 
   def calculate
     return {} if values.empty?
@@ -48,8 +46,6 @@ class DataTable::Statistics
     end
   end
 
-  def self.row_value(row, field)
-    row[field.to_sym] || row[field.to_s]
-  end
+  def self.row_value(row, field) = row[field.to_sym] || row[field.to_s]
   private_class_method :row_value
 end

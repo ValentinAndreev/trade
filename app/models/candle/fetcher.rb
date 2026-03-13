@@ -27,9 +27,7 @@ class Candle::Fetcher
     @connection = ActiveRecord::Base.connection
   end
 
-  def call
-    load_all_data ? paginate_history : sync_recent
-  end
+  def call = load_all_data ? paginate_history : sync_recent
 
   private
 
@@ -63,9 +61,7 @@ class Candle::Fetcher
 
   # --- Historical backfill ---
 
-  def paginate_history
-    paginate_backward(from: history_start_ms, refresh_aggregates: true, invalidate_min: true)
-  end
+  def paginate_history = paginate_backward(from: history_start_ms, refresh_aggregates: true, invalidate_min: true)
 
   def history_start_ms
     if @last_imported_ts
@@ -141,9 +137,7 @@ class Candle::Fetcher
 
   # --- Helpers ---
 
-  def current_time_ms
-    Time.zone.now.to_i * 1000
-  end
+  def current_time_ms = Time.zone.now.to_i * 1000
 
   def build_records(data)
     return [] if data.blank?
@@ -180,13 +174,9 @@ class Candle::Fetcher
     ActionCable.server.broadcast("candles:#{symbol}:#{interval}", candles)
   end
 
-  def invalidate_cache(kind)
-    Rails.cache.delete("candle/#{kind}_ts/#{symbol}/#{EXCHANGE}")
-  end
+  def invalidate_cache(kind) = Rails.cache.delete("candle/#{kind}_ts/#{symbol}/#{EXCHANGE}")
 
-  def retry_pause
-    Rails.env.test? ? 0.1 : 20
-  end
+  def retry_pause = Rails.env.test? ? 0.1 : 20
 
   def refresh_continuous_aggregates(imported_timestamps)
     return if imported_timestamps.blank?

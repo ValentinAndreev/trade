@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
 class Api::CandlesController < Api::ApplicationController
-  def index
-    render json: find_candles
-  end
+  def index = render json: find_candles
 
   private
 

@@ -2,7 +2,7 @@
 
 class Api::MarketsController < Api::ApplicationController
   def index
-    symbols = Utils::SymbolStore.market_symbols
+    symbols = MarketsConfig.symbols
     all_syms = symbols.values.flatten
     quotes = Utils::YahooFinanceClient.new.fetch_quotes(all_syms)
 
@@ -26,7 +26,7 @@ class Api::MarketsController < Api::ApplicationController
       return render json: { error: "Invalid category: #{category}" }, status: :bad_request
     end
 
-    available = MarketsConfig.available[category.to_sym] || MarketsConfig.available[category] || []
+    available = MarketsConfig.available[category] || []
     unless available.include?(symbol)
       return render json: { error: "Unknown symbol: #{symbol}" }, status: :bad_request
     end

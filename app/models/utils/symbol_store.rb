@@ -1,19 +1,12 @@
 # frozen_string_literal: true
 
 class Utils::SymbolStore
-  DASHBOARD_PATH = Rails.root.join('config/dashboard.yml')
-  MARKETS_PATH   = Rails.root.join('config/markets.yml')
-
   class << self
-    # --- Dashboard (crypto) symbols ---
+    def current_path = DashboardConfig.current_path
 
-    def dashboard_symbols
-      read_yaml(DASHBOARD_PATH, 'symbols') || BitfinexConfig.symbols
-    end
+    def dashboard_symbols = BitfinexConfig.symbols
 
-    def save_dashboard_symbols(symbols)
-      write_yaml(DASHBOARD_PATH, 'symbols' => Array(symbols).sort)
-    end
+    def save_dashboard_symbols(symbols) = DashboardConfig.update_current!(dashboard_symbols: symbols)
 
     def add_dashboard_symbol(symbol)
       syms = dashboard_symbols
@@ -33,22 +26,13 @@ class Utils::SymbolStore
 
     # --- Market symbols (indices, forex, commodities) ---
 
-    def market_symbols
-      raw = read_yaml(MARKETS_PATH, 'symbols')
-      return default_market_symbols unless raw
+    def market_symbols = MarketsConfig.symbols
 
-      raw.transform_keys(&:to_s).transform_values { |v| Array(v) }
-    end
-
-    def save_market_symbols(symbols)
-      sorted = symbols.transform_values { |v| Array(v).sort }
-                       .sort_by { |k, _| k }.to_h
-      write_yaml(MARKETS_PATH, 'symbols' => sorted)
-    end
+    def save_market_symbols(symbols) = DashboardConfig.update_current!(market_symbols: symbols.to_h)
 
     def add_market_symbol(category, symbol)
       syms = market_symbols
-      list = syms[category.to_s] ||= []
+      list = syms[category] ||= []
       return syms if list.include?(symbol)
 
       list << symbol
@@ -58,45 +42,27 @@ class Utils::SymbolStore
 
     def remove_market_symbol(category, symbol)
       syms = market_symbols
-      syms[category.to_s]&.delete(symbol)
+      syms[category]&.delete(symbol)
       save_market_symbols(syms)
       syms
     end
 
     # --- Preset helpers ---
 
-    def reset!
-      DASHBOARD_PATH.delete if DASHBOARD_PATH.exist?
-      MARKETS_PATH.delete   if MARKETS_PATH.exist?
-    end
+    def reset! = DashboardConfig.reset_current!
 
     def snapshot
       {
-        dashboardSymbols: (DASHBOARD_PATH.exist? ? read_yaml(DASHBOARD_PATH, 'symbols') : nil),
-        marketsSymbols:   (MARKETS_PATH.exist?   ? read_yaml(MARKETS_PATH, 'symbols')   : nil)
+        dashboardSymbols: dashboard_symbols,
+        marketsSymbols:   market_symbols
       }
     end
 
     def restore!(dashboard_symbols: nil, market_symbols: nil)
-      save_dashboard_symbols(dashboard_symbols) if dashboard_symbols.is_a?(Array)
-      save_market_symbols(market_symbols)        if market_symbols.is_a?(Hash)
-    end
-
-    private
-
-    def default_market_symbols
-      MarketsConfig.symbols.transform_keys(&:to_s).transform_values { |v| Array(v) }
-    end
-
-    def read_yaml(path, key)
-      return nil unless path.exist?
-
-      data = YAML.safe_load_file(path)
-      data&.fetch(key, nil)
-    end
-
-    def write_yaml(path, data)
-      path.write(data.to_yaml)
+      DashboardConfig.update_current!(
+        dashboard_symbols: dashboard_symbols,
+        market_symbols: market_symbols&.to_h
+      )
     end
   end
 end

@@ -4,18 +4,18 @@ require 'rails_helper'
 
 RSpec.describe Utils::SymbolStore, :symbol_store do
   describe 'dashboard symbols' do
-    it 'returns defaults when no file exists' do
-      expect(described_class.dashboard_symbols).to eq(BitfinexConfig.symbols)
+    it 'reads symbols from dashboard config' do
+      expect(described_class.dashboard_symbols).to eq(BitfinexConfig.default_symbols)
     end
 
     it 'saves and reads symbols' do
       described_class.save_dashboard_symbols(%w[ETHUSD BTCUSD])
-      expect(described_class.dashboard_symbols).to eq(%w[BTCUSD ETHUSD])
+      expect(described_class.dashboard_symbols).to eq(%w[ETHUSD BTCUSD])
     end
 
-    it 'stores symbols in sorted order' do
+    it 'preserves dashboard symbol order' do
       described_class.save_dashboard_symbols(%w[XRPUSD ADAUSD BTCUSD])
-      expect(described_class.dashboard_symbols).to eq(%w[ADAUSD BTCUSD XRPUSD])
+      expect(described_class.dashboard_symbols).to eq(%w[XRPUSD ADAUSD BTCUSD])
     end
 
     it 'adds a symbol' do
@@ -38,9 +38,8 @@ RSpec.describe Utils::SymbolStore, :symbol_store do
   end
 
   describe 'market symbols' do
-    it 'returns defaults when no file exists' do
-      defaults = MarketsConfig.symbols.transform_keys(&:to_s).transform_values { |v| Array(v) }
-      expect(described_class.market_symbols).to eq(defaults)
+    it 'reads symbols from markets config' do
+      expect(described_class.market_symbols).to eq(MarketsConfig.default_symbols)
     end
 
     it 'saves and reads market symbols' do
@@ -51,12 +50,12 @@ RSpec.describe Utils::SymbolStore, :symbol_store do
       expect(result['indices']).to eq(%w[^GSPC])
     end
 
-    it 'sorts categories and symbols' do
+    it 'preserves market symbol order' do
       data = { 'indices' => %w[^DJI ^GSPC], 'forex' => %w[USDJPY=X EURUSD=X] }
       described_class.save_market_symbols(data)
       result = described_class.market_symbols
-      expect(result.keys).to eq(%w[forex indices])
-      expect(result['forex']).to eq(%w[EURUSD=X USDJPY=X])
+      expect(result.keys).to eq(%w[indices forex])
+      expect(result['forex']).to eq(%w[USDJPY=X EURUSD=X])
     end
 
     it 'adds a market symbol' do
@@ -73,10 +72,10 @@ RSpec.describe Utils::SymbolStore, :symbol_store do
   end
 
   describe 'preset helpers' do
-    it '#snapshot returns nil when no files exist' do
+    it '#snapshot returns current symbols seeded from defaults' do
       snap = described_class.snapshot
-      expect(snap[:dashboardSymbols]).to be_nil
-      expect(snap[:marketsSymbols]).to be_nil
+      expect(snap[:dashboardSymbols]).to eq(BitfinexConfig.default_symbols)
+      expect(snap[:marketsSymbols]).to eq(MarketsConfig.default_symbols)
     end
 
     it '#snapshot captures current state' do
@@ -85,11 +84,13 @@ RSpec.describe Utils::SymbolStore, :symbol_store do
       expect(snap[:dashboardSymbols]).to eq(%w[BTCUSD])
     end
 
-    it '#reset! removes files' do
+    it '#reset! drops current state and restores defaults on next read' do
       described_class.save_dashboard_symbols(%w[BTCUSD])
       described_class.save_market_symbols('forex' => %w[EURUSD=X])
       described_class.reset!
-      expect(described_class.dashboard_symbols).to eq(BitfinexConfig.symbols)
+      expect(described_class.dashboard_symbols).to eq(BitfinexConfig.default_symbols)
+      expect(described_class.market_symbols).to eq(MarketsConfig.default_symbols)
+      expect(described_class.current_path).to exist
     end
 
     it '#restore! writes both files' do

@@ -26,7 +26,7 @@ flowchart LR
   UI[Stimulus + TypeScript UI]
   LS[LocalStorage]
   IDB[IndexedDB]
-  YAML[config/dashboard.yml + config/markets.yml]
+  YAML[config/dashboard.yml + config/dashboard.current.yml]
 
   BFX --> JOBS
   JOBS --> DB

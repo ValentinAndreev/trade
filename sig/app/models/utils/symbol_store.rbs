@@ -1,8 +1,6 @@
 module Utils
   class SymbolStore
-    DASHBOARD_PATH: Pathname
-    MARKETS_PATH: Pathname
-
+    def self.current_path: () -> Pathname
     def self.dashboard_symbols: () -> Array[String]
     def self.save_dashboard_symbols: (Array[String] symbols) -> void
     def self.add_dashboard_symbol: (String symbol) -> Array[String]
@@ -16,11 +14,5 @@ module Utils
     def self.reset!: () -> void
     def self.snapshot: () -> symbol_snapshot
     def self.restore!: (?dashboard_symbols: Array[String]?, ?market_symbols: Hash[String, Array[String]]?) -> void
-
-    private
-
-    def self.default_market_symbols: () -> market_symbols
-    def self.read_yaml: (Pathname path, String key) -> untyped
-    def self.write_yaml: (Pathname path, Hash[String, untyped] data) -> void
   end
 end

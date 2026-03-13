@@ -3,7 +3,5 @@
 class CandleSyncSymbolJob < ApplicationJob
   queue_as :default
 
-  def perform(symbol)
-    Candle::Fetcher.new(symbol).call
-  end
+  def perform(symbol) = Candle::Fetcher.new(symbol).call
 end

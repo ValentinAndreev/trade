@@ -3,7 +3,7 @@
 class Api::DashboardsController < Api::ApplicationController
   def add
     symbol = params.require(:symbol)
-    unless BitfinexConfig.symbols.include?(symbol)
+    unless BitfinexConfig.available_symbols.include?(symbol)
       return render json: { error: "Unknown symbol: #{symbol}" }, status: :bad_request
     end
 

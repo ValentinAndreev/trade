@@ -3,9 +3,7 @@
 class Api::IndicatorsController < Api::ApplicationController
   ALLOWED_PARAMS = %i[period short_period long_period signal_period price_key].freeze
 
-  def index
-    render json: Candle::IndicatorCalculator.available
-  end
+  def index = render json: Candle::IndicatorCalculator.available
 
   def compute
     candles = Candle::FindQuery.new(

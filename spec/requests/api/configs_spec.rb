@@ -9,7 +9,7 @@ RSpec.describe 'Api::Configs' do
       expect(response).to have_http_status(:ok)
 
       json = response.parsed_body
-      expect(json['symbols']).to eq(BitfinexConfig.symbols)
+      expect(json['symbols']).to eq(BitfinexConfig.available_symbols)
       expect(json['timeframes']).to eq(BitfinexConfig.timeframes)
     end
   end

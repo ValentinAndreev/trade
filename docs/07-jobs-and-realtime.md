@@ -17,7 +17,7 @@
 
 1. Проверяет доступность Bitfinex.
 2. Публикует статус в канал `exchange:status`.
-3. Проходит по списку symbols из `BitfinexConfig`.
+3. Проходит по текущему списку symbols из `BitfinexConfig.symbols`.
 4. Для каждого symbol запускает `Candle::Fetcher`.
 
 Расписание:

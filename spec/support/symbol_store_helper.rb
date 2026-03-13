@@ -1,27 +1,19 @@
 # frozen_string_literal: true
 
 RSpec.configure do |config|
-  config.around(:each, :symbol_store) do |example|
-    original_dashboard = Utils::SymbolStore::DASHBOARD_PATH
-    original_markets = Utils::SymbolStore::MARKETS_PATH
+  config.before(:each, :symbol_store) do
+    @symbol_store_tmp_dir = Rails.root.join('tmp/test_symbol_store')
+    config_path = @symbol_store_tmp_dir.join('dashboard.yml')
+    current_path = @symbol_store_tmp_dir.join('dashboard.current.yml')
+    FileUtils.mkdir_p(@symbol_store_tmp_dir)
 
-    tmp_dir = Rails.root.join('tmp/test_symbol_store')
-    FileUtils.mkdir_p(tmp_dir)
+    FileUtils.cp(DashboardConfig.config_path, config_path) if DashboardConfig.config_path.exist?
 
-    Utils::SymbolStore.send(:remove_const, :DASHBOARD_PATH)
-    Utils::SymbolStore.const_set(:DASHBOARD_PATH, tmp_dir.join('dashboard.yml'))
+    allow(DashboardConfig).to receive(:config_path).and_return(config_path)
+    allow(DashboardConfig).to receive(:current_path).and_return(current_path)
+  end
 
-    Utils::SymbolStore.send(:remove_const, :MARKETS_PATH)
-    Utils::SymbolStore.const_set(:MARKETS_PATH, tmp_dir.join('markets.yml'))
-
-    example.run
-  ensure
-    FileUtils.rm_rf(tmp_dir)
-
-    Utils::SymbolStore.send(:remove_const, :DASHBOARD_PATH)
-    Utils::SymbolStore.const_set(:DASHBOARD_PATH, original_dashboard)
-
-    Utils::SymbolStore.send(:remove_const, :MARKETS_PATH)
-    Utils::SymbolStore.const_set(:MARKETS_PATH, original_markets)
+  config.after(:each, :symbol_store) do
+    FileUtils.rm_rf(@symbol_store_tmp_dir) if defined?(@symbol_store_tmp_dir) && @symbol_store_tmp_dir
   end
 end

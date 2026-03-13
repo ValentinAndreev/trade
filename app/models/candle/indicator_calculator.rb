@@ -44,9 +44,7 @@ class Candle::IndicatorCalculator
 
   private attr_reader :candles
 
-  def initialize(candles)
-    @candles = candles
-  end
+  def initialize(candles) = @candles = candles
 
   def calculate(indicator, **params)
     klass = INDICATORS.fetch(indicator.to_sym) do

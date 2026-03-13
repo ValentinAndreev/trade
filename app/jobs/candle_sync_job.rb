@@ -22,7 +22,5 @@ class CandleSyncJob < ApplicationJob
 
   private
 
-  def broadcast_status(reachable)
-    ActionCable.server.broadcast('exchange:status', { bitfinex: reachable })
-  end
+  def broadcast_status(reachable) = ActionCable.server.broadcast('exchange:status', { bitfinex: reachable })
 end

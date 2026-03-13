@@ -8,9 +8,7 @@ class User < ApplicationRecord
   validates :username, presence: true, uniqueness: true, length: { minimum: 2, maximum: 50 }
   validates :password, length: { minimum: 4 }, allow_nil: true
 
-  def default_preset
-    presets.find_by(is_default: true)
-  end
+  def default_preset = presets.find_by(is_default: true)
 
   def as_api_json(include_presets: true)
     data = { id: id, username: username }

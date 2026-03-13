@@ -1,19 +1,21 @@
 class MarketsConfig < ApplicationConfig
   def self.api_url: () -> String
+  def self.symbols: () -> Hash[String, Array[String]]
+  def self.available: () -> Hash[String, Array[String]]
+  def self.default_symbols: () -> Hash[String, Array[String]]
+  def self.labels: () -> Hash[String, String]
   def self.user_agent: () -> String
   def self.open_timeout: () -> Integer
   def self.read_timeout: () -> Integer
   def self.cache_ttl: () -> Integer
-  def self.symbols: () -> Hash[Symbol, Array[String]]
-  def self.available: () -> Hash[Symbol, Array[String]]
-  def self.labels: () -> Hash[String, String]
 
   def api_url: () -> String
+  def symbols: () -> Hash[String, Array[String]]
+  def available: () -> Hash[String, Array[String]]
+  def default_symbols: () -> Hash[String, Array[String]]
+  def labels: () -> Hash[String, String]
   def user_agent: () -> String
   def open_timeout: () -> Integer
   def read_timeout: () -> Integer
   def cache_ttl: () -> Integer
-  def symbols: () -> Hash[Symbol, Array[String]]
-  def available: () -> Hash[Symbol, Array[String]]
-  def labels: () -> Hash[String, String]
 end
