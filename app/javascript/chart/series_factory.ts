@@ -1,5 +1,6 @@
 import type { IChartApi, ISeriesApi, SeriesType } from "lightweight-charts"
 import type { Candle } from "../types/candle"
+import type { RuntimeOverlay } from "../types/store"
 import {
   PRICE_SERIES_TYPES, VOLUME_SERIES_TYPES,
 } from "../config/theme"
@@ -95,7 +96,8 @@ export function priceColorOverrides(
   }
 }
 
-export function toSeriesData(ov: any, candles: Candle[]): any[] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function toSeriesData(ov: RuntimeOverlay, candles: Candle[]): any[] {
   if (ov.mode === "volume") {
     if (ov.chartType === "Histogram") {
       return candles.map(c => ({
@@ -110,7 +112,8 @@ export function toSeriesData(ov: any, candles: Candle[]): any[] {
   return candles.map(c => ({ time: c.time, value: c.close }))
 }
 
-export function toUpdatePoint(ov: any, candle: Candle): any {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function toUpdatePoint(ov: RuntimeOverlay, candle: Candle): any {
   if (ov.mode === "volume") {
     if (ov.chartType === "Histogram") {
       return {

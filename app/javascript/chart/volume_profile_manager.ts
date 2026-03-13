@@ -1,20 +1,21 @@
-import type { IChartApi } from "lightweight-charts"
+import type { IChartApi, ISeriesApi, SeriesType } from "lightweight-charts"
 import type { Candle } from "../types/candle"
+import type { RuntimeOverlay } from "../types/store"
 import { VolumeProfilePrimitive } from "./primitives/volume_profile"
 import { findFirstPriceSeries } from "./overlay_utils"
 import { VP_DEFAULT_OPACITY, VP_DEFAULT_ROWS } from "../config/constants"
 
 export default class VolumeProfileManager {
   chart: IChartApi
-  overlayMap: Map<string, any>
+  overlayMap: Map<string, RuntimeOverlay>
   _vpEnabled: boolean
   _vpOpacity: number
-  _vpPrimitive: any
-  _vpSeriesRef: any
+  _vpPrimitive: VolumeProfilePrimitive | null
+  _vpSeriesRef: ISeriesApi<SeriesType> | null
   _vpRangeHandler: (() => void) | null
   _vpRafId: number | null
 
-  constructor(chart: IChartApi, overlayMap: Map<string, any>) {
+  constructor(chart: IChartApi, overlayMap: Map<string, RuntimeOverlay>) {
     this.chart = chart
     this.overlayMap = overlayMap
     this._vpEnabled = false
@@ -68,7 +69,7 @@ export default class VolumeProfileManager {
     this._vpEnabled = false
   }
 
-  _findFirstPriceSeries(): any {
+  _findFirstPriceSeries(): ISeriesApi<SeriesType> | null {
     return findFirstPriceSeries(this.overlayMap)
   }
 
@@ -89,8 +90,8 @@ export default class VolumeProfileManager {
 
     let candles = null
     for (const [, ov] of this.overlayMap) {
-      if (ov.mode !== "indicator" && ov.loader?.candles?.length > 0) {
-        candles = ov.loader.candles
+      if (ov.mode !== "indicator" && (ov.loader?.candles?.length ?? 0) > 0) {
+        candles = ov.loader!.candles
         break
       }
     }

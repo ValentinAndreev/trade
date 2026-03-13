@@ -1,5 +1,5 @@
 import { Controller } from "@hotwired/stimulus"
-import { createGrid, type GridApi, themeQuartz } from "ag-grid-community"
+import { createGrid, type GridApi } from "ag-grid-community"
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community"
 import { buildGridOptions, buildColDefs, buildRowClassRules, buildSystemColDef, computeSelectionStats, getInitialColumnState, type SelectionStats } from "../data_grid/grid_config"
 import { loadDataTable, getRowsFromCache, type DataTableRow } from "../data_grid/data_loader"
@@ -11,22 +11,11 @@ import candleCache from "../data/candle_cache"
 import type { Candle } from "../types/candle"
 import type { DataConfig } from "../types/store"
 import { columnFieldKey } from "../types/store"
+import { agGridDarkTheme } from "../config/ag_grid_theme"
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
-const darkTheme = themeQuartz.withParams({
-  backgroundColor: "#1a1a2e",
-  foregroundColor: "#d1d4dc",
-  headerBackgroundColor: "#22223a",
-  headerTextColor: "#9ca3af",
-  rowHoverColor: "#2a2a3e",
-  borderColor: "#3a3a4e",
-  accentColor: "#3b82f6",
-  chromeBackgroundColor: "#1a1a2e",
-  oddRowBackgroundColor: "#1e1e32",
-  fontSize: 13,
-  headerFontSize: 12,
-})
+const darkTheme = agGridDarkTheme.withParams({ headerFontSize: 12 })
 
 const NUMERIC_FIELDS = ["open", "high", "low", "close", "volume"]
 

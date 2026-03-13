@@ -8,15 +8,19 @@ import { RECOMPUTE_DEBOUNCE_MS } from "../config/constants"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import connectionMonitor from "../services/connection_monitor"
 import indicatorCache from "../data/indicator_cache"
+import type { RuntimeOverlay, OverlayConfig } from "../types/store"
+import type { Candle } from "../types/candle"
+
+type SourceDataPoint = Pick<Candle, "time" | "open" | "high" | "low" | "close" | "volume"> & { value: number }
 
 export default class IndicatorManager {
   chart: IChartApi
-  overlayMap: Map<string, any>
+  overlayMap: Map<string, RuntimeOverlay>
   timeframe: string
   _onScaleSync: () => void
   _recomputeTimers: Map<string, ReturnType<typeof setTimeout>>
 
-  constructor(chart: IChartApi, overlayMap: Map<string, any>, timeframe: string, { onScaleSync }: { onScaleSync: () => void }) {
+  constructor(chart: IChartApi, overlayMap: Map<string, RuntimeOverlay>, timeframe: string, { onScaleSync }: { onScaleSync: () => void }) {
     this.chart = chart
     this.overlayMap = overlayMap
     this.timeframe = timeframe
@@ -24,11 +28,11 @@ export default class IndicatorManager {
     this._recomputeTimers = new Map()
   }
 
-  addOverlay(config: any, colorIndex: number): number {
-    const ci = normalizeColorScheme(config.colorScheme, colorIndex)
+  addOverlay(config: OverlayConfig, colorIndex: number): number {
+    const ci = normalizeColorScheme(config.colorScheme ?? colorIndex, colorIndex)
     const colors = OVERLAY_COLORS[ci]
     const visible = config.visible !== false
-    const opacity = normalizeOpacity(config.opacity, 1)
+    const opacity = normalizeOpacity(config.opacity ?? 1, 1)
     const basePriceScaleId = `overlay-${config.id}`
     const indicatorType = config.indicatorType || "sma"
     const indicatorParams = config.indicatorParams || {}
@@ -36,13 +40,14 @@ export default class IndicatorManager {
 
     const indicatorSource = config.indicatorSource || (INDICATOR_META[indicatorType]?.lib ? "client" : "server")
 
-    const ov = {
+    const ov: RuntimeOverlay = {
       series: null,
       mode: "indicator", chartType: "Line",
       colorIndex: ci, colorScheme: ci, opacity, colors, visible,
       basePriceScaleId, activePriceScaleId: basePriceScaleId,
       symbol: config.symbol,
-      indicatorType, indicatorParams, indicatorSource, pinnedTo,
+      indicatorType, indicatorParams: indicatorParams as Record<string, number | string>,
+      indicatorSource, pinnedTo,
       indicatorSeries: [],
     }
 
@@ -55,8 +60,8 @@ export default class IndicatorManager {
     return ci
   }
 
-  async loadData(id: string, ov: any): Promise<void> {
-    const meta = INDICATOR_META[ov.indicatorType]
+  async loadData(id: string, ov: RuntimeOverlay): Promise<void> {
+    const meta = ov.indicatorType ? INDICATOR_META[ov.indicatorType] : null
     if (!meta) { this._restorePriceIfEmpty(ov); return }
 
     const scaleId = meta.overlay ? this.resolveScaleId(ov) : ov.basePriceScaleId
@@ -79,12 +84,12 @@ export default class IndicatorManager {
         const seriesData = data
           .filter(d => d[field.key] != null)
           .map(d => ({ time: d.time, value: d[field.key] }))
-        series.setData(seriesData as any)
+        series.setData(seriesData as import("lightweight-charts").LineData[])
         return { series, fieldKey: field.key }
       })
 
       const symbol = this.resolveSymbol(ov)
-      if (symbol) {
+      if (symbol && ov.indicatorType) {
         indicatorCache.set(symbol, this.timeframe, ov.indicatorType, ov.indicatorParams || {}, data)
       }
       ov.activePriceScaleId = scaleId
@@ -95,13 +100,13 @@ export default class IndicatorManager {
     }
   }
 
-  _restorePriceIfEmpty(ov: any): void {
+  _restorePriceIfEmpty(ov: RuntimeOverlay): void {
     if (!ov.indicatorSeries?.length && ov.series) {
       ov.series.applyOptions({ visible: ov.visible !== false })
     }
   }
 
-  updateIndicator(id: string, type: string, params: Record<string, unknown>, pinnedTo: string | null | undefined, source?: string): void {
+  updateIndicator(id: string, type: string, params: Record<string, number | string>, pinnedTo: string | null | undefined, source?: string): void {
     const ov = this.overlayMap.get(id)
     if (!ov) return
 
@@ -141,40 +146,40 @@ export default class IndicatorManager {
       if (ov.mode !== "indicator") continue
       if (sourceId && ov.pinnedTo !== sourceId) continue
 
-      const isServer = ov.indicatorSource === "server" || !INDICATOR_META[ov.indicatorType]?.lib
+      const isServer = ov.indicatorSource === "server" || !INDICATOR_META[ov.indicatorType ?? ""]?.lib
       if (isServer && !connectionMonitor.backendOnline) continue
 
       if (ov.indicatorSeries?.length) {
         this._scheduleRecompute(id, ov)
-      } else if (INDICATOR_META[ov.indicatorType]) {
+      } else if (ov.indicatorType && INDICATOR_META[ov.indicatorType]) {
         this.loadData(id, ov)
       }
     }
   }
 
-  resolveSymbol(ov: any): string | null {
+  resolveSymbol(ov: RuntimeOverlay): string | null {
     if (!ov.pinnedTo) return ov.symbol
     const target = this.overlayMap.get(ov.pinnedTo)
     return target ? target.symbol : ov.symbol
   }
 
-  resolveScaleId(ov: any): string {
+  resolveScaleId(ov: RuntimeOverlay): string {
     if (!ov.pinnedTo) return ov.basePriceScaleId
     const target = this.overlayMap.get(ov.pinnedTo)
     if (!target) return ov.basePriceScaleId
     return target.activePriceScaleId || target.basePriceScaleId
   }
 
-  removeSeriesFor(ov: any): void {
+  removeSeriesFor(ov: RuntimeOverlay): void {
     if (ov.indicatorSeries) {
-      ov.indicatorSeries.forEach((s: any) => { try { this.chart.removeSeries(s.series) } catch (e) { console.warn("[indicator] cleanup:", e) } })
+      ov.indicatorSeries.forEach((s) => { try { this.chart.removeSeries(s.series) } catch (e) { console.warn("[indicator] cleanup:", e) } })
       ov.indicatorSeries = []
     }
   }
 
   // --- Private ---
 
-  _scheduleRecompute(id: string, ov: any): void {
+  _scheduleRecompute(id: string, ov: RuntimeOverlay): void {
     if (this._recomputeTimers.has(id)) return
     this._recomputeTimers.set(id, setTimeout(() => {
       this._recomputeTimers.delete(id)
@@ -182,20 +187,20 @@ export default class IndicatorManager {
     }, RECOMPUTE_DEBOUNCE_MS))
   }
 
-  async _recompute(ov: any): Promise<void> {
+  async _recompute(ov: RuntimeOverlay): Promise<void> {
     try {
       const sourceData = this._resolveSourceData(ov)
       const data = await this._compute(ov, sourceData)
       if (!data) return
 
-      ov.indicatorSeries.forEach(({ series, fieldKey }: { series: any; fieldKey: string }) => {
+      ov.indicatorSeries.forEach(({ series, fieldKey }) => {
         const seriesData = data
           .filter(d => d[fieldKey] != null)
-          .map(d => ({ time: d.time, value: d[fieldKey] }))
+          .map(d => ({ time: d.time, value: d[fieldKey] })) as import("lightweight-charts").LineData[]
         series.setData(seriesData)
       })
       const symbol = this.resolveSymbol(ov)
-      if (symbol) {
+      if (symbol && ov.indicatorType) {
         indicatorCache.set(symbol, this.timeframe, ov.indicatorType, ov.indicatorParams || {}, data)
       }
     } catch (error) {
@@ -203,16 +208,16 @@ export default class IndicatorManager {
     }
   }
 
-  async _compute(ov: any, sourceData: any[]): Promise<Record<string, number>[] | null> {
+  async _compute(ov: RuntimeOverlay, sourceData: SourceDataPoint[]): Promise<Record<string, number>[] | null> {
     if (!sourceData || sourceData.length === 0) return []
 
-    const meta = INDICATOR_META[ov.indicatorType]
+    const meta = ov.indicatorType ? INDICATOR_META[ov.indicatorType] : null
     const useClient = meta?.lib && ov.indicatorSource !== "server"
 
     if (useClient && meta?.lib) {
-      const result = meta.lib.fn(meta.lib.input(sourceData, ov.indicatorParams || {}))
+      const result = meta.lib.fn(meta.lib.input(sourceData, (ov.indicatorParams || {}) as Record<string, number>))
       const offset = sourceData.length - result.length
-      return result.map((val: any, i: number) => ({ time: sourceData[i + offset].time, ...meta.lib!.map(val) }))
+      return result.map((val: unknown, i: number) => ({ time: sourceData[i + offset].time, ...meta.lib!.map(val) }))
     }
 
     if (!connectionMonitor.backendOnline) return null
@@ -222,20 +227,20 @@ export default class IndicatorManager {
     ov._lastSourceKey = sourceKey
 
     const symbol = this.resolveSymbol(ov)
-    if (!symbol) return null
+    if (!symbol || !ov.indicatorType) return null
     const startTime = sourceData[0].time
-    const indLoader = new IndicatorLoader(ov.indicatorType, ov.indicatorParams)
+    const indLoader = new IndicatorLoader(ov.indicatorType!, ov.indicatorParams ?? undefined)
     return indLoader.compute(symbol, this.timeframe, startTime)
   }
 
-  _resolveSourceData(ov: any): any[] {
+  _resolveSourceData(ov: RuntimeOverlay): SourceDataPoint[] {
     const target = ov.pinnedTo ? this.overlayMap.get(ov.pinnedTo) : null
 
     const candles = target?.loader?.candles
     if (!candles || candles.length === 0) return []
 
     const field = target?.mode === "volume" ? "volume" : "close"
-    return candles.map((c: any) => ({
+    return candles.map((c) => ({
       time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
       value: c[field],
     }))

@@ -5,14 +5,25 @@ import {
 import type { DeepPartial, ChartOptions, SeriesDefinition, SeriesType } from "lightweight-charts"
 import type { ColorScheme } from "../types/store"
 
+// UI background and border palette
+export const BG_PRIMARY    = "#1a1a2e"
+export const BG_SECONDARY  = "#22223a"
+export const BG_HOVER      = "#2a2a3e"
+export const BORDER_COLOR  = "#3a3a4e"
+export const ACCENT_COLOR  = "#3b82f6"
+
 export const CHART_THEME: DeepPartial<ChartOptions> = {
-  layout: { background: { color: "#1a1a2e" }, textColor: "#e0e0e0" },
-  grid: { vertLines: { color: "#2a2a3e" }, horzLines: { color: "#2a2a3e" } },
+  layout: { background: { color: BG_PRIMARY }, textColor: "#e0e0e0" },
+  grid: { vertLines: { color: BG_HOVER }, horzLines: { color: BG_HOVER } },
   crosshair: { mode: 0 },
 }
 
 export const UP_COLOR = "#26a69a"
 export const DOWN_COLOR = "#ef5350"
+/** Alias for UP_COLOR — used for long trade markers */
+export const LONG_COLOR = UP_COLOR
+/** Alias for DOWN_COLOR — used for short trade markers */
+export const SHORT_COLOR = DOWN_COLOR
 export const VOLUME_UP_COLOR = "rgba(38,166,154,0.5)"
 export const VOLUME_DOWN_COLOR = "rgba(239,83,80,0.5)"
 

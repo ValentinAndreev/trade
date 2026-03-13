@@ -1,7 +1,9 @@
 import type { IChartApi, ISeriesApi, SeriesType } from "lightweight-charts"
+import type { CanvasRenderingTarget2D, BitmapCoordinatesRenderingScope } from "fancy-canvas"
 import {
   DEFAULT_LABEL_COLOR, LABEL_FONT_SIZES,
   LABEL_MARKER_RADIUS, LABEL_TEXT_OFFSET,
+  TEXT_LABEL_BASE_PX, TEXT_LABEL_STACK_PX,
 } from "../../config/constants"
 
 type LabelPoint = {
@@ -34,10 +36,10 @@ class TextLabelsRenderer {
     this._labels = labels
   }
 
-  draw(target: any): void {
+  draw(target: CanvasRenderingTarget2D): void {
     if (this._labels.length === 0) return
 
-    target.useBitmapCoordinateSpace((scope: any) => {
+    target.useBitmapCoordinateSpace((scope: BitmapCoordinatesRenderingScope) => {
       const ctx = scope.context
       const r = scope.horizontalPixelRatio
       const vr = scope.verticalPixelRatio
@@ -90,11 +92,11 @@ class TextLabelsRenderer {
 }
 
 class TextLabelsPaneView {
-  _source: any
+  _source: TextLabelsPrimitive
   _renderer: TextLabelsRenderer
   _labels: LabelPoint[] = []
 
-  constructor(source: any) {
+  constructor(source: TextLabelsPrimitive) {
     this._source = source
     this._renderer = new TextLabelsRenderer()
     this._labels = []
@@ -107,20 +109,18 @@ class TextLabelsPaneView {
     const timeScale = s._chart.timeScale()
     const series = s._series
 
-    // BASE_PX: gap between wick tip and circle centre.
-    // STACK_PX: pixels between consecutive stacked markers (circle + text + subtext + gap).
-    const BASE_PX = 6
-    const STACK_PX = 42   // circle(3) + offset(6) + text(16) + subtext(11) + gap(6)
+    // TEXT_LABEL_BASE_PX: gap between wick tip and circle centre.
+    // TEXT_LABEL_STACK_PX: pixels between consecutive stacked markers (circle + text + subtext + gap).
 
     const labels: LabelPoint[] = []
     for (const label of s._labels) {
-      const x = timeScale.timeToCoordinate(label.time)
+      const x = timeScale.timeToCoordinate(label.time as import("lightweight-charts").Time)
       const anchorY = series.priceToCoordinate(label.price)
       if (x === null || anchorY === null) continue
 
       const stack = label.stackIndex ?? 0
       const below = label.below ?? false
-      const pixelOffset = BASE_PX + stack * STACK_PX
+      const pixelOffset = TEXT_LABEL_BASE_PX + stack * TEXT_LABEL_STACK_PX
       // below=true → canvas y increases → add offset; above bar → subtract
       const y = below ? anchorY + pixelOffset : anchorY - pixelOffset
 

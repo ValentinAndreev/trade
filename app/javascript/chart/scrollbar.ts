@@ -1,4 +1,5 @@
 import { formatDateShort } from "../utils/format"
+import { BG_PRIMARY, BG_HOVER, BORDER_COLOR } from "../config/theme"
 
 export interface ScrollbarOptions {
   getVisibleRange: () => { from: number; to: number } | null
@@ -52,13 +53,13 @@ export default class Scrollbar {
     this.nav = document.createElement("div")
     Object.assign(this.nav.style, {
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      height: "46px", background: "#1a1a2e", borderTop: "1px solid #2a2a3e",
+      height: "46px", background: BG_PRIMARY, borderTop: `1px solid ${BG_HOVER}`,
       padding: "0 0px 0 4px", gap: "4px",
     })
     this.wrapper.appendChild(this.nav)
 
     const btnStyle = {
-      background: "#2a2a3e", border: "1px solid #3a3a4e", borderRadius: "4px",
+      background: BG_HOVER, border: `1px solid ${BORDER_COLOR}`, borderRadius: "4px",
       color: "#ccc", cursor: "pointer", padding: "6px 10px", fontSize: "13px",
       lineHeight: "1.4", whiteSpace: "nowrap", textAlign: "center",
       outline: "none", boxShadow: "none", WebkitAppearance: "none",
@@ -72,7 +73,7 @@ export default class Scrollbar {
     this.dateInput = document.createElement("input")
     this.dateInput.type = "date"
     Object.assign(this.dateInput.style, {
-      background: "#2a2a3e", border: "1px solid #3a3a4e", borderRadius: "3px",
+      background: BG_HOVER, border: `1px solid ${BORDER_COLOR}`, borderRadius: "3px",
       color: "#ccc", fontSize: "14px", padding: "6px 8px", width: "140px",
       textAlign: "center", outline: "none",
     })
@@ -97,8 +98,8 @@ export default class Scrollbar {
     // Scrollbar track
     this.el = document.createElement("div")
     Object.assign(this.el.style, {
-      height: "12px", background: "#1a1a2e",
-      borderTop: "1px solid #2a2a3e", position: "relative", cursor: "pointer",
+      height: "12px", background: BG_PRIMARY,
+      borderTop: `1px solid ${BG_HOVER}`, position: "relative", cursor: "pointer",
     })
     this.wrapper.appendChild(this.el)
 

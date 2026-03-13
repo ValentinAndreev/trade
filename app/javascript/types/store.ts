@@ -282,3 +282,39 @@ export interface DataGridControllerAPI {
 export interface StimulusApp {
   getControllerForElementAndIdentifier(el: Element, id: string): unknown
 }
+
+// --- Runtime chart types ---
+
+import type { ISeriesApi, SeriesType } from "lightweight-charts"
+import type { Candle } from "./candle"
+
+export interface RuntimeIndicatorSeries {
+  series: ISeriesApi<SeriesType>
+  fieldKey: string
+}
+
+export interface CandleLoader {
+  candles: Candle[]
+}
+
+/** Full runtime state of a chart overlay (price, volume, or indicator). */
+export interface RuntimeOverlay {
+  mode: "price" | "volume" | "indicator"
+  chartType: string
+  visible: boolean
+  colorIndex: number
+  colorScheme: number
+  opacity: number
+  colors: { up: string; down: string; line: string }
+  basePriceScaleId: string
+  activePriceScaleId: string
+  symbol: string | null
+  indicatorType: string | null
+  indicatorParams: Record<string, number | string> | null
+  indicatorSource: string
+  pinnedTo: string | null
+  series: ISeriesApi<SeriesType> | null
+  indicatorSeries: RuntimeIndicatorSeries[]
+  loader?: CandleLoader
+  _lastSourceKey?: string | null
+}

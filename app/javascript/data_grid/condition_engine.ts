@@ -1,4 +1,5 @@
 import type { Condition, ConditionAction, DataTableRow } from "../types/store"
+import { resolveColumnValue, evaluateRule } from "./engines/rule_evaluator"
 
 export interface ConditionMatch {
   rowIndex: number
@@ -47,54 +48,12 @@ export function evaluateSingleCondition(
   prevRow: DataTableRow | null = null,
 ): boolean {
   const { rule } = condition
-  const colValue = resolveColumnValue(row, rule.column)
-  if (colValue == null) return false
-
-  const threshold = rule.value
-
-  switch (rule.type) {
-    case "value_gt":
-      return colValue > threshold
-    case "value_lt":
-      return colValue < threshold
-    case "change_gt":
-      return colValue > threshold
-    case "change_lt":
-      return colValue < threshold
-    case "between": {
-      const upper = rule.compareColumn ? resolveColumnValue(row, rule.compareColumn) : threshold
-      return upper != null && colValue >= threshold && colValue <= upper
-    }
-    case "cross_above": {
-      if (!prevRow || !rule.compareColumn) return false
-      const prevVal = resolveColumnValue(prevRow, rule.column)
-      const curCompare = resolveColumnValue(row, rule.compareColumn)
-      const prevCompare = resolveColumnValue(prevRow, rule.compareColumn)
-      if (prevVal == null || curCompare == null || prevCompare == null) return false
-      return prevVal <= prevCompare && colValue > curCompare
-    }
-    case "cross_below": {
-      if (!prevRow || !rule.compareColumn) return false
-      const prevVal = resolveColumnValue(prevRow, rule.column)
-      const curCompare = resolveColumnValue(row, rule.compareColumn)
-      const prevCompare = resolveColumnValue(prevRow, rule.compareColumn)
-      if (prevVal == null || curCompare == null || prevCompare == null) return false
-      return prevVal >= prevCompare && colValue < curCompare
-    }
-    case "expression": {
-      if (!rule.expression) return false
-      return evaluateExpression(rule.expression, row)
-    }
-    default:
-      return false
+  // Expression rules are condition-engine specific (not in system engine)
+  if (rule.type === "expression") {
+    if (!rule.expression) return false
+    return evaluateExpression(rule.expression, row)
   }
-}
-
-function resolveColumnValue(row: DataTableRow, column: string): number | null {
-  const v = row[column]
-  if (v == null) return null
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
+  return evaluateRule(rule, row, prevRow)
 }
 
 const MATH_CONTEXT = "{abs,sqrt,min,max,pow,log,floor,ceil,round,sign,PI,E}=Math"

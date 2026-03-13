@@ -2,7 +2,7 @@ import { Controller } from "@hotwired/stimulus"
 import { createChart, IChartApi, LogicalRange } from "lightweight-charts"
 import type { ISeriesApi, SeriesType } from "lightweight-charts"
 
-import type { OverlayConfig, DrawingItem } from "../types/store"
+import type { OverlayConfig, DrawingItem, RuntimeOverlay } from "../types/store"
 import { CHART_THEME, OVERLAY_COLORS } from "../config/theme"
 import DataLoader from "../chart/data_loader"
 import BitfinexFeed from "../chart/feeds/bitfinex_feed"
@@ -20,30 +20,19 @@ import {
 } from "../chart/series_factory"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import DrawingManager from "../chart/drawing_manager"
-import type { LabelMarker, OverlayEntry as BaseOverlayEntry, TrendLineItem, HLineItem, VLineItem } from "../chart/drawing_manager"
+import type { LabelMarker, TrendLineItem, HLineItem, VLineItem } from "../chart/drawing_manager"
 import InteractionHandler from "../chart/interaction_handler"
 import ScaleManager from "../chart/scale_manager"
 import VolumeProfileManager from "../chart/volume_profile_manager"
 import { apiFetch } from "../services/api_fetch"
 import type { Candle } from "../types/candle"
 
-interface OverlayEntry extends BaseOverlayEntry {
-  series: ReturnType<typeof createOverlaySeries> | null
+/** Extends RuntimeOverlay with chart-controller–specific fields (loader, feeds). */
+interface OverlayEntry extends RuntimeOverlay {
   loader: DataLoader
   bfxFeed: BitfinexFeed
   cableFeed: CableFeed
-  mode: string
-  chartType: string
-  colorIndex: number
-  colorScheme: number
-  opacity: number
-  colors: { up: string; down: string; line: string }
-  visible: boolean
-  basePriceScaleId: string
-  activePriceScaleId: string
-  symbol: string
-  indicatorSeries?: Array<{ series: ISeriesApi<SeriesType> }> | null
-  indicatorType?: string
+  symbol: string   // always set (non-null) in chart context
 }
 
 type IndicatorSeries = { series: ISeriesApi<SeriesType> }
@@ -167,17 +156,17 @@ export default class extends Controller {
     if (!ov || ov.mode === mode) return
 
     // Remove indicator series if switching away from indicator
-    if (ov.indicatorSeries) { this.indicators.removeSeriesFor(ov); ov.indicatorSeries = null }
+    if (ov.indicatorSeries?.length) { this.indicators.removeSeriesFor(ov); ov.indicatorSeries = [] }
 
     if (mode === "indicator") {
       // Hide price/volume series when switching to indicator
       if (ov.series) ov.series.applyOptions({ visible: false })
-      ov.mode = mode
+      ov.mode = mode as RuntimeOverlay["mode"]
       return
     }
 
     // Switching to price or volume — show/recreate the base series
-    ov.mode = mode
+    ov.mode = mode as RuntimeOverlay["mode"]
     if (ov.series) {
       ov.series.applyOptions({ visible: ov.visible !== false })
       this._recreateSeries(id)
@@ -340,9 +329,14 @@ export default class extends Controller {
 
     this.overlayMap.set(config.id, {
       series, loader, bfxFeed, cableFeed,
-      mode, chartType, colorIndex, colorScheme: colorIndex, opacity, colors, visible,
+      mode: mode as RuntimeOverlay["mode"], chartType, colorIndex, colorScheme: colorIndex, opacity, colors, visible,
       basePriceScaleId, activePriceScaleId: basePriceScaleId,
-      symbol: config.symbol,
+      symbol: config.symbol ?? "",
+      indicatorSeries: [],
+      indicatorType: config.indicatorType ?? null,
+      indicatorParams: config.indicatorParams ?? null,
+      indicatorSource: config.indicatorSource ?? "client",
+      pinnedTo: config.pinnedTo ?? null,
     })
     this._syncSelectedOverlayScale()
   }

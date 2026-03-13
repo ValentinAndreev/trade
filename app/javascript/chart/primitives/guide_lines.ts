@@ -1,7 +1,8 @@
 import type { IChartApi, ISeriesApi, SeriesType } from "lightweight-charts"
+import type { CanvasRenderingTarget2D, BitmapCoordinatesRenderingScope } from "fancy-canvas"
 import { DEFAULT_LINE_COLOR } from "../../config/constants"
 
-type DrawLineFn = (ctx: CanvasRenderingContext2D, coord: number, scope: any) => void
+type DrawLineFn = (ctx: CanvasRenderingContext2D, coord: number, scope: BitmapCoordinatesRenderingScope) => void
 
 function createLineRenderer(drawLine: DrawLineFn) {
   return class {
@@ -21,10 +22,10 @@ function createLineRenderer(drawLine: DrawLineFn) {
       this._width = width
     }
 
-    draw(target: any): void {
+    draw(target: CanvasRenderingTarget2D): void {
       const coord = this._coord
       if (coord === null) return
-      target.useBitmapCoordinateSpace((scope: any) => {
+      target.useBitmapCoordinateSpace((scope: BitmapCoordinatesRenderingScope) => {
         const ctx = scope.context
         ctx.beginPath()
         drawLine(ctx, coord, scope)
@@ -36,21 +37,30 @@ function createLineRenderer(drawLine: DrawLineFn) {
   }
 }
 
+interface LinePrimitiveSource {
+  _chart: IChartApi | null
+  _series: ISeriesApi<SeriesType> | null
+  _color: string
+  _width: number
+  [key: string]: unknown
+}
+
 type CreateLinePrimitiveParams = {
   valueKey: string
-  getCoord: (source: any) => number | null
+  getCoord: (source: LinePrimitiveSource) => number | null
   drawLine: DrawLineFn
 }
 
 function createLinePrimitive({ valueKey, getCoord, drawLine }: CreateLinePrimitiveParams) {
+  type LineRenderer = InstanceType<ReturnType<typeof createLineRenderer>>
   const Renderer = createLineRenderer(drawLine)
 
   class PaneView {
-    _source: any
-    _renderer: InstanceType<ReturnType<typeof createLineRenderer>>
+    _source: LinePrimitiveSource
+    _renderer: LineRenderer
     _coord: number | null = null
 
-    constructor(source: any) {
+    constructor(source: LinePrimitiveSource) {
       this._source = source
       this._renderer = new Renderer()
       this._coord = null
@@ -65,13 +75,13 @@ function createLinePrimitive({ valueKey, getCoord, drawLine }: CreateLinePrimiti
       this._renderer.update(coord, s._color, s._width)
     }
 
-    renderer(): any {
+    renderer(): LineRenderer | null {
       return this._coord === null ? null : this._renderer
     }
   }
 
   return class {
-    [key: string]: any
+    [key: string]: unknown
     _chart: IChartApi | null = null
     _series: ISeriesApi<SeriesType> | null = null
     _requestUpdate: (() => void) | null = null
@@ -84,7 +94,7 @@ function createLinePrimitive({ valueKey, getCoord, drawLine }: CreateLinePrimiti
       this._chart = null
       this._series = null
       this._requestUpdate = null
-      this._paneView = new PaneView(this)
+      this._paneView = new PaneView(this as unknown as LinePrimitiveSource)
     }
 
     attached({ chart, series, requestUpdate }: { chart: IChartApi; series: ISeriesApi<SeriesType>; requestUpdate: () => void }): void {
@@ -114,7 +124,7 @@ function createLinePrimitive({ valueKey, getCoord, drawLine }: CreateLinePrimiti
 
 export const HLinePrimitive = createLinePrimitive({
   valueKey: "_price",
-  getCoord: (source) => source._series.priceToCoordinate(source._price),
+  getCoord: (source) => source._series?.priceToCoordinate(source._price as number) ?? null,
   drawLine: (ctx, coord, scope) => {
     const y = coord * scope.verticalPixelRatio
     ctx.moveTo(0, y)
@@ -124,7 +134,7 @@ export const HLinePrimitive = createLinePrimitive({
 
 export const VLinePrimitive = createLinePrimitive({
   valueKey: "_time",
-  getCoord: (source) => source._chart.timeScale().timeToCoordinate(source._time),
+  getCoord: (source) => source._chart?.timeScale().timeToCoordinate(source._time as import("lightweight-charts").Time) ?? null,
   drawLine: (ctx, coord, scope) => {
     const x = coord * scope.horizontalPixelRatio
     ctx.moveTo(x, 0)

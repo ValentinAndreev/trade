@@ -1,4 +1,5 @@
 import type { Candle } from "../../types/candle"
+import type { Subscription } from "@rails/actioncable"
 import { consumer } from "./cable_consumer"
 import connectionMonitor from "../../services/connection_monitor"
 
@@ -6,7 +7,7 @@ export default class CableFeed {
   symbol: string
   timeframe: string
   onCandle: (candle: Candle) => void
-  subscription: any
+  subscription: Subscription | null
   _active: boolean
 
   constructor(symbol: string, timeframe: string, onCandle: (candle: Candle) => void) {
@@ -30,7 +31,7 @@ export default class CableFeed {
 
   _subscribe(): void {
     if (this.subscription) return
-    this.subscription = consumer.subscriptions.create(
+    this.subscription = consumer.subscriptions.create<Candle[]>(
       {
         channel: "CandlesChannel",
         symbol: this.symbol,

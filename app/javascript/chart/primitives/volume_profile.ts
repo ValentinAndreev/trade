@@ -2,6 +2,7 @@
 // Uses lightweight-charts ISeriesPrimitive API (v5.x)
 
 import type { IChartApi, ISeriesApi, SeriesType } from "lightweight-charts"
+import type { CanvasRenderingTarget2D, BitmapCoordinatesRenderingScope } from "fancy-canvas"
 import { withAlpha } from "../../utils/color"
 import { VP_BASE_COLOR, VP_DEFAULT_BIN_PX, VP_BAR_WIDTH_RATIO } from "../../config/constants"
 
@@ -22,10 +23,10 @@ class VolumeProfileRenderer {
     this._color = color
   }
 
-  draw(target: any): void {
+  draw(target: CanvasRenderingTarget2D): void {
     if (this._rows.length === 0) return
 
-    target.useBitmapCoordinateSpace((scope: any) => {
+    target.useBitmapCoordinateSpace((scope: BitmapCoordinatesRenderingScope) => {
       const ctx = scope.context
       const r = scope.horizontalPixelRatio
       const vr = scope.verticalPixelRatio
@@ -39,11 +40,11 @@ class VolumeProfileRenderer {
 }
 
 class VolumeProfilePaneView {
-  _source: any
+  _source: VolumeProfilePrimitive
   _renderer: VolumeProfileRenderer
   _rows: { y: number; height: number; width: number }[] = []
 
-  constructor(source: any) {
+  constructor(source: VolumeProfilePrimitive) {
     this._source = source
     this._renderer = new VolumeProfileRenderer()
     this._rows = []
@@ -56,7 +57,7 @@ class VolumeProfilePaneView {
     const data = s._data
     if (!data || data.length === 0) { this._rows = []; return }
 
-    const maxVolume = data.reduce((max: number, r: VolumeRow) => Math.max(max, r.volume), 0)
+    const maxVolume = data.reduce((max, r) => Math.max(max, r.volume), 0)
     if (maxVolume === 0) { this._rows = []; return }
 
     const chartWidth = s._chart.timeScale().width()

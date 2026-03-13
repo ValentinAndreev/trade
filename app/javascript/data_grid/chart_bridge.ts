@@ -1,17 +1,8 @@
 import { evaluateConditions, getChartMarkers, getColorZones } from "./condition_engine"
 import { generateTrades } from "./system_engine"
 import type { Tab, DataTableRow, StimulusApp, ChartControllerAPI, TradingSystem, LabelMarkerInput } from "../types/store"
+import { UP_COLOR, DOWN_COLOR } from "../config/theme"
 
-export interface ChartBridgeMarker {
-  time: number
-  text: string
-  color: string
-  symbol: string
-  mode: string
-  modeDetail: string
-  price?: number
-  fontSize?: number
-}
 
 export default class ChartBridge {
   private tabsElement: HTMLElement
@@ -101,8 +92,8 @@ export default class ChartBridge {
 
       // Build directly from trades (not getSystemSignals) so that exit+entry
       // on the same bar both appear — a Map would silently overwrite one of them.
-      const longClr  = sys.longColor  ?? "#26a69a"
-      const shortClr = sys.shortColor ?? "#ef5350"
+      const longClr  = sys.longColor  ?? UP_COLOR
+      const shortClr = sys.shortColor ?? DOWN_COLOR
 
       for (const trade of trades) {
         const entryRow = dataByTime.get(trade.entryTime)

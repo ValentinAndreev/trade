@@ -1,27 +1,34 @@
-import type { IChartApi } from "lightweight-charts"
+import type { IChartApi, ISeriesApi, SeriesType, MouseEventParams, Time } from "lightweight-charts"
+import type { RuntimeOverlay } from "../types/store"
 import { TrendLinePrimitive } from "./primitives/trend_line"
 import {
   DEFAULT_LINE_COLOR, DEFAULT_GUIDE_COLOR, DEFAULT_LABEL_COLOR,
   DEFAULT_TREND_WIDTH, TREND_PREVIEW_DASH, LABEL_BLUR_DELAY_MS,
 } from "../config/constants"
 
+type TimePricePoint = { time: Time; price: number }
+type ChartParam = MouseEventParams<Time>
+
 export default class InteractionHandler {
   chart: IChartApi
-  overlayMap: Map<string, any>
+  overlayMap: Map<string, RuntimeOverlay>
   element: HTMLElement
   labelMode: boolean
   lineMode: boolean
   hlMode: boolean
   vlMode: boolean
-  _lineDrawState: { step: string; p1: any; overlayId: string; symbol: string; mode: string; modeDetail: string; series: any } | null
-  _linePreviewPrimitive: any
-  _linePreviewSeriesRef: any
+  _lineDrawState: {
+    step: string; p1: TimePricePoint; p2?: TimePricePoint; overlayId: string; symbol: string
+    mode: string; modeDetail: string; series: ISeriesApi<SeriesType>
+  } | null
+  _linePreviewPrimitive: TrendLinePrimitive | null
+  _linePreviewSeriesRef: ISeriesApi<SeriesType> | null
   _labelInputEl: HTMLInputElement | null
   _labelTooltipEl: HTMLElement | null
-  _clickHandler: ((param: any) => void) | null
-  _crosshairHandler: ((param: any) => void) | null
+  _clickHandler: ((param: ChartParam) => void) | null
+  _crosshairHandler: ((param: ChartParam) => void) | null
 
-  constructor(chart: IChartApi, overlayMap: Map<string, any>, element: HTMLElement) {
+  constructor(chart: IChartApi, overlayMap: Map<string, RuntimeOverlay>, element: HTMLElement) {
     this.chart = chart
     this.overlayMap = overlayMap
     this.element = element
@@ -119,7 +126,7 @@ export default class InteractionHandler {
 
   // --- Event handlers ---
 
-  _onChartClick(param: any): void {
+  _onChartClick(param: ChartParam): void {
     if (this.lineMode) { this._onLineClick(param); return }
     if (this.hlMode) { this._onHLineClick(param); return }
     if (this.vlMode) { this._onVLineClick(param); return }
@@ -136,7 +143,7 @@ export default class InteractionHandler {
     this._showLabelInput(param.point.x, param.point.y, param.time, price, target.id, target.ov.symbol || "", target.ov.mode || "price", modeDetail)
   }
 
-  _onCrosshairMove(param: any): void {
+  _onCrosshairMove(param: ChartParam): void {
     const anyMode = this._anyInteractiveMode()
     if (!anyMode || !param.point) { this._removeLabelTooltip(); return }
     if (this._labelInputEl) return
@@ -157,7 +164,7 @@ export default class InteractionHandler {
     }
   }
 
-  _onLineClick(param: any): void {
+  _onLineClick(param: ChartParam): void {
     if (!param.point || !param.time) return
     const target = this._findNearestSeries(param)
     if (!target) return
@@ -190,7 +197,7 @@ export default class InteractionHandler {
     }))
   }
 
-  _onHLineClick(param: any): void {
+  _onHLineClick(param: ChartParam): void {
     if (!param.point || !param.time) return
     const target = this._findNearestSeries(param)
     if (!target) return
@@ -203,7 +210,7 @@ export default class InteractionHandler {
     }))
   }
 
-  _onVLineClick(param: any): void {
+  _onVLineClick(param: ChartParam): void {
     if (!param.point || !param.time) return
     const target = this._findNearestSeries(param)
     if (!target) return
@@ -216,7 +223,7 @@ export default class InteractionHandler {
 
   // --- Line preview ---
 
-  _showLinePreview(p1: any, currentPoint: any, series: any): void {
+  _showLinePreview(p1: TimePricePoint, currentPoint: TimePricePoint, series: ISeriesApi<SeriesType>): void {
     if (!this._linePreviewPrimitive) {
       this._linePreviewPrimitive = new TrendLinePrimitive(p1, currentPoint, { color: DEFAULT_LINE_COLOR, width: DEFAULT_TREND_WIDTH, dash: [...TREND_PREVIEW_DASH] })
       series.attachPrimitive(this._linePreviewPrimitive)
@@ -251,7 +258,7 @@ export default class InteractionHandler {
     if (this._labelTooltipEl) { this._labelTooltipEl.remove(); this._labelTooltipEl = null }
   }
 
-  _showLabelInput(x: number, y: number, time: any, price: number, overlayId: string, symbol: string, mode: string, modeDetail: string): void {
+  _showLabelInput(x: number, y: number, time: Time, price: number, overlayId: string, symbol: string, mode: string, modeDetail: string): void {
     this._removeLabelInput()
     const input = document.createElement("input")
     input.type = "text"
@@ -287,8 +294,8 @@ export default class InteractionHandler {
 
   // --- Helpers ---
 
-  _findNearestSeries(param: any): { id: string; ov: any; series: any } | null {
-    const pixelY = param.point.y
+  _findNearestSeries(param: ChartParam): { id: string; ov: RuntimeOverlay; series: ISeriesApi<SeriesType> } | null {
+    const pixelY = param.point!.y
     const seriesData = param.seriesData
     let best = null, bestDist = Infinity
 
@@ -296,10 +303,10 @@ export default class InteractionHandler {
       if (!ov.visible) continue
       const seriesList = []
       if (ov.series) seriesList.push(ov.series)
-      if (ov.indicatorSeries) ov.indicatorSeries.forEach((s: any) => seriesList.push(s.series))
+      if (ov.indicatorSeries) ov.indicatorSeries.forEach((s) => seriesList.push(s.series))
 
       for (const series of seriesList) {
-        const data = seriesData?.get(series)
+        const data = seriesData?.get(series) as Record<string, number> | undefined
         if (!data) continue
         const dataValue = data.close ?? data.value ?? null
         if (dataValue === null || !Number.isFinite(dataValue)) continue
@@ -316,7 +323,7 @@ export default class InteractionHandler {
     return this.labelMode || this.lineMode || this.hlMode || this.vlMode
   }
 
-  _overlayModeStr(ov: any): string {
+  _overlayModeStr(ov: RuntimeOverlay): string {
     if (ov.mode === "indicator") return (ov.indicatorType || "ind").toUpperCase()
     return ov.mode === "volume" ? "Vol" : "Price"
   }

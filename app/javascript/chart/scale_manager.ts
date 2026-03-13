@@ -2,13 +2,14 @@
 
 import type { IChartApi } from "lightweight-charts"
 import { INDICATOR_META } from "../config/indicators"
+import type { RuntimeOverlay } from "../types/store"
 
 export default class ScaleManager {
   chart: IChartApi
-  overlayMap: Map<string, any>
+  overlayMap: Map<string, RuntimeOverlay>
   selectedOverlayId: string | null
 
-  constructor(chart: IChartApi, overlayMap: Map<string, any>) {
+  constructor(chart: IChartApi, overlayMap: Map<string, RuntimeOverlay>) {
     this.chart = chart
     this.overlayMap = overlayMap
     this.selectedOverlayId = null
@@ -25,7 +26,7 @@ export default class ScaleManager {
 
     let rightScaleOverlayId = null
     if (this.selectedOverlayId && this.overlayMap.has(this.selectedOverlayId)) {
-      const selOv = this.overlayMap.get(this.selectedOverlayId)
+      const selOv = this.overlayMap.get(this.selectedOverlayId)!
       if (selOv.visible) {
         const selMeta = selOv.indicatorType ? INDICATOR_META[selOv.indicatorType] : null
         if (selMeta && !selMeta.overlay) {
@@ -45,7 +46,7 @@ export default class ScaleManager {
       const targetScaleId = (rightScaleOverlayId && id === rightScaleOverlayId) ? "right" : ov.basePriceScaleId
       if (ov.activePriceScaleId !== targetScaleId) {
         if (ov.indicatorSeries) {
-          ov.indicatorSeries.forEach((s: any) => s.series.applyOptions({ priceScaleId: targetScaleId }))
+          ov.indicatorSeries.forEach((s) => s.series.applyOptions({ priceScaleId: targetScaleId }))
         } else if (ov.series) {
           ov.series.applyOptions({ priceScaleId: targetScaleId })
         }
@@ -65,7 +66,7 @@ export default class ScaleManager {
       }
       if (ov.activePriceScaleId !== targetScaleId) {
         if (ov.indicatorSeries) {
-          ov.indicatorSeries.forEach((s: any) => s.series.applyOptions({ priceScaleId: targetScaleId }))
+          ov.indicatorSeries.forEach((s) => s.series.applyOptions({ priceScaleId: targetScaleId }))
         } else if (ov.series) {
           ov.series.applyOptions({ priceScaleId: targetScaleId })
         }

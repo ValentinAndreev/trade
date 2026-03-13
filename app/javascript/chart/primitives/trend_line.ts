@@ -1,7 +1,8 @@
-import type { IChartApi, ISeriesApi, SeriesType } from "lightweight-charts"
+import type { IChartApi, ISeriesApi, SeriesType, Time } from "lightweight-charts"
+import type { CanvasRenderingTarget2D, BitmapCoordinatesRenderingScope } from "fancy-canvas"
 import { DEFAULT_LINE_COLOR, DEFAULT_TREND_WIDTH, ENDPOINT_RADIUS } from "../../config/constants"
 
-type TimePricePoint = { time: number; price: number }
+type TimePricePoint = { time: Time; price: number }
 type TrendLineOptions = { color?: string; width?: number; dash?: number[] }
 
 class TrendLineRenderer {
@@ -27,12 +28,12 @@ class TrendLineRenderer {
     this._dash = dash || null
   }
 
-  draw(target: any): void {
+  draw(target: CanvasRenderingTarget2D): void {
     const p1 = this._p1
     const p2 = this._p2
     if (!p1 || !p2) return
 
-    target.useBitmapCoordinateSpace((scope: any) => {
+    target.useBitmapCoordinateSpace((scope: BitmapCoordinatesRenderingScope) => {
       const ctx = scope.context
       const r = scope.horizontalPixelRatio
       const vr = scope.verticalPixelRatio
@@ -62,12 +63,12 @@ class TrendLineRenderer {
 }
 
 class TrendLinePaneView {
-  _source: any
+  _source: TrendLinePrimitive
   _renderer: TrendLineRenderer
   _p1: { x: number; y: number } | null = null
   _p2: { x: number; y: number } | null = null
 
-  constructor(source: any) {
+  constructor(source: TrendLinePrimitive) {
     this._source = source
     this._renderer = new TrendLineRenderer()
     this._p1 = null

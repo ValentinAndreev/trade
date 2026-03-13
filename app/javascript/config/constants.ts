@@ -1,3 +1,8 @@
+// Number formatting precision
+export const PRICE_PRECISION = 2
+export const CHANGE_PRECISION = 2
+export const VOLUME_PRECISION = 4
+
 // Data loading
 export const CANDLE_LIMIT = 1500
 export const HISTORY_LOAD_LIMIT = 500
@@ -5,6 +10,9 @@ export const LOAD_MORE_THRESHOLD = 50
 export const DEFAULT_VISIBLE_BARS = 100
 
 // Timing
+export const LINKED_DATA_REFRESH_MS = 30_000
+export const SYSTEM_STATS_RETRY_DELAY_MS = 300
+export const SYSTEM_STATS_MAX_RETRIES = 20
 export const RECOMPUTE_DEBOUNCE_MS = 500
 export const RECONNECT_DELAY_MS = 3000
 export const TOAST_DURATION_MS = 3000
@@ -46,6 +54,10 @@ export const SPARKLINE_PADDING = 4
 export const CONNECTION_ONLINE_COLOR = "#22c55e"
 export const CONNECTION_OFFLINE_COLOR = "#ef4444"
 export const CONNECTION_EXCHANGE_OFFLINE_COLOR = "#f59e0b"
+
+// Chart marker positioning (pixel offsets from bar wicks)
+export const TEXT_LABEL_BASE_PX = 6
+export const TEXT_LABEL_STACK_PX = 42
 
 // Label font sizes (index 1–5)
 export const LABEL_FONT_SIZES = [0, 10, 13, 16, 20, 24] as const

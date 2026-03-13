@@ -1,10 +1,10 @@
 import type { IChartApi, ISeriesApi, SeriesType } from "lightweight-charts"
-import type { Candle } from "../types/candle"
 import { TrendLinePrimitive } from "./primitives/trend_line"
 import { HLinePrimitive, VLinePrimitive } from "./primitives/guide_lines"
 import { TextLabelsPrimitive } from "./primitives/text_labels"
 import { findFirstPriceSeries } from "./overlay_utils"
 import { DEFAULT_LINE_COLOR, DEFAULT_GUIDE_COLOR, DEFAULT_TREND_WIDTH, DEFAULT_VISIBLE_BARS } from "../config/constants"
+import type { RuntimeOverlay } from "../types/store"
 
 export interface LabelMarker {
   id?: string
@@ -23,8 +23,8 @@ export interface LabelMarker {
 export interface TrendLineItem {
   id: string
   overlayId: string
-  p1: { time: number; price: number }
-  p2: { time: number; price: number }
+  p1: { time: import("lightweight-charts").Time; price: number }
+  p2: { time: import("lightweight-charts").Time; price: number }
   color?: string
   width?: number
 }
@@ -45,13 +45,8 @@ export interface VLineItem {
   width?: number
 }
 
-export interface OverlayEntry {
-  series?: ISeriesApi<SeriesType> | null
-  indicatorSeries?: Array<{ series: ISeriesApi<SeriesType> }> | null
-  visible?: boolean
-  loader?: { candles?: Candle[] }
-  [key: string]: unknown
-}
+/** @deprecated Use RuntimeOverlay from types/store instead. */
+export type OverlayEntry = RuntimeOverlay
 
 interface PrimitiveAttachment<T> {
   id?: string
@@ -107,7 +102,7 @@ export default class DrawingManager {
     const firstOv = [...this.overlayMap.values()].find(ov => ov.loader?.candles?.length)
     if (!firstOv) return
     const candles = firstOv.loader!.candles!
-    let idx = candles.findIndex((c: Candle) => c.time >= time)
+    let idx = candles.findIndex((c) => c.time >= time)
     if (idx === -1) idx = candles.length - 1
     const range = this.chart.timeScale().getVisibleLogicalRange()
     const visible = range ? range.to - range.from : DEFAULT_VISIBLE_BARS

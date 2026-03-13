@@ -105,8 +105,8 @@ class ConnectionMonitor {
   }
 
   _subscribeToExchangeStatus(): void {
-    this._subscription = consumer.subscriptions.create("ExchangeStatusChannel", {
-      received: (data: { bitfinex?: boolean }) => {
+    this._subscription = consumer.subscriptions.create<{ bitfinex?: boolean }>({ channel: "ExchangeStatusChannel" }, {
+      received: (data) => {
         if (typeof data.bitfinex === "boolean") this._updateBitfinexStatus(data.bitfinex)
       },
     })

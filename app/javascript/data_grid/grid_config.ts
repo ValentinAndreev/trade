@@ -3,10 +3,8 @@ import { columnFieldKey } from "../types/store"
 import type { DataColumn, Condition, DataTableRow, TradingSystem } from "../types/store"
 import { evaluateFormulaExpression, type ConditionMatch } from "./condition_engine"
 import type { SystemSignal } from "./system_engine"
-
-const PRICE_PRECISION = 2
-const CHANGE_PRECISION = 2
-const VOLUME_PRECISION = 4
+import { UP_COLOR, DOWN_COLOR, ACCENT_COLOR } from "../config/theme"
+import { PRICE_PRECISION, CHANGE_PRECISION, VOLUME_PRECISION } from "../config/constants"
 
 function formatPrice(params: ValueFormatterParams): string {
   const v = params.value
@@ -63,14 +61,9 @@ export function getInitialColumnState(columns: DataColumn[]): Array<{ colId: str
   return columns.map(col => ({ colId: col.id, width: col.width ?? defaultWidth(col) }))
 }
 
-/** Field key for a system's signal column in row data. */
-export function systemSignalFieldKey(systemId: string): string {
-  return `_sys_${systemId}`
-}
-
 /** Build a ColDef for a TradingSystem signal column. */
 export function buildSystemColDef(system: TradingSystem, signalMap: Map<number, SystemSignal>): ColDef {
-  const color = system.color ?? "#3b82f6"
+  const color = system.color ?? ACCENT_COLOR
   return {
     colId: `sys_${system.id}`,
     headerName: system.name,
@@ -91,7 +84,7 @@ export function buildSystemColDef(system: TradingSystem, signalMap: Map<number, 
 function formatSystemSignal(sig: SystemSignal, _systemColor: string): string {
   const isLong = sig.direction === "long"
   const dirLabel = isLong ? "▲ LONG" : "▼ SHORT"
-  const entryColor = isLong ? "#26a69a" : "#ef5350"
+  const entryColor = isLong ? UP_COLOR : DOWN_COLOR
 
   if (sig.type === "entry") {
     return `<span style="color:${entryColor};font-weight:600">${dirLabel} ${sig.price.toFixed(2)}</span>`
@@ -99,14 +92,14 @@ function formatSystemSignal(sig: SystemSignal, _systemColor: string): string {
   if (sig.type === "exit") {
     const pnl = sig.pnl ?? 0
     const pct = sig.pnlPercent ?? 0
-    const c = pnl >= 0 ? "#26a69a" : "#ef5350"
+    const c = pnl >= 0 ? UP_COLOR : DOWN_COLOR
     const sign = pnl >= 0 ? "+" : ""
     return `<span style="color:${c};font-weight:600">EXIT ${sig.price.toFixed(2)} ${sign}${pnl.toFixed(2)} (${sign}${pct.toFixed(2)}%)</span>`
   }
   if (sig.type === "open") {
     const pnl = sig.pnl ?? 0
     const pct = sig.pnlPercent ?? 0
-    const c = pnl >= 0 ? "#26a69a" : "#ef5350"
+    const c = pnl >= 0 ? UP_COLOR : DOWN_COLOR
     const sign = pnl >= 0 ? "+" : ""
     return `<span style="color:${c}">OPEN ${sign}${pnl.toFixed(2)} (${sign}${pct.toFixed(2)}%)</span>`
   }
@@ -150,7 +143,7 @@ export function buildColDefs(columns: DataColumn[]): ColDef[] {
           cellStyle: (params: CellClassParams) => {
             const v = params.value
             if (v == null) return null
-            return v > 0 ? { color: "#26a69a" } : v < 0 ? { color: "#ef5350" } : null
+            return v > 0 ? { color: UP_COLOR } : v < 0 ? { color: DOWN_COLOR } : null
           },
         }
       case "indicator":

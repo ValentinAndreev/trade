@@ -4,12 +4,13 @@ import TabRenderer from "../tabs/renderer"
 import { fetchConfig } from "../tabs/config"
 import { startPanelResize } from "../tabs/panel_resizer"
 import DrawingActions from "../tabs/drawing_actions"
-import DataTabActions from "../tabs/data_tab_actions"
+import DataTabActions from "../tabs/data_actions"
 import ChartSidebarActions from "../tabs/chart_sidebar_actions"
 import ChartBridge from "../data_grid/chart_bridge"
 import { generateTrades, computeSystemStats } from "../data_grid/system_engine"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, DataGridControllerAPI, StimulusApp } from "../types/store"
+import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS, SYSTEM_STATS_MAX_RETRIES } from "../config/constants"
 
 export default class extends Controller {
   static targets = ["tabBar", "panels", "sidebar"]
@@ -135,9 +136,9 @@ export default class extends Controller {
 
     const rows = gridCtrl?.getData() ?? []
 
-    // Retry up to 20 times (6 seconds) if grid isn't ready or has no data yet
-    if ((!gridCtrl || !rows.length) && attempt < 20) {
-      setTimeout(() => this._deliverSystemStats(systemId, dataTabId, attempt + 1), 300)
+    // Retry up to SYSTEM_STATS_MAX_RETRIES if grid isn't ready or has no data yet
+    if ((!gridCtrl || !rows.length) && attempt < SYSTEM_STATS_MAX_RETRIES) {
+      setTimeout(() => this._deliverSystemStats(systemId, dataTabId, attempt + 1), SYSTEM_STATS_RETRY_DELAY_MS)
       return
     }
 
@@ -158,7 +159,7 @@ export default class extends Controller {
     }
     const tab = this.store.activeTab
     if (tab && this.store.isLinkedDataTab(tab)) {
-      this._linkedDataRefreshInterval = setInterval(() => this.dataActions.loadDataGrid(), 30_000)
+      this._linkedDataRefreshInterval = setInterval(() => this.dataActions.loadDataGrid(), LINKED_DATA_REFRESH_MS)
     }
   }
 
@@ -237,7 +238,7 @@ export default class extends Controller {
 
     const tab = this.store.activeTab
     if (tab && this.store.isLinkedDataTab(tab)) {
-      this._linkedDataRefreshInterval = setInterval(() => this.dataActions.loadDataGrid(), 30_000)
+      this._linkedDataRefreshInterval = setInterval(() => this.dataActions.loadDataGrid(), LINKED_DATA_REFRESH_MS)
     }
   }
 

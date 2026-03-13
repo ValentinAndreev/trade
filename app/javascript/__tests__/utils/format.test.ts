@@ -7,6 +7,7 @@ import {
   formatLocaleNumber,
   formatTime,
   formatDateTimeShort,
+  timeframeSeconds,
 } from "../../utils/format"
 
 describe("formatPrice", () => {
@@ -99,5 +100,41 @@ describe("formatDateTimeShort", () => {
   it("returns dd.mm hh:mm format", () => {
     const result = formatDateTimeShort("2026-03-06T14:05:00Z")
     expect(result).toMatch(/\d{2}\.\d{2} \d{2}:\d{2}/)
+  })
+})
+
+describe("timeframeSeconds", () => {
+  it("parses minutes", () => {
+    expect(timeframeSeconds("1m")).toBe(60)
+    expect(timeframeSeconds("5m")).toBe(300)
+    expect(timeframeSeconds("45m")).toBe(2700)
+  })
+
+  it("parses hours", () => {
+    expect(timeframeSeconds("1h")).toBe(3600)
+    expect(timeframeSeconds("2h")).toBe(7200)
+  })
+
+  it("parses days", () => {
+    expect(timeframeSeconds("1d")).toBe(86400)
+    expect(timeframeSeconds("3d")).toBe(259200)
+  })
+
+  it("parses weeks", () => {
+    expect(timeframeSeconds("1w")).toBe(604800)
+  })
+
+  it("parses months", () => {
+    expect(timeframeSeconds("1M")).toBe(2592000)
+  })
+
+  it("parses seconds", () => {
+    expect(timeframeSeconds("30s")).toBe(30)
+  })
+
+  it("falls back to 60 for unrecognised format", () => {
+    expect(timeframeSeconds("invalid")).toBe(60)
+    expect(timeframeSeconds("")).toBe(60)
+    expect(timeframeSeconds("1x")).toBe(60)
   })
 })
