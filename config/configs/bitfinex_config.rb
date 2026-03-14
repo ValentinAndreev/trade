@@ -6,7 +6,9 @@ class BitfinexConfig < ApplicationConfig
     batch_size: 5000,
     default_interval: '1m'
 
-  def api_url = super || 'https://api-pub.bitfinex.com/v2'
+  def api_url
+    super || 'https://api-pub.bitfinex.com/v2'
+  end
 
   def symbols = DashboardConfig.current_dashboard_symbols
 

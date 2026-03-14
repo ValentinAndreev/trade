@@ -45,7 +45,7 @@ export default class ScaleManager {
       if (ov.pinnedTo) continue
       const targetScaleId = (rightScaleOverlayId && id === rightScaleOverlayId) ? "right" : ov.basePriceScaleId
       if (ov.activePriceScaleId !== targetScaleId) {
-        if (ov.indicatorSeries) {
+        if (ov.indicatorSeries.length > 0) {
           ov.indicatorSeries.forEach((s) => s.series.applyOptions({ priceScaleId: targetScaleId }))
         } else if (ov.series) {
           ov.series.applyOptions({ priceScaleId: targetScaleId })
@@ -65,7 +65,7 @@ export default class ScaleManager {
         targetScaleId = target ? (target.activePriceScaleId || target.basePriceScaleId) : ov.basePriceScaleId
       }
       if (ov.activePriceScaleId !== targetScaleId) {
-        if (ov.indicatorSeries) {
+        if (ov.indicatorSeries.length > 0) {
           ov.indicatorSeries.forEach((s) => s.series.applyOptions({ priceScaleId: targetScaleId }))
         } else if (ov.series) {
           ov.series.applyOptions({ priceScaleId: targetScaleId })

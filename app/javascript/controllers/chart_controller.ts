@@ -100,7 +100,7 @@ export default class extends Controller {
     for (const [, ov] of this.overlayMap) {
       ov.bfxFeed?.disconnect()
       ov.cableFeed?.disconnect()
-      if (ov.indicatorSeries) {
+      if (ov.indicatorSeries.length > 0) {
         ov.indicatorSeries.forEach((s: IndicatorSeries) => { try { this.chart.removeSeries(s.series) } catch (e) { console.warn("[chart] cleanup:", (e as Error).message) } })
       }
     }
@@ -142,7 +142,7 @@ export default class extends Controller {
     if (!ov) return
     ov.bfxFeed?.disconnect()
     ov.cableFeed?.disconnect()
-    if (ov.indicatorSeries) this.indicators.removeSeriesFor(ov)
+    if (ov.indicatorSeries.length > 0) this.indicators.removeSeriesFor(ov)
     if (ov.series) {
       try { this.chart.removeSeries(ov.series) } catch (e) { console.warn("[chart] cleanup:", (e as Error).message) }
     }
@@ -196,7 +196,7 @@ export default class extends Controller {
     const normalized = visible !== false
     if (ov.visible === normalized) return
     ov.visible = normalized
-    if (ov.indicatorSeries) {
+    if (ov.indicatorSeries.length > 0) {
       ov.indicatorSeries.forEach((s: IndicatorSeries) => s.series.applyOptions({ visible: normalized }))
     } else if (ov.series) {
       ov.series.applyOptions({ visible: normalized })
@@ -343,7 +343,7 @@ export default class extends Controller {
 
   _applyOverlayStyle(ov: OverlayEntry): void {
     if (!ov) return
-    if (ov.indicatorSeries) {
+    if (ov.indicatorSeries.length > 0) {
       const meta = ov.indicatorType ? INDICATOR_META[ov.indicatorType] : undefined
       if (meta) {
         const fieldColors = indicatorFieldColors(ov.colors, meta.fields.length, ov.opacity)
