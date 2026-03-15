@@ -71,6 +71,7 @@ npm test
 - [06 UI Workflows](docs/06-ui-workflows.md)
 - [07 Jobs and Realtime](docs/07-jobs-and-realtime.md)
 - [08 Offline Mode](docs/08-offline-mode.md)
+- [09 Research Plan](docs/09-research-plan.md)
 
 ## С чего читать
 
