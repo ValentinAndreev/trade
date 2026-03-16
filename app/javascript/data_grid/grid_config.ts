@@ -261,11 +261,5 @@ export function buildGridOptions(
     suppressCellFocus: false,
     enableCellTextSelection: true,
     domLayout: "normal",
-    statusBar: {
-      statusPanels: [
-        { statusPanel: "agSelectedRowCountComponent" },
-        { statusPanel: "agAggregationComponent" },
-      ],
-    },
   }
 }

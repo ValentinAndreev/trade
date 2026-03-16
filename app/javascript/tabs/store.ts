@@ -1,7 +1,8 @@
 import { OVERLAY_COLORS } from "../config/theme"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import { loadTabs, saveTabs, calcNextId, loadActiveTabId, saveActiveTabId } from "./persistence"
-import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition, ChartLink, TradingSystem } from "../types/store"
+import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition, ChartLink, TradingSystem, ResearchConfig, ResearchResult } from "../types/store"
+import { buildDefaultResearchState } from "../research/state"
 
 const DRAWING_PREFIX: Record<DrawingKind, string> = { labels: "lbl", lines: "ln", hlines: "hl", vlines: "vl" }
 
@@ -75,7 +76,7 @@ export default class TabStore {
     if (this.activeTabId === tabId) {
       const newTab = this.tabs[Math.min(idx, this.tabs.length - 1)]
       this.activeTabId = newTab.id
-      if (newTab.type === "data") {
+      if (newTab.type === "data" || newTab.type === "research" || newTab.type === "system_stats") {
         this.selectedPanelId = null
         this.selectedOverlayId = null
       } else {
@@ -92,7 +93,7 @@ export default class TabStore {
     this.activeTabId = tabId
     const tab = this.activeTab
     if (tab) {
-      if (tab.type === "data") {
+      if (tab.type === "data" || tab.type === "research" || tab.type === "system_stats") {
         this.selectedPanelId = null
         this.selectedOverlayId = null
       } else if (!tab.panels.find(p => p.id === this.selectedPanelId)) {
@@ -115,6 +116,9 @@ export default class TabStore {
   tabLabel(tab: Tab): string {
     if (tab.type === "system_stats") {
       return tab.name || "Stats"
+    }
+    if (tab.type === "research") {
+      return tab.name || "Research"
     }
     if (tab.type === "data") {
       const base = tab.name || this._autoDataName(tab)
@@ -635,6 +639,27 @@ export default class TabStore {
     return this.addDataTab({ symbols, timeframe, sourceTabId: chartTabId, extraColumns: indicatorColumns })
   }
 
+  addResearchTab({ symbol = "BTCUSD", timeframe = "1h" }: { symbol?: string; timeframe?: string } = {}): Tab {
+    const researchCount = this.tabs.filter(t => t.type === "research").length
+    const tab: Tab = {
+      id: `tab-${this._nextTabId++}`,
+      name: researchCount === 0 ? "Research" : `Research${researchCount + 1}`,
+      type: "research",
+      panels: [],
+      researchConfig: buildDefaultResearchState({
+        symbols: [symbol],
+        timeframes: [timeframe],
+        indicators: [],
+      }),
+    }
+    this.tabs.push(tab)
+    this.activeTabId = tab.id
+    this.selectedPanelId = null
+    this.selectedOverlayId = null
+    this._save()
+    return tab
+  }
+
   moveTabNextToChart(dataTabId: string, chartTabId: string): void {
     const dataIdx = this.tabs.findIndex(t => t.id === dataTabId)
     const chartIdx = this.tabs.findIndex(t => t.id === chartTabId)
@@ -738,6 +763,22 @@ export default class TabStore {
       this._syncTimeframeToChart(tf, tab.dataConfig.chartLinks)
       this._syncTimeframeToOtherDataTabs(tabId, tf, tab.dataConfig.chartLinks)
     }
+    this._save()
+    return true
+  }
+
+  updateResearchConfig(tabId: string, updates: Partial<ResearchConfig>): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "research")
+    if (!tab) return false
+    tab.researchConfig = { ...(tab.researchConfig || buildDefaultResearchState(null)), ...updates }
+    this._save()
+    return true
+  }
+
+  updateResearchResult(tabId: string, updates: ResearchResult): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "research")
+    if (!tab) return false
+    tab.researchResult = updates
     this._save()
     return true
   }

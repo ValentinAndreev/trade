@@ -1,4 +1,5 @@
 import type { Tab } from "../types/store"
+import { buildDefaultResearchState } from "../research/state"
 
 const STORAGE_KEY = "chart-tabs"
 const ACTIVE_TAB_KEY = "chart-active-tab"
@@ -12,6 +13,12 @@ export function loadTabs(): Tab[] {
         const normalized = (tabs as Tab[]).map(tab => {
           if (tab.type === "data" && tab.dataConfig && !Array.isArray(tab.dataConfig.systems)) {
             tab.dataConfig.systems = []
+          }
+          if (tab.type === "research" && !tab.researchConfig) {
+            tab.researchConfig = buildDefaultResearchState(null)
+          }
+          if (tab.type === "research" && !tab.researchResult) {
+            tab.researchResult = { runs: [], selectedRunIndex: 0 }
           }
           return tab
         })
@@ -33,7 +40,15 @@ export function loadTabs(): Tab[] {
 }
 
 export function saveTabs(tabs: Tab[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs))
+  const storableTabs = tabs.map(tab => {
+    if (tab.type !== "research") return tab
+    return {
+      ...tab,
+      researchResult: undefined,
+    }
+  })
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(storableTabs))
 }
 
 export function loadActiveTabId(): string | null {

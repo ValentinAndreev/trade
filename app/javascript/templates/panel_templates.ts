@@ -187,6 +187,12 @@ export function addTabButtonHTML(ctrl: string): string {
         >
           <span class="text-green-400">&#9638;</span> Data
         </button>
+        <button
+          data-action="click->${ctrl}#addResearchTab"
+          class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
+        >
+          <span class="text-amber-400">&#9673;</span> Research
+        </button>
       </div>
     </div>
   `
@@ -215,6 +221,16 @@ export function systemStatsPanelHTML(
          data-controller="system-stats"
          data-system-stats-system-id-value="${systemId}"
          data-system-stats-data-tab-id-value="${dataTabId}">
+    </div>
+  `
+}
+
+export function researchPanelHTML(tabId: string, configJson: string): string {
+  return `
+    <div class="relative flex-1 min-h-0 overflow-hidden"
+         data-controller="research"
+         data-research-tab-id-value="${tabId}"
+         data-research-config-value='${configJson.replace(/'/g, "&#39;")}'>
     </div>
   `
 }

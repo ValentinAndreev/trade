@@ -25,3 +25,5 @@ application.register("data-grid", DataGridController)
 import SystemStatsController from "./system_stats_controller"
 application.register("system-stats", SystemStatsController)
 
+import ResearchController from "./research_controller"
+application.register("research", ResearchController)

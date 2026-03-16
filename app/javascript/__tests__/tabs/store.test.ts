@@ -102,6 +102,14 @@ describe("TabStore", () => {
       tab.panels[0].overlays[0].symbol = null
       expect(store.tabLabel(tab)).toBe("New")
     })
+
+    it("addResearchTab creates persisted research config", () => {
+      const tab = store.addResearchTab({ symbol: "ETHUSD", timeframe: "4h" })
+      expect(tab.type).toBe("research")
+      expect(tab.researchConfig?.symbol).toBe("ETHUSD")
+      expect(tab.researchConfig?.timeframe).toBe("4h")
+      expect(store.activeTabId).toBe(tab.id)
+    })
   })
 
   describe("panel CRUD", () => {
@@ -167,6 +175,39 @@ describe("TabStore", () => {
     it("updatePanelTimeframe returns false if same", () => {
       const tab = store.addTab()
       expect(store.updatePanelTimeframe(tab.panels[0].id, "1m")).toBe(false)
+    })
+  })
+
+  describe("research config", () => {
+    it("updateResearchConfig merges config and persists it on tab", () => {
+      const tab = store.addResearchTab()
+      const ok = store.updateResearchConfig(tab.id, {
+        moduleType: "rsi",
+        modulePeriod: 14,
+        lowerThreshold: 25,
+      })
+
+      expect(ok).toBe(true)
+      expect(tab.researchConfig?.moduleType).toBe("rsi")
+      expect(tab.researchConfig?.modulePeriod).toBe(14)
+      expect(tab.researchConfig?.lowerThreshold).toBe(25)
+    })
+
+    it("updateResearchResult stores runs and selected index", () => {
+      const tab = store.addResearchTab()
+      const ok = store.updateResearchResult(tab.id, {
+        runs: [
+          {
+            params: { module_period: 20 },
+            trades: [],
+          },
+        ],
+        selectedRunIndex: 0,
+      })
+
+      expect(ok).toBe(true)
+      expect(tab.researchResult?.runs).toHaveLength(1)
+      expect(tab.researchResult?.selectedRunIndex).toBe(0)
     })
   })
 
@@ -402,6 +443,16 @@ describe("TabStore", () => {
       store.activateTab(data.id)
       expect(store.selectedPanelId).toBeNull()
       expect(store.selectedOverlayId).toBeNull()
+    })
+
+    it("addResearchTab creates a research tab and clears selected panel", () => {
+      store.addTab({ symbol: "BTCUSD" })
+      const research = store.addResearchTab()
+      expect(research.type).toBe("research")
+      expect(store.activeTabId).toBe(research.id)
+      expect(store.selectedPanelId).toBeNull()
+      expect(store.selectedOverlayId).toBeNull()
+      expect(store.tabLabel(research)).toBe("Research")
     })
   })
 

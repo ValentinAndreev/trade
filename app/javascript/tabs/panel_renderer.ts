@@ -1,6 +1,6 @@
 import {
   panelLegendHTML, controlButtonsHTML,
-  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML, systemStatsPanelHTML,
+  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML, systemStatsPanelHTML, researchPanelHTML,
 } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
 
@@ -28,6 +28,20 @@ export default class PanelRenderer {
         if (!isActive) return
         if (!wrapper.querySelector("[data-controller='system-stats']")) {
           wrapper.innerHTML = systemStatsPanelHTML(tab.systemStatsConfig.systemId, tab.systemStatsConfig.dataTabId)
+        }
+        return
+      }
+
+      if (tab.type === "research") {
+        if (!isActive) return
+        const configJson = JSON.stringify(tab.researchConfig || {})
+        const existingResearch = wrapper.querySelector("[data-controller='research']") as HTMLElement | null
+        if (existingResearch) {
+          if (existingResearch.dataset.researchConfigValue !== configJson) {
+            existingResearch.dataset.researchConfigValue = configJson
+          }
+        } else {
+          wrapper.innerHTML = researchPanelHTML(tab.id, configJson)
         }
         return
       }

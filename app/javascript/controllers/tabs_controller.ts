@@ -11,6 +11,7 @@ import { generateTrades, computeSystemStats } from "../data_grid/system_engine"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, DataGridControllerAPI, StimulusApp } from "../types/store"
 import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS, SYSTEM_STATS_MAX_RETRIES } from "../config/constants"
+import { buildDefaultResearchState, syncResearchStateFromInputs, type ResearchState } from "../research/state"
 
 export default class extends Controller {
   static targets = ["tabBar", "panels", "sidebar"]
@@ -79,6 +80,8 @@ export default class extends Controller {
       columnStateChanged: (e: Event) => this._onDataGridColumnStateChanged(e),
       openSystemStats: (e: Event) => this._onOpenSystemStats(e),
       requestStats: (e: Event) => this._onSystemStatsRequest(e),
+      researchConfigChanged: (e: Event) => this._onResearchConfigChanged(e),
+      researchResultChanged: (e: Event) => this._onResearchResultChanged(e),
     }
     this.element.addEventListener("label:created", this._boundListeners.label)
     this.element.addEventListener("line:created", this._boundListeners.line)
@@ -92,6 +95,8 @@ export default class extends Controller {
     this.element.addEventListener("datagrid:columnStateChanged", this._boundListeners.columnStateChanged as EventListener)
     this.element.addEventListener("datatab:openSystemStats", this._boundListeners.openSystemStats as EventListener)
     this.element.addEventListener("systemstats:requestStats", this._boundListeners.requestStats as EventListener)
+    this.element.addEventListener("research:configChanged", this._boundListeners.researchConfigChanged as EventListener)
+    this.element.addEventListener("research:resultChanged", this._boundListeners.researchResultChanged as EventListener)
   }
 
   private _onDataGridColumnStateChanged(e: Event) {
@@ -117,6 +122,18 @@ export default class extends Controller {
   private _onSystemStatsRequest(e: Event) {
     const { systemId, dataTabId } = (e as CustomEvent<{ systemId: string; dataTabId: string }>).detail
     this._deliverSystemStats(systemId, dataTabId)
+  }
+
+  private _onResearchConfigChanged(e: Event) {
+    const { tabId, config } = (e as CustomEvent<{ tabId: string; config: Record<string, unknown> }>).detail
+    if (!tabId || !config) return
+    this.store.updateResearchConfig(tabId, config)
+  }
+
+  private _onResearchResultChanged(e: Event) {
+    const { tabId, result } = (e as CustomEvent<{ tabId: string; result: { runs: Array<{ params: Record<string, number | string | boolean>; trades: Array<Record<string, unknown>> }>; selectedRunIndex: number } }>).detail
+    if (!tabId || !result) return
+    this.store.updateResearchResult(tabId, result)
   }
 
   private _deliverSystemStats(systemId: string, dataTabId: string, attempt = 0) {
@@ -181,6 +198,8 @@ export default class extends Controller {
       this.element.removeEventListener("datagrid:columnStateChanged", this._boundListeners.columnStateChanged as EventListener)
       this.element.removeEventListener("datatab:openSystemStats", this._boundListeners.openSystemStats as EventListener)
       this.element.removeEventListener("systemstats:requestStats", this._boundListeners.requestStats as EventListener)
+      this.element.removeEventListener("research:configChanged", this._boundListeners.researchConfigChanged as EventListener)
+      this.element.removeEventListener("research:resultChanged", this._boundListeners.researchResultChanged as EventListener)
       this._boundListeners = null
     }
   }
@@ -209,6 +228,11 @@ export default class extends Controller {
   addTab() { this.store.addTab(); this.render() }
   addChartTab() { this.addTab() }
   addDataTab() { this.store.addDataTab(); this.render() }
+  addResearchTab() {
+    const timeframe = this.config.timeframes.includes("1h") ? "1h" : (this.config.timeframes[0] || "1h")
+    this.store.addResearchTab({ symbol: this.config.symbols[0] || "BTCUSD", timeframe })
+    this.render()
+  }
 
   createDataFromChart(e: Event) {
     e.stopPropagation()
@@ -544,6 +568,19 @@ export default class extends Controller {
   loadDataGrid()                     { return this.dataActions.loadDataGrid() }
   exportCsv()                        { this.dataActions.exportCsv() }
 
+  // --- Research tab ---
+
+  updateResearchConfig() {
+    if (!this._syncActiveResearchConfigFromSidebar()) return
+    this.render()
+  }
+
+  runResearch() {
+    if (!this._syncActiveResearchConfigFromSidebar()) return
+    this.render()
+    this._activeResearchController()?.run()
+  }
+
   // --- Panel resize ---
 
   startResize(e: Event) { startPanelResize(e as MouseEvent, "tabs") }
@@ -593,6 +630,34 @@ export default class extends Controller {
     const panelEl = (e.target as HTMLElement).closest("[data-panel-id]") as HTMLElement | null
     if (!panelEl) return this.store.selectedPanel
     return this._panelById(panelEl.dataset.panelId ?? "") || this.store.selectedPanel
+  }
+
+  private _syncActiveResearchConfigFromSidebar(): ResearchState | null {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return null
+
+    const next = {
+      ...(tab.researchConfig || buildDefaultResearchState({
+        symbols: this.config.symbols,
+        timeframes: this.config.timeframes,
+        indicators: this.config.indicators,
+      })),
+    }
+
+    syncResearchStateFromInputs(this.sidebarTarget, next)
+    this.store.updateResearchConfig(tab.id, next)
+    return next
+  }
+
+  private _activeResearchController(): { run(): Promise<void> } | null {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return null
+
+    const wrapper = this.panelsTarget.querySelector(`[data-tab-wrapper="${tab.id}"] [data-controller='research']`) as HTMLElement | null
+    if (!wrapper) return null
+
+    const app = this.application as StimulusApp
+    return app.getControllerForElementAndIdentifier(wrapper, "research") as { run(): Promise<void> } | null
   }
 
   _getSelectedChartCtrl() {

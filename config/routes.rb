@@ -32,6 +32,7 @@ Rails.application.routes.draw do
     end
     resources :indicators, only: :index
     post 'indicators/:type/compute', to: 'indicators#compute'
+    post 'research/run', to: 'research#run'
 
     resource :data_table, only: :show do
       post :correlations

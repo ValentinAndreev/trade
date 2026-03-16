@@ -1,5 +1,6 @@
 import SidebarRenderer from "./sidebar_renderer"
 import DataSidebarRenderer from "../data_grid/sidebar_renderer"
+import ResearchSidebarRenderer from "../research/sidebar_renderer"
 import PanelRenderer from "./panel_renderer"
 import { tabButtonHTML, addTabButtonHTML } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
@@ -36,6 +37,7 @@ export default class TabRenderer {
   panels: PanelRenderer
   sidebar: SidebarRenderer
   dataSidebar: DataSidebarRenderer
+  researchSidebar: ResearchSidebarRenderer
 
   constructor(tabBarEl: HTMLElement, panelsEl: HTMLElement, sidebarEl: HTMLElement, { controllerName }: { controllerName: string }) {
     this.tabBarEl = tabBarEl
@@ -44,6 +46,7 @@ export default class TabRenderer {
     this.panels = new PanelRenderer(panelsEl, controllerName)
     this.sidebar = new SidebarRenderer(sidebarEl, controllerName)
     this.dataSidebar = new DataSidebarRenderer(sidebarEl, controllerName)
+    this.researchSidebar = new ResearchSidebarRenderer(sidebarEl, controllerName)
   }
 
   render(opts: TabRenderOpts): void {
@@ -64,6 +67,14 @@ export default class TabRenderer {
         this.dataSidebar.setSystems(activeTab.dataConfig.systems ?? [])
       }
       this.dataSidebar.render(activeTab, symbols, timeframes, opts.chartTabOptions || [])
+    } else if (activeTab?.type === "research") {
+      this.sidebarEl.hidden = false
+      this.panels.renderDataTab(tabs, activeTabId)
+      if (activeTab.researchConfig) {
+        this.researchSidebar.render(activeTab.researchConfig, symbols, timeframes)
+      } else {
+        this.sidebarEl.innerHTML = ""
+      }
     } else if (activeTab?.type === "system_stats") {
       this.sidebarEl.hidden = true
       this.sidebarEl.innerHTML = ""

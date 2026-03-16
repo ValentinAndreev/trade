@@ -55,6 +55,52 @@ describe("persistence", () => {
       expect(result[0].type).toBe("data")
       expect(result[0].dataConfig?.symbols).toEqual(["BTCUSD"])
     })
+
+    it("hydrates missing research config for persisted research tabs", () => {
+      const tabs = [{
+        id: "tab-1",
+        name: "Research",
+        type: "research",
+        panels: [],
+      }]
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+      const result = loadTabs()
+      expect(result[0].type).toBe("research")
+      expect(result[0].researchConfig?.systemType).toBe("price_module_cross")
+      expect(result[0].researchConfig?.moduleType).toBe("ema")
+    })
+
+    it("hydrates missing research result for persisted research tabs", () => {
+      const tabs = [{
+        id: "tab-1",
+        name: "Research",
+        type: "research",
+        panels: [],
+        researchConfig: {
+          symbol: "BTCUSD",
+          timeframe: "1h",
+          startTime: "2026-03-01T00:00",
+          endTime: "2026-03-10T00:00",
+          systemType: "price_module_cross",
+          positionMode: "long_short",
+          moduleType: "ema",
+          modulePeriod: 20,
+          lowerThreshold: 30,
+          upperThreshold: 70,
+          feeBps: 4,
+          slippageBps: 2,
+          optimizationEnabled: false,
+          optimizationTarget: "module.period",
+          optimizationFrom: 5,
+          optimizationTo: 50,
+          optimizationStep: 1,
+          selectedMetric: "sharpeRatio",
+        },
+      }]
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+      const result = loadTabs()
+      expect(result[0].researchResult).toEqual({ runs: [], selectedRunIndex: 0 })
+    })
   })
 
   describe("saveTabs", () => {
@@ -65,6 +111,43 @@ describe("persistence", () => {
       }]
       saveTabs(tabs)
       expect(JSON.parse(localStorage.getItem("chart-tabs")!)).toEqual(tabs)
+    })
+
+    it("omits heavy research results from persisted tabs", () => {
+      const tabs: Tab[] = [{
+        id: "tab-1",
+        name: "Research",
+        type: "research",
+        panels: [],
+        researchConfig: {
+          symbol: "BTCUSD",
+          timeframe: "1h",
+          startTime: "2026-03-01T00:00",
+          endTime: "2026-03-10T00:00",
+          systemType: "price_module_cross",
+          positionMode: "long_short",
+          moduleType: "ema",
+          modulePeriod: 20,
+          lowerThreshold: 30,
+          upperThreshold: 70,
+          feeBps: 4,
+          slippageBps: 2,
+          optimizationEnabled: false,
+          optimizationTarget: "module.period",
+          optimizationFrom: 5,
+          optimizationTo: 50,
+          optimizationStep: 1,
+          selectedMetric: "sharpeRatio",
+        },
+        researchResult: {
+          runs: [{ params: { module_period: 20 }, trades: [] }],
+          selectedRunIndex: 0,
+        },
+      }]
+
+      saveTabs(tabs)
+      const stored = JSON.parse(localStorage.getItem("chart-tabs")!)
+      expect(stored[0].researchResult).toBeUndefined()
     })
   })
 

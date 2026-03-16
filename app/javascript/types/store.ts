@@ -1,4 +1,58 @@
-export type TabType = "chart" | "data" | "system_stats"
+export type TabType = "chart" | "data" | "system_stats" | "research"
+
+export type ResearchMetricKey =
+  | "netProfit"
+  | "netProfitPercent"
+  | "winRate"
+  | "totalTrades"
+  | "profitFactor"
+  | "expectancy"
+  | "maxDrawdown"
+  | "maxDrawdownPercent"
+  | "sharpeRatio"
+  | "sortinoRatio"
+  | "calmarRatio"
+  | "recoveryFactor"
+  | "avgBarsInTrade"
+  | "bestTrade"
+  | "worstTrade"
+
+export type ResearchSystemType = "price_module_cross" | "oscillator_threshold"
+export type ResearchModuleType = "ema" | "rsi"
+export type ResearchPositionMode = "long_short" | "long_only" | "short_only"
+export type ResearchOptimizationTarget = "module.period" | "system.lower_threshold" | "system.upper_threshold"
+
+export interface ResearchConfig {
+  symbol: string
+  timeframe: string
+  startTime: string
+  endTime: string
+  systemType: ResearchSystemType
+  positionMode: ResearchPositionMode
+  moduleType: ResearchModuleType
+  modulePeriod: number
+  lowerThreshold: number
+  upperThreshold: number
+  feeBps: number
+  slippageBps: number
+  optimizationEnabled: boolean
+  optimizationTarget: ResearchOptimizationTarget
+  optimizationFrom: number
+  optimizationTo: number
+  optimizationStep: number
+  selectedMetric: ResearchMetricKey
+  resultsSplitRatio: number
+}
+
+export interface ResearchRunPayload {
+  params: Record<string, number | string | boolean>
+  trades: Trade[]
+}
+
+export interface ResearchResult {
+  runs: ResearchRunPayload[]
+  selectedRunIndex: number
+}
 
 export interface Tab {
   id: string;
@@ -6,6 +60,8 @@ export interface Tab {
   type: TabType;
   panels: Panel[];
   dataConfig?: DataConfig;
+  researchConfig?: ResearchConfig;
+  researchResult?: ResearchResult;
   /** ID of the primary panel — stable regardless of panel reorder. Falls back to panels[0] if missing. */
   primaryPanelId?: string;
   /** For system_stats tabs: the system being analysed and the data tab it came from. */
