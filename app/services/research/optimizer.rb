@@ -2,10 +2,10 @@
 
 module Research
   class Optimizer
-    private attr_reader :executor, :system, :base_params, :mode, :stage
+    private attr_reader :backtest, :system, :base_params, :mode, :stage
 
-    def initialize(executor:, system:, base_params:, mode: :optimization, stage: :in_sample, progress_interval: 1.0)
-      @executor = executor
+    def initialize(backtest:, system:, base_params:, mode: :optimization, stage: :in_sample, progress_interval: 1.0)
+      @backtest = backtest
       @system = system
       @base_params = base_params.to_h.symbolize_keys
       @mode = mode
@@ -23,7 +23,7 @@ module Research
 
       runs = values.each_with_index.map do |value, index|
         run_started_at = monotonic_now
-        result = executor.run(
+        result = backtest.run(
           params: base_params.merge(param_key => value),
           mode: mode,
           stage: stage

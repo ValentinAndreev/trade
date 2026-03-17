@@ -2,7 +2,7 @@
 
 ## Назначение
 
-Research — серверный режим бэктестинга и оптимизации торговых систем. Системы описываются в YAML, валидируются, компилируются и запускаются на сервере. Результаты отображаются в отдельном UI-табе.
+Research — серверный режим бэктестинга и оптимизации торговых систем. Системы описываются в YAML, валидируются и запускаются на сервере. Результаты отображаются в отдельном UI-табе.
 
 Ключевые возможности:
 
@@ -208,7 +208,7 @@ config/research/
 
 ## Словарь (dictionary.yml)
 
-Словарь задаёт допустимые ключи, типы модулей, параметры и операторы. Валидатор и компилятор используют его как единственный источник правил.
+Словарь задаёт допустимые ключи, типы модулей, параметры и операторы. Валидатор и `System` используют его как единственный источник правил.
 
 Файл: `config/research/dictionary.yml`
 
@@ -252,13 +252,6 @@ Diagnostic.new(
 
 Это позволяет YAML-редактору во фронтенде подсвечивать ошибки прямо в тексте.
 
-## Компиляция
-
-После успешной валидации `Research::Dsl::Compiler` превращает YAML-payload в объект `Research::System`:
-
-- операнды компилируются в структуры `{ kind: :bar, key: :close }`, `{ kind: :module, key: :value }`, `{ kind: :literal, value: 30.0 }`;
-- runtime-параметры собираются из `module.params.period` + `params`;
-- цели оптимизации получают человекочитаемые метки из словаря.
 
 ## Backend-архитектура
 
@@ -267,13 +260,11 @@ Diagnostic.new(
 ```
 HTTP POST /api/research/run
   → RunRequest              # парсинг и валидация payload
-      → Catalog.validate    # валидация YAML
-      → Compiler.compile    # компиляция → Research::System
-  → Executor                # загрузка свечей, расчёт модуля
+      → Catalog.validate    # валидация YAML → Research::System
+  → Backtest                # загрузка свечей, расчёт модуля, симуляция торговли
       → Modules::Ema / Rsi  # расчёт индикатора
       → System.signals_for  # вычисление сигналов на каждом баре
-      → BacktestEngine      # симуляция торговли → сделки
-  → Optimizer               # если включена оптимизация — повтор Executor по диапазону
+  → Optimizer               # если включена оптимизация — повтор Backtest по диапазону
   → ProgressBroadcaster     # realtime-прогресс через ActionCable
 ```
 
@@ -281,21 +272,23 @@ HTTP POST /api/research/run
 
 #### Research::System
 
-Объект торговой системы, готовый к выполнению. `Compiler` разбирает YAML-payload и создаёт его: операнды условий из строк (`"close"`, `"module.value"`, `"params.lower_threshold"`) превращаются во внутренние структуры `{ kind: :bar, key: :close }`, `{ kind: :module }`, `{ kind: :param }` — чтобы `BacktestEngine` мог оценивать их напрямую по строке данных без повторного парсинга. Также собираются runtime-параметры (`module_period`, `position_mode` и пользовательские значения) и метки целей оптимизации.
+Хранит YAML-payload и словарь. Не требует предварительной трансформации данных — операнды условий (`"close"`, `"module.value"`, `"params.lower_threshold"`) разрешаются в строки напрямую при вычислении сигналов.
 
 Умеет:
 
 - `signals_for(prev_row:, row:, params:)` — вычислить сигналы на баре;
-- `run_params(runtime_params)` — собрать параметры для результата запуска;
+- `run_params(params)` — собрать параметры для результата запуска;
 - `optimization_param_key(target)` — определить, какой runtime-параметр менять при оптимизации.
 
 #### Research::RunRequest
 
-Парсинг HTTP-запроса. Извлекает dataset, execution, optimization. Валидирует YAML через `Catalog`. Формирует `executor_config` и `response_payload`.
+Парсинг HTTP-запроса. Извлекает dataset, execution, optimization. Валидирует YAML через `Catalog`. Формирует `backtest_config` и `response_payload`.
 
-#### Research::Executor
+#### Research::Backtest
 
-Загружает свечи из БД через `Candle::FindQuery`, запускает модуль (EMA/RSI), собирает строки и передаёт в `BacktestEngine`. Кэширует результаты модуля по периоду, чтобы не пересчитывать при оптимизации.
+Объединяет загрузку данных и симуляцию торговли в одном классе.
+
+Загружает свечи из БД через `Candle::FindQuery`, запускает модуль (EMA/RSI), собирает строки и выполняет симуляцию. Кэширует результаты модуля по периоду, чтобы не пересчитывать при оптимизации.
 
 Формат строки на один бар:
 
@@ -307,19 +300,15 @@ HTTP POST /api/research/run
 }
 ```
 
-#### Research::BacktestEngine
-
-Симуляция торговли. Проходит по строкам, вызывает `system.signals_for` на каждом баре, открывает и закрывает позиции. Учитывает:
+Учитывает при симуляции:
 
 - `fee_bps` — комиссия в базисных пунктах;
 - `slippage_bps` — проскальзывание в базисных пунктах;
 - `position_mode` — `long_short`, `long_only`, `short_only`.
 
-Возвращает список сделок.
-
 #### Research::Optimizer
 
-Перебор параметра по диапазону (from / to / step). Многократно вызывает `executor.run(...)` с разными значениями. Репортит прогресс через `ProgressBroadcaster`.
+Перебор параметра по диапазону (from / to / step). Многократно вызывает `backtest.run(...)` с разными значениями. Репортит прогресс через `ProgressBroadcaster`.
 
 #### Research::ProgressBroadcaster
 
@@ -341,7 +330,7 @@ HTTP POST /api/research/run
 Чтобы добавить новый модуль:
 
 1. Создать класс в `app/services/research/modules/`.
-2. Добавить его в `Executor::MODULES`.
+2. Добавить его в `Backtest::MODULES`.
 3. Добавить тип и параметры в `dictionary.yml`.
 
 ## API
@@ -655,11 +644,10 @@ conditions:
 
 ```
 app/services/research/
-├── system.rb                      # Скомпилированная торговая система
-├── run_request.rb                 # Парсинг HTTP-запроса
-├── executor.rb                    # Загрузка данных и один бэктест
-├── backtest_engine.rb             # Симуляция торговли
+├── system.rb                      # Торговая система: хранит payload, вычисляет сигналы
+├── backtest.rb                    # Загрузка данных + симуляция торговли
 ├── optimizer.rb                   # Перебор параметра по диапазону
+├── run_request.rb                 # Парсинг HTTP-запроса
 ├── progress_broadcaster.rb        # Realtime-прогресс через ActionCable
 ├── modules/
 │   ├── base.rb                    # Базовый класс серверных модулей
@@ -667,7 +655,6 @@ app/services/research/
 │   └── rsi.rb                     # RSI
 └── dsl/
     ├── catalog.rb                 # Каталог систем + файловые операции
-    ├── compiler.rb                # YAML → Research::System
     ├── validator.rb               # Инфраструктура валидации + SourceMap
     ├── validation_result.rb       # Результат валидации
     ├── validation_error.rb        # Исключение валидации
@@ -682,8 +669,8 @@ app/services/research/
 
 | Файл | Что проверяет |
 | --- | --- |
-| `spec/services/research/executor_spec.rb` | Загрузка данных, расчёт модуля, формирование результата |
-| `spec/services/research/optimizer_spec.rb` | Перебор параметров, формирование массива runs |
+| `spec/services/research/backtest_spec.rb` | Загрузка данных, расчёт модуля, симуляция, position_mode |
+| `spec/services/research/optimizer_spec.rb` | Перебор параметров, прогресс, формирование массива runs |
 | `spec/services/research/run_request_spec.rb` | Парсинг payload, валидация, формирование конфигурации |
 | `spec/services/research/dsl/validator_spec.rb` | Валидация YAML: все ошибки, все случаи |
 | `spec/services/research/dsl/catalog_spec.rb` | CRUD систем и директорий |
@@ -705,7 +692,7 @@ class Research::Modules::Sma < Research::Modules::Base
 end
 ```
 
-2. Зарегистрировать в `Research::Executor::MODULES`:
+2. Зарегистрировать в `Research::Backtest::MODULES`:
 
 ```ruby
 MODULES = {

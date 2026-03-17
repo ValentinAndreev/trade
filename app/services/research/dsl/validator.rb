@@ -26,7 +26,7 @@ module Research
         validate_conditions
         validate_optimization
 
-        compiled = Compiler.new(dictionary: @dictionary).compile(@payload) if @diagnostics.empty?
+        compiled = Research::System.new(@payload, dictionary: @dictionary) if @diagnostics.empty?
         ValidationResult.new(compiled: compiled, diagnostics: @diagnostics)
       end
 

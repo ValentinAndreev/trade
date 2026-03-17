@@ -3,7 +3,7 @@
 require 'rails_helper'
 
 RSpec.describe Research::Optimizer do
-  let(:executor) { instance_double(Research::Executor) }
+  let(:backtest) { instance_double(Research::Backtest) }
 
   let(:ema_system) do
     Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
@@ -76,12 +76,12 @@ RSpec.describe Research::Optimizer do
 
   describe '#call' do
     it 'runs all parameter values and keeps each result in memory' do
-      allow(executor).to receive(:run) do |params:, mode:, stage:|
+      allow(backtest).to receive(:run) do |params:, mode:, stage:|
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
       end
 
       results = described_class.new(
-        executor: executor,
+        backtest: backtest,
         system: ema_system,
         base_params: { module_period: 20 }
       ).call(
@@ -97,12 +97,12 @@ RSpec.describe Research::Optimizer do
     end
 
     it 'supports float optimization ranges for system thresholds' do
-      allow(executor).to receive(:run) do |params:, mode:, stage:|
+      allow(backtest).to receive(:run) do |params:, mode:, stage:|
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
       end
 
       results = described_class.new(
-        executor: executor,
+        backtest: backtest,
         system: rsi_system,
         base_params: { lower_threshold: 30.0 }
       ).call(
@@ -121,12 +121,12 @@ RSpec.describe Research::Optimizer do
         started: nil, run_completed: nil, finished: nil, failed: nil
       )
 
-      allow(executor).to receive(:run) do |params:, mode:, stage:|
+      allow(backtest).to receive(:run) do |params:, mode:, stage:|
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
       end
 
       described_class.new(
-        executor: executor,
+        backtest: backtest,
         system: ema_system,
         base_params: { module_period: 20 },
         progress_interval: 0
@@ -159,12 +159,12 @@ RSpec.describe Research::Optimizer do
         1.4   # finished elapsed
       ]
 
-      allow(executor).to receive(:run) do |params:, mode:, stage:|
+      allow(backtest).to receive(:run) do |params:, mode:, stage:|
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
       end
 
       optimizer = described_class.new(
-        executor: executor,
+        backtest: backtest,
         system: ema_system,
         base_params: { module_period: 20 },
         progress_interval: 1.0

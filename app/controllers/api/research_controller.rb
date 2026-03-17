@@ -95,13 +95,13 @@ class Api::ResearchController < Api::ApplicationController
   def run
     request_started_at = monotonic_now
     progress           = nil
-    research_request   = Research::RunRequest.new(research_payload)
-    executor           = Research::Executor.new(**research_request.executor_config)
-    progress           = Research::ProgressBroadcaster.new(run_id: research_request.progress_run_id)
+    research_request = Research::RunRequest.new(research_payload)
+    backtest         = Research::Backtest.new(**research_request.backtest_config)
+    progress         = Research::ProgressBroadcaster.new(run_id: research_request.progress_run_id)
 
     runs = if research_request.optimization_enabled?
       Research::Optimizer.new(
-        executor:    executor,
+        backtest:    backtest,
         system:      research_request.system,
         base_params: research_request.runtime_params
       ).call(
@@ -113,7 +113,7 @@ class Api::ResearchController < Api::ApplicationController
       progress.started(total_runs: 1, mode: :normal)
 
       run_started_at = monotonic_now
-      run            = executor.run(params: research_request.runtime_params)
+      run            = backtest.run(params: research_request.runtime_params)
 
       progress.run_completed(
         total_runs:     1,

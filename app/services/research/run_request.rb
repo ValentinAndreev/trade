@@ -14,7 +14,7 @@ module Research
       @system = validation.compiled
     end
 
-    def executor_config
+    def backtest_config
       {
         system: system,
         symbol: dataset.fetch(:symbol),
