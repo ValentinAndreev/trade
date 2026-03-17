@@ -1,17 +1,13 @@
 import type {
   ResearchMetricKey,
-  ResearchModuleType,
   ResearchOptimizationTarget,
   ResearchPositionMode,
-  ResearchSystemType,
 } from "../types/store"
 
 export type {
   ResearchMetricKey,
-  ResearchModuleType,
   ResearchOptimizationTarget,
   ResearchPositionMode,
-  ResearchSystemType,
 }
 
 export type LabeledOption<T extends string> = {
@@ -37,56 +33,37 @@ export const METRIC_OPTIONS: Array<{ key: ResearchMetricKey; label: string }> = 
   { key: "worstTrade", label: "Worst trade" },
 ]
 
-export const SYSTEM_OPTIONS: Array<LabeledOption<ResearchSystemType>> = [
-  { value: "price_module_cross", label: "Price vs module cross" },
-  { value: "oscillator_threshold", label: "Oscillator thresholds" },
-]
-
 export const POSITION_MODE_OPTIONS: Array<LabeledOption<ResearchPositionMode>> = [
   { value: "long_short", label: "Long + Short" },
   { value: "long_only", label: "Long only" },
   { value: "short_only", label: "Short only" },
 ]
 
-const MODULE_OPTIONS_BY_SYSTEM: Record<ResearchSystemType, Array<LabeledOption<ResearchModuleType>>> = {
-  price_module_cross: [{ value: "ema", label: "EMA" }],
-  oscillator_threshold: [{ value: "rsi", label: "RSI" }],
-}
-
-const OPTIMIZATION_OPTIONS_BY_SYSTEM: Record<ResearchSystemType, Array<LabeledOption<ResearchOptimizationTarget>>> = {
-  price_module_cross: [{ value: "module.period", label: "Module period" }],
-  oscillator_threshold: [
-    { value: "module.period", label: "Module period" },
-    { value: "system.lower_threshold", label: "Lower threshold" },
-    { value: "system.upper_threshold", label: "Upper threshold" },
-  ],
-}
-
-export function moduleOptionsForSystem(systemType: ResearchSystemType): Array<LabeledOption<ResearchModuleType>> {
-  return MODULE_OPTIONS_BY_SYSTEM[systemType]
-}
-
-export function optimizationOptionsForSystem(systemType: ResearchSystemType): Array<LabeledOption<ResearchOptimizationTarget>> {
-  return OPTIMIZATION_OPTIONS_BY_SYSTEM[systemType]
-}
-
-export function modulePeriodLabel(moduleType: ResearchModuleType): string {
-  return moduleType === "rsi" ? "RSI period" : "EMA period"
-}
-
 export function metricLabel(key: ResearchMetricKey): string {
   return METRIC_OPTIONS.find(option => option.key === key)?.label || key
 }
 
 export function optimizationTargetLabel(target: ResearchOptimizationTarget): string {
-  for (const options of Object.values(OPTIMIZATION_OPTIONS_BY_SYSTEM)) {
-    const match = options.find(option => option.value === target)
-    if (match) return match.label
+  if (target === "module.period") return "Module period"
+  if (target.startsWith("params.")) {
+    return humanizeToken(target.slice("params.".length))
   }
-  return target
+  return humanizeToken(target)
 }
 
 export function positionModeLabel(value: unknown): string {
   const str = String(value || "long_short")
   return POSITION_MODE_OPTIONS.find(option => option.value === str)?.label || str
+}
+
+export function moduleLabel(moduleType: string): string {
+  return moduleType.toUpperCase()
+}
+
+function humanizeToken(value: string): string {
+  return value
+    .split(/[._]/g)
+    .filter(Boolean)
+    .map(token => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(" ")
 }

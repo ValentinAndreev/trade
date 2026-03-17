@@ -59,21 +59,21 @@ describe("persistence", () => {
     it("hydrates missing research config for persisted research tabs", () => {
       const tabs = [{
         id: "tab-1",
-        name: "Research",
+        name: "Test/Optimization",
         type: "research",
         panels: [],
       }]
       localStorage.setItem("chart-tabs", JSON.stringify(tabs))
       const result = loadTabs()
       expect(result[0].type).toBe("research")
-      expect(result[0].researchConfig?.systemType).toBe("price_module_cross")
-      expect(result[0].researchConfig?.moduleType).toBe("ema")
+      expect(result[0].researchConfig?.systemId).toBe("price_ema_cross")
+      expect(result[0].researchConfig?.systemYaml).toBe("")
     })
 
     it("hydrates missing research result for persisted research tabs", () => {
       const tabs = [{
         id: "tab-1",
-        name: "Research",
+        name: "Test/Optimization",
         type: "research",
         panels: [],
         researchConfig: {
@@ -81,12 +81,9 @@ describe("persistence", () => {
           timeframe: "1h",
           startTime: "2026-03-01T00:00",
           endTime: "2026-03-10T00:00",
-          systemType: "price_module_cross",
-          positionMode: "long_short",
-          moduleType: "ema",
-          modulePeriod: 20,
-          lowerThreshold: 30,
-          upperThreshold: 70,
+          systemId: "price_ema_cross",
+          systemPath: "trend/price_ema_cross.yml",
+          systemYaml: "id: price_ema_cross",
           feeBps: 4,
           slippageBps: 2,
           optimizationEnabled: false,
@@ -95,11 +92,28 @@ describe("persistence", () => {
           optimizationTo: 50,
           optimizationStep: 1,
           selectedMetric: "sharpeRatio",
+          resultsSplitRatio: 0.38,
         },
       }]
       localStorage.setItem("chart-tabs", JSON.stringify(tabs))
       const result = loadTabs()
       expect(result[0].researchResult).toEqual({ runs: [], selectedRunIndex: 0 })
+    })
+
+    it("hydrates missing system editor config for persisted editor tabs", () => {
+      const tabs = [{
+        id: "tab-1",
+        name: "System editor",
+        type: "system_editor",
+        panels: [],
+      }]
+
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+      const result = loadTabs()
+
+      expect(result[0].type).toBe("system_editor")
+      expect(result[0].systemEditorConfig?.systemId).toBe("price_ema_cross")
+      expect(result[0].systemEditorConfig?.sourceSystemId).toBe("price_ema_cross")
     })
   })
 
@@ -116,7 +130,7 @@ describe("persistence", () => {
     it("omits heavy research results from persisted tabs", () => {
       const tabs: Tab[] = [{
         id: "tab-1",
-        name: "Research",
+        name: "Test/Optimization",
         type: "research",
         panels: [],
         researchConfig: {
@@ -124,12 +138,9 @@ describe("persistence", () => {
           timeframe: "1h",
           startTime: "2026-03-01T00:00",
           endTime: "2026-03-10T00:00",
-          systemType: "price_module_cross",
-          positionMode: "long_short",
-          moduleType: "ema",
-          modulePeriod: 20,
-          lowerThreshold: 30,
-          upperThreshold: 70,
+          systemId: "price_ema_cross",
+          systemPath: "trend/price_ema_cross.yml",
+          systemYaml: "id: price_ema_cross",
           feeBps: 4,
           slippageBps: 2,
           optimizationEnabled: false,
@@ -138,6 +149,7 @@ describe("persistence", () => {
           optimizationTo: 50,
           optimizationStep: 1,
           selectedMetric: "sharpeRatio",
+          resultsSplitRatio: 0.38,
         },
         researchResult: {
           runs: [{ params: { module_period: 20 }, trades: [] }],

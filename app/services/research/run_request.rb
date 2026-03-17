@@ -2,11 +2,27 @@
 
 module Research
   class RunRequest
-    attr_reader :system
+    attr_reader :system, :compiled_system
 
     def initialize(raw_params)
       @raw_params = raw_params.deep_symbolize_keys
-      @system = Research::SystemRegistry.fetch(system_type:, module_type:)
+      yaml = requested_yaml
+      if yaml.blank?
+        raise Research::Dsl::ValidationError.new([
+          Research::Dsl::Diagnostic.new(
+            message: 'System YAML is required',
+            line: 1,
+            column: 1,
+            length: 1,
+            code: 'yaml_missing'
+          )
+        ])
+      end
+
+      validation = Research::Dsl::Catalog.validate(yaml)
+      validation.raise_if_invalid!
+      @compiled_system = validation.compiled
+      @system = compiled_system.system
     end
 
     def executor_config
@@ -23,10 +39,7 @@ module Research
     end
 
     def runtime_params
-      @runtime_params ||= system.runtime_params(
-        system_params: system_payload.fetch(:params),
-        module_params: module_payload.fetch(:params)
-      )
+      @runtime_params ||= compiled_system.runtime_params.deep_symbolize_keys
     end
 
     def optimization_enabled?
@@ -49,21 +62,15 @@ module Research
       {
         strategy: system.strategy_key,
         system: {
-          type: system_type,
-          params: system_payload.fetch(:params)
+          type: compiled_system.id,
+          params: compiled_system.runtime_params.except(:module_period).transform_keys(&:to_s)
         },
         module: {
-          type: module_type,
-          params: module_payload.fetch(:params)
+          type: compiled_system.module_type,
+          params: compiled_system.module_params
         },
         dataset: dataset.except(:exchange),
-        optimization: {
-          enabled: optimization_enabled?,
-          param: optimization_enabled? ? (optimization_target || system.default_optimization_target) : nil,
-          from: optimization[:from],
-          to: optimization[:to],
-          step: optimization[:step]
-        },
+        optimization: optimization_payload,
         runs: runs
       }
     end
@@ -75,6 +82,10 @@ module Research
     private
 
     attr_reader :raw_params
+
+    def requested_yaml
+      raw_params[:system_yaml].presence || Research::Dsl::Catalog.load_yaml(raw_params[:system_id], relative_path: raw_params[:system_path])
+    end
 
     def dataset
       @dataset ||= {
@@ -94,28 +105,13 @@ module Research
       @optimization ||= slice_hash(raw_params[:optimization], :enabled, :target, :from, :to, :step)
     end
 
-    def system_type
-      system_payload.fetch(:type)
-    end
-
-    def module_type
-      module_payload.fetch(:type)
-    end
-
-    def system_payload
-      @system_payload ||= extract_typed_payload(:system)
-    end
-
-    def module_payload
-      @module_payload ||= extract_typed_payload(:module)
-    end
-
-    def extract_typed_payload(key)
-      payload = raw_params.fetch(key)
-
+    def optimization_payload
       {
-        type: payload.fetch(:type),
-        params: (payload[:params] || {}).deep_symbolize_keys
+        enabled: optimization_enabled?,
+        param: optimization_enabled? ? (optimization_target || system.default_optimization_target) : nil,
+        from: optimization[:from],
+        to: optimization[:to],
+        step: optimization[:step]
       }
     end
 

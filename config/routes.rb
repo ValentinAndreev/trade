@@ -32,6 +32,14 @@ Rails.application.routes.draw do
     end
     resources :indicators, only: :index
     post 'indicators/:type/compute', to: 'indicators#compute'
+    get 'research/catalog', to: 'research#catalog'
+    post 'research/validate', to: 'research#validate'
+    post 'research/systems/save', to: 'research#save_system'
+    post 'research/systems/rename', to: 'research#rename_system'
+    post 'research/systems/delete', to: 'research#delete_system'
+    post 'research/directories/create', to: 'research#create_directory'
+    post 'research/directories/rename', to: 'research#rename_directory'
+    post 'research/directories/delete', to: 'research#delete_directory'
     post 'research/run', to: 'research#run'
 
     resource :data_table, only: :show do

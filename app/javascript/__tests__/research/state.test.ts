@@ -11,28 +11,25 @@ describe("research state", () => {
 
     expect(state.symbol).toBe("ETHUSD")
     expect(state.timeframe).toBe("1h")
-    expect(state.systemType).toBe("price_module_cross")
-    expect(state.moduleType).toBe("ema")
+    expect(state.systemId).toBe("price_ema_cross")
+    expect(state.systemYaml).toBe("")
   })
 
-  it("normalizes module and optimization target for selected system", () => {
+  it("normalizes research defaults", () => {
     const state = buildDefaultResearchState({
       symbols: [],
       timeframes: [],
       indicators: [],
     })
 
-    state.systemType = "price_module_cross"
-    state.moduleType = "rsi"
-    state.optimizationTarget = "system.upper_threshold"
-    state.modulePeriod = 0
+    state.systemId = ""
+    state.systemYaml = "x"
     state.optimizationStep = 0
 
     normalizeResearchState(state)
 
-    expect(state.moduleType).toBe("ema")
-    expect(state.optimizationTarget).toBe("module.period")
-    expect(state.modulePeriod).toBe(1)
+    expect(state.systemId).toBe("price_ema_cross")
+    expect(state.systemYaml).toBe("x")
     expect(state.optimizationStep).toBe(1)
   })
 })

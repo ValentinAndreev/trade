@@ -66,7 +66,8 @@ export default class extends Controller {
     this._destroySelectedRunView()
   }
 
-  async run() {
+  async run(nextState?: ResearchState) {
+    if (nextState) this.state = { ...nextState }
     if (!this.state) return
 
     const runId = buildResearchRunId()

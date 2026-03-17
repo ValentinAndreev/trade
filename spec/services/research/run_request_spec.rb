@@ -3,33 +3,57 @@
 require 'rails_helper'
 
 RSpec.describe Research::RunRequest do
-  let(:params) do
+  let(:yaml_system) do
+    <<~YAML
+      id: rsi_threshold
+      name: RSI Threshold Reversal
+      module:
+        type: rsi
+        params:
+          period: 14
+      params:
+        position_mode: long_short
+        lower_threshold: 30
+        upper_threshold: 70
+      conditions:
+        long_entry:
+          operator: cross_below
+          left: module.value
+          right: params.lower_threshold
+        long_exit:
+          operator: cross_above
+          left: module.value
+          right: params.upper_threshold
+        short_entry:
+          operator: cross_above
+          left: module.value
+          right: params.upper_threshold
+        short_exit:
+          operator: cross_below
+          left: module.value
+          right: params.lower_threshold
+      optimization:
+        targets:
+          - module.period
+          - params.lower_threshold
+    YAML
+  end
+
+  let(:dsl_params) do
     {
       symbol: 'BTCUSD',
       timeframe: '1h',
       start_time: '2026-01-01T00:00:00Z',
       end_time: '2026-02-01T00:00:00Z',
-      system: {
-        type: 'oscillator_threshold',
-        params: {
-          position_mode: 'long_short',
-          lower_threshold: 30,
-          upper_threshold: 70
-        }
-      },
-      module: {
-        type: 'rsi',
-        params: {
-          period: 14
-        }
-      },
+      system_id: 'rsi_threshold',
+      system_yaml: yaml_system,
       execution: {
         fee_bps: 4,
         slippage_bps: 2
       },
       optimization: {
         enabled: true,
-        target: 'system.lower_threshold',
+        target: 'params.lower_threshold',
         from: 25,
         to: 35,
         step: 5
@@ -38,10 +62,10 @@ RSpec.describe Research::RunRequest do
   end
 
   describe '#runtime_params' do
-    it 'builds normalized runtime params through the resolved system object' do
-      request = described_class.new(params)
+    it 'builds runtime params from yaml dsl' do
+      request = described_class.new(dsl_params)
 
-      expect(request.system).to be_a(Research::Systems::OscillatorThreshold)
+      expect(request.system).to be_a(Research::Systems::Dsl)
       expect(request.runtime_params).to eq({
         module_period: 14,
         position_mode: 'long_short',
@@ -52,15 +76,15 @@ RSpec.describe Research::RunRequest do
   end
 
   describe '#response_payload' do
-    it 'formats response metadata without controller-specific logic' do
-      request = described_class.new(params)
+    it 'formats yaml metadata through the compiled system' do
+      request = described_class.new(dsl_params)
 
       payload = request.response_payload(runs: [ { params: { module_period: 14 }, trades: [] } ])
 
       expect(payload[:strategy]).to eq('rsi_threshold')
-      expect(payload.dig(:system, :type)).to eq('oscillator_threshold')
+      expect(payload.dig(:system, :type)).to eq('rsi_threshold')
       expect(payload.dig(:module, :type)).to eq('rsi')
-      expect(payload.dig(:optimization, :param)).to eq('system.lower_threshold')
+      expect(payload.dig(:optimization, :param)).to eq('params.lower_threshold')
     end
   end
 end

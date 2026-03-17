@@ -5,6 +5,7 @@ import type { ProcessedResearchRun } from "../../research/types"
 describe("research summary helpers", () => {
   const run: ProcessedResearchRun = {
     params: {
+      system_name: "RSI Threshold Reversal",
       module_type: "rsi",
       module_period: 14,
       lower_threshold: 30,
@@ -44,12 +45,13 @@ describe("research summary helpers", () => {
 
   it("maps optimization targets to runtime param keys", () => {
     expect(optimizationParamKey("module.period")).toBe("module_period")
-    expect(optimizationParamKey("system.lower_threshold")).toBe("lower_threshold")
-    expect(optimizationParamValue(run, "system.upper_threshold")).toBe(70)
+    expect(optimizationParamKey("params.lower_threshold")).toBe("lower_threshold")
+    expect(optimizationParamValue(run, "params.upper_threshold")).toBe(70)
   })
 
   it("builds readable run summary", () => {
-    expect(runSummary(run)).toContain("RSI period 14")
-    expect(runSummary(run)).toContain("30.00/70.00")
+    expect(runSummary(run)).toContain("RSI Threshold Reversal")
+    expect(runSummary(run)).toContain("RSI period 14.00")
+    expect(runSummary(run)).toContain("Lower Threshold 30.00")
   })
 })

@@ -1,4 +1,4 @@
-export type TabType = "chart" | "data" | "system_stats" | "research"
+export type TabType = "chart" | "data" | "system_stats" | "research" | "system_editor"
 
 export type ResearchMetricKey =
   | "netProfit"
@@ -17,22 +17,17 @@ export type ResearchMetricKey =
   | "bestTrade"
   | "worstTrade"
 
-export type ResearchSystemType = "price_module_cross" | "oscillator_threshold"
-export type ResearchModuleType = "ema" | "rsi"
 export type ResearchPositionMode = "long_short" | "long_only" | "short_only"
-export type ResearchOptimizationTarget = "module.period" | "system.lower_threshold" | "system.upper_threshold"
+export type ResearchOptimizationTarget = string
 
 export interface ResearchConfig {
   symbol: string
   timeframe: string
   startTime: string
   endTime: string
-  systemType: ResearchSystemType
-  positionMode: ResearchPositionMode
-  moduleType: ResearchModuleType
-  modulePeriod: number
-  lowerThreshold: number
-  upperThreshold: number
+  systemId: string
+  systemPath: string
+  systemYaml: string
   feeBps: number
   slippageBps: number
   optimizationEnabled: boolean
@@ -42,6 +37,15 @@ export interface ResearchConfig {
   optimizationStep: number
   selectedMetric: ResearchMetricKey
   resultsSplitRatio: number
+}
+
+export interface SystemEditorConfig {
+  systemId: string
+  sourceSystemId: string | null
+  sourcePath: string | null
+  directoryPath: string | null
+  systemYaml: string
+  searchQuery: string
 }
 
 export interface ResearchRunPayload {
@@ -62,6 +66,7 @@ export interface Tab {
   dataConfig?: DataConfig;
   researchConfig?: ResearchConfig;
   researchResult?: ResearchResult;
+  systemEditorConfig?: SystemEditorConfig;
   /** ID of the primary panel — stable regardless of panel reorder. Falls back to panels[0] if missing. */
   primaryPanelId?: string;
   /** For system_stats tabs: the system being analysed and the data tab it came from. */

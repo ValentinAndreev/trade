@@ -1,6 +1,6 @@
 import {
   panelLegendHTML, controlButtonsHTML,
-  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML, systemStatsPanelHTML, researchPanelHTML,
+  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML, systemStatsPanelHTML, researchPanelHTML, systemEditorPanelHTML,
 } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
 
@@ -42,6 +42,20 @@ export default class PanelRenderer {
           }
         } else {
           wrapper.innerHTML = researchPanelHTML(tab.id, configJson)
+        }
+        return
+      }
+
+      if (tab.type === "system_editor") {
+        if (!isActive) return
+        const configJson = JSON.stringify(tab.systemEditorConfig || {})
+        const existingEditor = wrapper.querySelector("[data-controller='system-editor']") as HTMLElement | null
+        if (existingEditor) {
+          if (existingEditor.dataset.systemEditorConfigValue !== configJson) {
+            existingEditor.dataset.systemEditorConfigValue = configJson
+          }
+        } else {
+          wrapper.innerHTML = systemEditorPanelHTML(tab.id, configJson)
         }
         return
       }

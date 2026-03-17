@@ -27,3 +27,6 @@ application.register("system-stats", SystemStatsController)
 
 import ResearchController from "./research_controller"
 application.register("research", ResearchController)
+
+import SystemEditorController from "./system_editor_controller"
+application.register("system-editor", SystemEditorController)

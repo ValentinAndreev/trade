@@ -1,6 +1,7 @@
 import SidebarRenderer from "./sidebar_renderer"
 import DataSidebarRenderer from "../data_grid/sidebar_renderer"
 import ResearchSidebarRenderer from "../research/sidebar_renderer"
+import type { ResearchCatalogEntry } from "../research/dsl"
 import PanelRenderer from "./panel_renderer"
 import { tabButtonHTML, addTabButtonHTML } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
@@ -28,6 +29,12 @@ export interface TabRenderOpts {
   hlModeActive: boolean
   vlModeActive: boolean
   chartTabOptions?: ChartTabOption[]
+  researchCatalog?: ResearchCatalogEntry[]
+  researchDirectories?: string[]
+  researchFilePickerOpen?: boolean
+  researchFilePickerQuery?: string
+  researchFilePickerDirectoryPath?: string
+  researchFilePickerSelectedPath?: string | null
 }
 
 export default class TabRenderer {
@@ -71,10 +78,24 @@ export default class TabRenderer {
       this.sidebarEl.hidden = false
       this.panels.renderDataTab(tabs, activeTabId)
       if (activeTab.researchConfig) {
-        this.researchSidebar.render(activeTab.researchConfig, symbols, timeframes)
+        this.researchSidebar.render(
+          activeTab.researchConfig,
+          symbols,
+          timeframes,
+          opts.researchCatalog || [],
+          opts.researchDirectories || [],
+          opts.researchFilePickerOpen || false,
+          opts.researchFilePickerQuery || "",
+          opts.researchFilePickerDirectoryPath || "",
+          opts.researchFilePickerSelectedPath || activeTab.researchConfig.systemPath || null,
+        )
       } else {
         this.sidebarEl.innerHTML = ""
       }
+    } else if (activeTab?.type === "system_editor") {
+      this.sidebarEl.hidden = true
+      this.sidebarEl.innerHTML = ""
+      this.panels.renderDataTab(tabs, activeTabId)
     } else if (activeTab?.type === "system_stats") {
       this.sidebarEl.hidden = true
       this.sidebarEl.innerHTML = ""

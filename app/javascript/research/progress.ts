@@ -1,4 +1,4 @@
-import { modulePeriodLabel, optimizationTargetLabel } from "./catalog"
+import { optimizationTargetLabel } from "./catalog"
 import type { ResearchProgressSnapshot } from "./progress_subscription"
 import type { ResearchState } from "./state"
 
@@ -24,7 +24,7 @@ export function buildResearchProgressInfo(
 
     return {
       title: "Running backtest",
-      detail: `${state.symbol} ${state.timeframe} · module ${state.moduleType.toUpperCase()}(${state.modulePeriod})`,
+      detail: `${state.symbol} ${state.timeframe} · system ${state.systemId}`,
       note: snapshot?.lastRunMs ? `Last run ${formatRunDuration(snapshot.lastRunMs)}` : "Waiting for server response…",
       statusLabel: `${completedRuns}/${totalRuns}`,
       elapsedLabel,
@@ -35,9 +35,7 @@ export function buildResearchProgressInfo(
   const totalRuns = snapshot?.totalRuns || estimateOptimizationRuns(state)
   const completedRuns = Math.min(snapshot?.completedRuns || 0, totalRuns)
   const currentValue = snapshot?.currentValue
-  const currentTargetLabel = state.optimizationTarget === "module.period"
-    ? modulePeriodLabel(state.moduleType)
-    : optimizationTargetLabel(state.optimizationTarget)
+  const currentTargetLabel = optimizationTargetLabel(state.optimizationTarget)
   const noteParts = [
     currentValue == null ? null : `Current ${currentTargetLabel} ${formatProgressValue(currentValue)}`,
     snapshot?.lastRunMs ? `Last run ${formatRunDuration(snapshot.lastRunMs)}` : null,

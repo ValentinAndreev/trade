@@ -1,8 +1,9 @@
 import { OVERLAY_COLORS } from "../config/theme"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import { loadTabs, saveTabs, calcNextId, loadActiveTabId, saveActiveTabId } from "./persistence"
-import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition, ChartLink, TradingSystem, ResearchConfig, ResearchResult } from "../types/store"
+import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition, ChartLink, TradingSystem, ResearchConfig, ResearchResult, SystemEditorConfig } from "../types/store"
 import { buildDefaultResearchState } from "../research/state"
+import { buildDefaultSystemEditorState } from "../system_editor/state"
 
 const DRAWING_PREFIX: Record<DrawingKind, string> = { labels: "lbl", lines: "ln", hlines: "hl", vlines: "vl" }
 
@@ -76,7 +77,7 @@ export default class TabStore {
     if (this.activeTabId === tabId) {
       const newTab = this.tabs[Math.min(idx, this.tabs.length - 1)]
       this.activeTabId = newTab.id
-      if (newTab.type === "data" || newTab.type === "research" || newTab.type === "system_stats") {
+      if (newTab.type === "data" || newTab.type === "research" || newTab.type === "system_stats" || newTab.type === "system_editor") {
         this.selectedPanelId = null
         this.selectedOverlayId = null
       } else {
@@ -93,7 +94,7 @@ export default class TabStore {
     this.activeTabId = tabId
     const tab = this.activeTab
     if (tab) {
-      if (tab.type === "data" || tab.type === "research" || tab.type === "system_stats") {
+      if (tab.type === "data" || tab.type === "research" || tab.type === "system_stats" || tab.type === "system_editor") {
         this.selectedPanelId = null
         this.selectedOverlayId = null
       } else if (!tab.panels.find(p => p.id === this.selectedPanelId)) {
@@ -118,7 +119,10 @@ export default class TabStore {
       return tab.name || "Stats"
     }
     if (tab.type === "research") {
-      return tab.name || "Research"
+      return tab.name || "Test/Optimization"
+    }
+    if (tab.type === "system_editor") {
+      return tab.name || "System editor"
     }
     if (tab.type === "data") {
       const base = tab.name || this._autoDataName(tab)
@@ -643,7 +647,7 @@ export default class TabStore {
     const researchCount = this.tabs.filter(t => t.type === "research").length
     const tab: Tab = {
       id: `tab-${this._nextTabId++}`,
-      name: researchCount === 0 ? "Research" : `Research${researchCount + 1}`,
+      name: researchCount === 0 ? "Test/Optimization" : `Test/Optimization ${researchCount + 1}`,
       type: "research",
       panels: [],
       researchConfig: buildDefaultResearchState({
@@ -651,6 +655,26 @@ export default class TabStore {
         timeframes: [timeframe],
         indicators: [],
       }),
+    }
+    this.tabs.push(tab)
+    this.activeTabId = tab.id
+    this.selectedPanelId = null
+    this.selectedOverlayId = null
+    this._save()
+    return tab
+  }
+
+  addSystemEditorTab(updates: Partial<SystemEditorConfig> = {}): Tab {
+    const editorCount = this.tabs.filter(t => t.type === "system_editor").length
+    const tab: Tab = {
+      id: `tab-${this._nextTabId++}`,
+      name: editorCount === 0 ? "System editor" : `System editor ${editorCount + 1}`,
+      type: "system_editor",
+      panels: [],
+      systemEditorConfig: {
+        ...buildDefaultSystemEditorState(),
+        ...updates,
+      },
     }
     this.tabs.push(tab)
     this.activeTabId = tab.id
@@ -779,6 +803,14 @@ export default class TabStore {
     const tab = this.tabs.find(t => t.id === tabId && t.type === "research")
     if (!tab) return false
     tab.researchResult = updates
+    this._save()
+    return true
+  }
+
+  updateSystemEditorConfig(tabId: string, updates: Partial<SystemEditorConfig>): boolean {
+    const tab = this.tabs.find(t => t.id === tabId && t.type === "system_editor")
+    if (!tab) return false
+    tab.systemEditorConfig = { ...(tab.systemEditorConfig || buildDefaultSystemEditorState()), ...updates }
     this._save()
     return true
   }

@@ -1,0 +1,80 @@
+root_keys:
+  - id
+  - name
+  - module
+  - params
+  - conditions
+  - optimization
+
+module:
+  keys:
+    - type
+    - params
+  types:
+    ema:
+      label: EMA
+      params:
+        period:
+          type: integer
+          min: 1
+          label: EMA period
+    rsi:
+      label: RSI
+      params:
+        period:
+          type: integer
+          min: 1
+          label: RSI period
+
+params:
+  position_mode:
+    type: enum
+    label: Position mode
+    values:
+      - long_short
+      - long_only
+      - short_only
+  lower_threshold:
+    type: number
+    label: Lower threshold
+  upper_threshold:
+    type: number
+    label: Upper threshold
+
+conditions:
+  keys:
+    - long_entry
+    - long_exit
+    - short_entry
+    - short_exit
+  rule_keys:
+    - operator
+    - left
+    - right
+  operators:
+    cross_above:
+      label: Cross above
+    cross_below:
+      label: Cross below
+    gt:
+      label: Greater than
+    gte:
+      label: Greater or equal
+    lt:
+      label: Less than
+    lte:
+      label: Less or equal
+
+references:
+  fields:
+    - open
+    - high
+    - low
+    - close
+    - volume
+  module:
+    - module.value
+
+optimization:
+  keys:
+    - targets

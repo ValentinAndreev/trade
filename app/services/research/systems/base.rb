@@ -35,6 +35,19 @@ module Research
         raise NotImplementedError
       end
 
+      def signals_for(prev_row:, row:, params:)
+        signal = signal_for(prev_row:, row:, params:)
+
+        case signal
+        when :cross_up
+          { long_entry: true, short_exit: true }
+        when :cross_down
+          { long_exit: true, short_entry: true }
+        else
+          {}
+        end
+      end
+
       def signal_for(prev_row:, row:, params:)
         raise NotImplementedError
       end

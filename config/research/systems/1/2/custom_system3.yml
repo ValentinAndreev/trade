@@ -1,0 +1,20 @@
+id: custom_system3
+name: Custom System3
+module:
+  type: ema
+  params:
+    period: 20
+params:
+  position_mode: long_short
+conditions:
+  long_entry:
+    operator: cross_above
+    left: close
+    right: module.value
+  long_exit:
+    operator: cross_below
+    left: close
+    right: module.value
+optimization:
+  targets:
+    - module.period

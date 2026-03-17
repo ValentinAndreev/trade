@@ -12,6 +12,24 @@ import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, DataGridControllerAPI, StimulusApp } from "../types/store"
 import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS, SYSTEM_STATS_MAX_RETRIES } from "../config/constants"
 import { buildDefaultResearchState, syncResearchStateFromInputs, type ResearchState } from "../research/state"
+import {
+  createResearchDirectory,
+  deleteResearchDirectory,
+  deleteResearchSystem,
+  fetchResearchCatalog,
+  renameResearchDirectory,
+  renameResearchSystem,
+  type ResearchCatalogEntry,
+} from "../research/dsl"
+import {
+  findEntry as findResearchEntry,
+  isPathInside,
+  relativeDirname,
+  replacePathPrefix,
+  syncFileManagerSelectionState,
+  systemIdFromPath,
+} from "../research/file_manager"
+import { showToast } from "../services/toast"
 
 export default class extends Controller {
   static targets = ["tabBar", "panels", "sidebar"]
@@ -30,10 +48,22 @@ export default class extends Controller {
   private _boundListeners: Record<string, (e: Event) => void> | null = null
   private _linkedDataRefreshInterval: ReturnType<typeof setInterval> | null = null
   private _tabDragJustEnded = false
+  private _researchCatalog: ResearchCatalogEntry[] = []
+  private _researchDirectories: string[] = []
+  private _researchFilePickerOpen = new Set<string>()
+  private _researchFilePickerQuery = new Map<string, string>()
+  private _researchFilePickerDirectory = new Map<string, string>()
+  private _researchFilePickerSelected = new Map<string, string | null>()
 
   async connect() {
     this.store = new TabStore()
-    this.config = await fetchConfig()
+    const [ config, researchCatalog ] = await Promise.all([
+      fetchConfig(),
+      fetchResearchCatalog(),
+    ])
+    this.config = config
+    this._researchCatalog = researchCatalog.systems
+    this._researchDirectories = researchCatalog.directories
     this.renderer = new TabRenderer(this.tabBarTarget, this.panelsTarget, this.sidebarTarget, {
       controllerName: "tabs",
     })
@@ -82,6 +112,9 @@ export default class extends Controller {
       requestStats: (e: Event) => this._onSystemStatsRequest(e),
       researchConfigChanged: (e: Event) => this._onResearchConfigChanged(e),
       researchResultChanged: (e: Event) => this._onResearchResultChanged(e),
+      systemEditorConfigChanged: (e: Event) => this._onSystemEditorConfigChanged(e),
+      systemEditorCatalogChanged: (e: Event) => this._onSystemEditorCatalogChanged(e),
+      systemEditorOpenResearch: (e: Event) => this._onSystemEditorOpenResearch(e),
     }
     this.element.addEventListener("label:created", this._boundListeners.label)
     this.element.addEventListener("line:created", this._boundListeners.line)
@@ -97,6 +130,9 @@ export default class extends Controller {
     this.element.addEventListener("systemstats:requestStats", this._boundListeners.requestStats as EventListener)
     this.element.addEventListener("research:configChanged", this._boundListeners.researchConfigChanged as EventListener)
     this.element.addEventListener("research:resultChanged", this._boundListeners.researchResultChanged as EventListener)
+    this.element.addEventListener("systemeditor:configChanged", this._boundListeners.systemEditorConfigChanged as EventListener)
+    this.element.addEventListener("systemeditor:catalogChanged", this._boundListeners.systemEditorCatalogChanged as EventListener)
+    this.element.addEventListener("systemeditor:openResearch", this._boundListeners.systemEditorOpenResearch as EventListener)
   }
 
   private _onDataGridColumnStateChanged(e: Event) {
@@ -134,6 +170,33 @@ export default class extends Controller {
     const { tabId, result } = (e as CustomEvent<{ tabId: string; result: { runs: Array<{ params: Record<string, number | string | boolean>; trades: Array<Record<string, unknown>> }>; selectedRunIndex: number } }>).detail
     if (!tabId || !result) return
     this.store.updateResearchResult(tabId, result)
+  }
+
+  private _onSystemEditorConfigChanged(e: Event) {
+    const { tabId, config } = (e as CustomEvent<{ tabId: string; config: Record<string, unknown> }>).detail
+    if (!tabId || !config) return
+    this.store.updateSystemEditorConfig(tabId, config)
+  }
+
+  private async _onSystemEditorCatalogChanged(_e: Event) {
+    const snapshot = await fetchResearchCatalog()
+    this._researchCatalog = snapshot.systems
+    this._researchDirectories = snapshot.directories
+    this.render()
+  }
+
+  private _onSystemEditorOpenResearch(e: Event) {
+    const { systemId, systemPath } = (e as CustomEvent<{ systemId: string; systemPath: string | null }>).detail
+    if (!systemId) return
+
+    const timeframe = this.config.timeframes.includes("1h") ? "1h" : (this.config.timeframes[0] || "1h")
+    const tab = this.store.addResearchTab({ symbol: this.config.symbols[0] || "BTCUSD", timeframe })
+    this.store.updateResearchConfig(tab.id, {
+      systemId,
+      systemPath: systemPath || "",
+      systemYaml: "",
+    })
+    this.render()
   }
 
   private _deliverSystemStats(systemId: string, dataTabId: string, attempt = 0) {
@@ -200,6 +263,9 @@ export default class extends Controller {
       this.element.removeEventListener("systemstats:requestStats", this._boundListeners.requestStats as EventListener)
       this.element.removeEventListener("research:configChanged", this._boundListeners.researchConfigChanged as EventListener)
       this.element.removeEventListener("research:resultChanged", this._boundListeners.researchResultChanged as EventListener)
+      this.element.removeEventListener("systemeditor:configChanged", this._boundListeners.systemEditorConfigChanged as EventListener)
+      this.element.removeEventListener("systemeditor:catalogChanged", this._boundListeners.systemEditorCatalogChanged as EventListener)
+      this.element.removeEventListener("systemeditor:openResearch", this._boundListeners.systemEditorOpenResearch as EventListener)
       this._boundListeners = null
     }
   }
@@ -231,6 +297,19 @@ export default class extends Controller {
   addResearchTab() {
     const timeframe = this.config.timeframes.includes("1h") ? "1h" : (this.config.timeframes[0] || "1h")
     this.store.addResearchTab({ symbol: this.config.symbols[0] || "BTCUSD", timeframe })
+    this.render()
+  }
+  addSystemEditorTab() {
+    const activeResearch = this.store.activeTab?.type === "research" ? this.store.activeTab : null
+    const systemId = activeResearch?.researchConfig?.systemId
+    const sourcePath = activeResearch?.researchConfig?.systemPath || null
+    this.store.addSystemEditorTab(systemId ? {
+      systemId,
+      sourceSystemId: systemId,
+      sourcePath,
+      directoryPath: relativeDirname(sourcePath),
+      systemYaml: "",
+    } : {})
     this.render()
   }
 
@@ -575,10 +654,257 @@ export default class extends Controller {
     this.render()
   }
 
-  runResearch() {
-    if (!this._syncActiveResearchConfigFromSidebar()) return
+  async runResearch() {
+    const next = this._syncActiveResearchConfigFromSidebar()
+    if (!next) return
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
     this.render()
-    this._activeResearchController()?.run()
+    await this._activeResearchController()?.run(next)
+  }
+
+  openResearchFilePicker() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    const currentPath = tab.researchConfig?.systemPath || ""
+    this._researchFilePickerOpen.add(tab.id)
+    this._researchFilePickerDirectory.set(tab.id, relativeDirname(currentPath))
+    this._researchFilePickerSelected.set(tab.id, currentPath || null)
+    this.render()
+  }
+
+  closeResearchFilePicker() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    this._researchFilePickerOpen.delete(tab.id)
+    this._researchFilePickerQuery.delete(tab.id)
+    this._researchFilePickerDirectory.delete(tab.id)
+    this._researchFilePickerSelected.delete(tab.id)
+    this.render()
+  }
+
+  updateResearchFilePickerQuery(e: Event) {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    this._researchFilePickerQuery.set(tab.id, (e.currentTarget as HTMLInputElement).value)
+    this.render()
+  }
+
+  selectResearchFileManagerEntry(e: Event) {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    const button = e.currentTarget as HTMLElement
+    const path = button.dataset.path || null
+    const kind = button.dataset.kind || "file"
+
+    this._researchFilePickerSelected.set(tab.id, path)
+    this._syncResearchFileManagerSelection(path, kind)
+
+    if ((e as MouseEvent).detail >= 2 && path) {
+      this._openResearchFileManagerPath(tab.id, path, kind)
+    }
+  }
+
+  navigateResearchFileManager(e: Event) {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    const button = e.currentTarget as HTMLElement
+    const path = button.dataset.path || ""
+    this._researchFilePickerDirectory.set(tab.id, path)
+    this._researchFilePickerSelected.set(tab.id, path || null)
+    this.render()
+  }
+
+  openResearchFileManagerEntry(e: Event) {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    const button = e.currentTarget as HTMLElement
+    const path = button.dataset.path || ""
+    const kind = button.dataset.kind || "file"
+    this._openResearchFileManagerPath(tab.id, path, kind)
+  }
+
+  chooseResearchFile(_e: Event) {
+    this.confirmResearchFileSelection()
+  }
+
+  confirmResearchFileSelection() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    const selectedPath = this._researchFilePickerSelected.get(tab.id) || null
+    if (!selectedPath) return
+    this._openResearchFile(tab.id, selectedPath)
+  }
+
+  async createResearchDirectory() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    const directoryName = window.prompt("New folder name")?.trim()
+    if (!directoryName) return
+
+    const parentPath = this._researchFilePickerDirectory.get(tab.id) || ""
+    const response = await createResearchDirectory(parentPath || null, directoryName)
+    if (!response?.ok || !response.path) {
+      showToast(response?.diagnostics?.[0]?.message || "Folder create failed")
+      return
+    }
+
+    await this._refreshResearchCatalog()
+    this._researchFilePickerDirectory.set(tab.id, response.path)
+    this._researchFilePickerSelected.set(tab.id, response.path)
+    this.render()
+  }
+
+  async renameResearchEntry() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    const selectedPath = this._researchFilePickerSelected.get(tab.id) || null
+    if (!selectedPath) return
+
+    const entry = findResearchEntry(this._researchCatalog, selectedPath)
+    if (entry) {
+      const nextId = window.prompt("New file name", entry.id)?.trim()
+      if (!nextId || nextId === entry.id) return
+
+      const response = await renameResearchSystem(selectedPath, nextId, entry.yaml)
+      if (!response?.ok || !response.system) {
+        showToast(response?.diagnostics?.[0]?.message || "File rename failed")
+        return
+      }
+
+      await this._refreshResearchCatalog()
+      this._researchFilePickerSelected.set(tab.id, response.system.relative_path)
+      this._researchFilePickerDirectory.set(tab.id, relativeDirname(response.system.relative_path))
+      this.store.updateResearchConfig(tab.id, {
+        systemId: response.system.id,
+        systemPath: response.system.relative_path,
+        systemYaml: "",
+      })
+      this.render()
+      return
+    }
+
+    const nextName = window.prompt("New folder name", selectedPath.split("/").pop() || "")?.trim()
+    if (!nextName) return
+
+    const response = await renameResearchDirectory(selectedPath, nextName)
+    if (!response?.ok || !response.path) {
+      showToast(response?.diagnostics?.[0]?.message || "Folder rename failed")
+      return
+    }
+
+    await this._refreshResearchCatalog()
+    const currentSystemPath = tab.researchConfig?.systemPath || null
+    const nextSystemPath = replacePathPrefix(currentSystemPath, selectedPath, response.path)
+    this._researchFilePickerSelected.set(tab.id, response.path)
+    this._researchFilePickerDirectory.set(tab.id, response.path)
+    if (currentSystemPath && nextSystemPath) {
+      this.store.updateResearchConfig(tab.id, {
+        systemId: systemIdFromPath(nextSystemPath),
+        systemPath: nextSystemPath,
+        systemYaml: "",
+      })
+    }
+    this.render()
+  }
+
+  async deleteResearchEntry() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+
+    const selectedPath = this._researchFilePickerSelected.get(tab.id) || null
+    if (!selectedPath) return
+    if (!window.confirm(`Delete ${selectedPath}?`)) return
+
+    const entry = findResearchEntry(this._researchCatalog, selectedPath)
+    if (entry) {
+      const response = await deleteResearchSystem(selectedPath)
+      if (!response?.ok) {
+        showToast(response?.diagnostics?.[0]?.message || "File delete failed")
+        return
+      }
+    } else {
+      const response = await deleteResearchDirectory(selectedPath)
+      if (!response?.ok) {
+        showToast(response?.diagnostics?.[0]?.message || "Folder delete failed")
+        return
+      }
+    }
+
+    const currentSystemPath = tab.researchConfig?.systemPath || null
+    await this._refreshResearchCatalog()
+    this._researchFilePickerSelected.set(tab.id, null)
+    this._researchFilePickerDirectory.set(tab.id, relativeDirname(selectedPath))
+    if (currentSystemPath && isPathInside(selectedPath, currentSystemPath)) {
+      this.store.updateResearchConfig(tab.id, {
+        systemId: "",
+        systemPath: "",
+        systemYaml: "",
+      })
+    }
+    this.render()
+  }
+
+  stopFileManagerPropagation(e: Event) {
+    e.stopPropagation()
+  }
+
+  private _openResearchFile(tabId: string, path: string) {
+    const entry = findResearchEntry(this._researchCatalog, path)
+    if (!entry) return
+
+    this.store.updateResearchConfig(tabId, {
+      systemId: entry.id,
+      systemPath: entry.relative_path,
+      systemYaml: "",
+    })
+    this._researchFilePickerOpen.delete(tabId)
+    this._researchFilePickerQuery.delete(tabId)
+    this._researchFilePickerDirectory.delete(tabId)
+    this._researchFilePickerSelected.delete(tabId)
+    this.render()
+  }
+
+  private _openResearchFileManagerPath(tabId: string, path: string, kind: string) {
+    if (kind === "directory") {
+      this._researchFilePickerDirectory.set(tabId, path)
+      this._researchFilePickerSelected.set(tabId, path || null)
+      this.render()
+      return
+    }
+
+    this._openResearchFile(tabId, path)
+  }
+
+  private _syncResearchFileManagerSelection(path: string | null, kind: string | null) {
+    const modal = this.element.querySelector("[data-file-manager-modal]")
+    if (!modal) return
+    syncFileManagerSelectionState(modal, path, kind === "file" || kind === "directory" ? kind : null)
+  }
+
+  openResearchSystemEditor() {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return
+    const systemId = tab.researchConfig?.systemId
+    const systemPath = tab.researchConfig?.systemPath || null
+    this.store.addSystemEditorTab(systemId ? {
+      systemId,
+      sourceSystemId: systemId,
+      sourcePath: systemPath,
+      directoryPath: relativeDirname(systemPath),
+      systemYaml: "",
+    } : {})
+    this.render()
   }
 
   // --- Panel resize ---
@@ -610,6 +936,12 @@ export default class extends Controller {
       hlModeActive: this.drawingActions.modes.hlines,
       vlModeActive: this.drawingActions.modes.vlines,
       chartTabOptions,
+      researchCatalog: this._researchCatalog,
+      researchDirectories: this._researchDirectories,
+      researchFilePickerOpen: this._activeResearchFilePickerOpen(),
+      researchFilePickerQuery: this._activeResearchFilePickerQuery(),
+      researchFilePickerDirectoryPath: this._activeResearchFilePickerDirectoryPath(),
+      researchFilePickerSelectedPath: this._activeResearchFilePickerSelectedPath(),
     })
     requestAnimationFrame(() => {
       this._syncSelectedOverlayScale()
@@ -649,7 +981,37 @@ export default class extends Controller {
     return next
   }
 
-  private _activeResearchController(): { run(): Promise<void> } | null {
+  private _activeResearchFilePickerOpen(): boolean {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return false
+    return this._researchFilePickerOpen.has(tab.id)
+  }
+
+  private _activeResearchFilePickerQuery(): string {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return ""
+    return this._researchFilePickerQuery.get(tab.id) || ""
+  }
+
+  private _activeResearchFilePickerDirectoryPath(): string {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return ""
+    return this._researchFilePickerDirectory.get(tab.id) || relativeDirname(tab.researchConfig?.systemPath || "")
+  }
+
+  private _activeResearchFilePickerSelectedPath(): string | null {
+    const tab = this.store.activeTab
+    if (!tab || tab.type !== "research") return null
+    return this._researchFilePickerSelected.get(tab.id) || tab.researchConfig?.systemPath || null
+  }
+
+  private async _refreshResearchCatalog() {
+    const snapshot = await fetchResearchCatalog()
+    this._researchCatalog = snapshot.systems
+    this._researchDirectories = snapshot.directories
+  }
+
+  private _activeResearchController(): { run(state?: ResearchState): Promise<void> } | null {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return null
 
@@ -657,7 +1019,7 @@ export default class extends Controller {
     if (!wrapper) return null
 
     const app = this.application as StimulusApp
-    return app.getControllerForElementAndIdentifier(wrapper, "research") as { run(): Promise<void> } | null
+    return app.getControllerForElementAndIdentifier(wrapper, "research") as { run(state?: ResearchState): Promise<void> } | null
   }
 
   _getSelectedChartCtrl() {

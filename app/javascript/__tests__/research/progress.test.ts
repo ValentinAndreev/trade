@@ -8,12 +8,9 @@ const baseState: ResearchState = {
   timeframe: "1h",
   startTime: "2026-03-01T00:00",
   endTime: "2026-03-10T00:00",
-  systemType: "price_module_cross",
-  positionMode: "long_short",
-  moduleType: "ema",
-  modulePeriod: 20,
-  lowerThreshold: 30,
-  upperThreshold: 70,
+  systemId: "price_ema_cross",
+  systemPath: "price_ema_cross.yml",
+  systemYaml: "id: price_ema_cross",
   feeBps: 4,
   slippageBps: 2,
   optimizationEnabled: false,
@@ -22,6 +19,7 @@ const baseState: ResearchState = {
   optimizationTo: 50,
   optimizationStep: 5,
   selectedMetric: "sharpeRatio",
+  resultsSplitRatio: 0.38,
 }
 
 describe("research progress helpers", () => {
@@ -55,7 +53,7 @@ describe("research progress helpers", () => {
 
     const info = buildResearchProgressInfo({ ...baseState, optimizationEnabled: true }, 1, snapshot)
     expect(info.detail).toContain("4/10 runs")
-    expect(info.note).toContain("Current EMA period 23")
+    expect(info.note).toContain("Current Module period 23")
     expect(info.statusLabel).toBe("40%")
     expect(info.percent).toBe(40)
     expect(info.elapsedLabel).toBe("00:12")

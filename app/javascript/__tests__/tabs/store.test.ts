@@ -106,8 +106,18 @@ describe("TabStore", () => {
     it("addResearchTab creates persisted research config", () => {
       const tab = store.addResearchTab({ symbol: "ETHUSD", timeframe: "4h" })
       expect(tab.type).toBe("research")
+      expect(store.tabLabel(tab)).toBe("Test/Optimization")
       expect(tab.researchConfig?.symbol).toBe("ETHUSD")
       expect(tab.researchConfig?.timeframe).toBe("4h")
+      expect(store.activeTabId).toBe(tab.id)
+    })
+
+    it("addSystemEditorTab creates a persisted system editor tab", () => {
+      const tab = store.addSystemEditorTab({ systemId: "price_ema_cross", sourceSystemId: "price_ema_cross" })
+
+      expect(tab.type).toBe("system_editor")
+      expect(tab.systemEditorConfig?.systemId).toBe("price_ema_cross")
+      expect(store.tabLabel(tab)).toBe("System editor")
       expect(store.activeTabId).toBe(tab.id)
     })
   })
@@ -182,15 +192,13 @@ describe("TabStore", () => {
     it("updateResearchConfig merges config and persists it on tab", () => {
       const tab = store.addResearchTab()
       const ok = store.updateResearchConfig(tab.id, {
-        moduleType: "rsi",
-        modulePeriod: 14,
-        lowerThreshold: 25,
+        systemId: "rsi_threshold",
+        systemYaml: "id: rsi_threshold",
       })
 
       expect(ok).toBe(true)
-      expect(tab.researchConfig?.moduleType).toBe("rsi")
-      expect(tab.researchConfig?.modulePeriod).toBe(14)
-      expect(tab.researchConfig?.lowerThreshold).toBe(25)
+      expect(tab.researchConfig?.systemId).toBe("rsi_threshold")
+      expect(tab.researchConfig?.systemYaml).toBe("id: rsi_threshold")
     })
 
     it("updateResearchResult stores runs and selected index", () => {
@@ -208,6 +216,18 @@ describe("TabStore", () => {
       expect(ok).toBe(true)
       expect(tab.researchResult?.runs).toHaveLength(1)
       expect(tab.researchResult?.selectedRunIndex).toBe(0)
+    })
+
+    it("updateSystemEditorConfig merges editor state on the tab", () => {
+      const tab = store.addSystemEditorTab()
+      const ok = store.updateSystemEditorConfig(tab.id, {
+        systemId: "rsi_threshold",
+        searchQuery: "period",
+      })
+
+      expect(ok).toBe(true)
+      expect(tab.systemEditorConfig?.systemId).toBe("rsi_threshold")
+      expect(tab.systemEditorConfig?.searchQuery).toBe("period")
     })
   })
 
@@ -452,7 +472,7 @@ describe("TabStore", () => {
       expect(store.activeTabId).toBe(research.id)
       expect(store.selectedPanelId).toBeNull()
       expect(store.selectedOverlayId).toBeNull()
-      expect(store.tabLabel(research)).toBe("Research")
+      expect(store.tabLabel(research)).toBe("Test/Optimization")
     })
   })
 

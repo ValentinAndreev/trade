@@ -1,11 +1,9 @@
 import type { AppConfig } from "../tabs/config"
-import type { ResearchConfig } from "../types/store"
-import {
-  moduleOptionsForSystem,
-  optimizationOptionsForSystem,
-} from "./catalog"
+import type { ResearchConfig, ResearchMetricKey } from "../types/store"
 
 export type ResearchState = ResearchConfig
+
+export const DEFAULT_RESEARCH_SYSTEM_ID = "price_ema_cross"
 
 export function buildDefaultResearchState(config: AppConfig | null): ResearchState {
   const now = new Date()
@@ -18,12 +16,9 @@ export function buildDefaultResearchState(config: AppConfig | null): ResearchSta
     timeframe,
     startTime: toDatetimeLocal(start),
     endTime: toDatetimeLocal(now),
-    systemType: "price_module_cross",
-    positionMode: "long_short",
-    moduleType: "ema",
-    modulePeriod: 20,
-    lowerThreshold: 30,
-    upperThreshold: 70,
+    systemId: DEFAULT_RESEARCH_SYSTEM_ID,
+    systemPath: "",
+    systemYaml: "",
     feeBps: 4,
     slippageBps: 2,
     optimizationEnabled: false,
@@ -48,16 +43,12 @@ export function syncResearchStateFromInputs(root: ParentNode, state: ResearchSta
   state.timeframe = valueOf(root, "timeframe", state.timeframe)
   state.startTime = valueOf(root, "startTime", state.startTime)
   state.endTime = valueOf(root, "endTime", state.endTime)
-  state.systemType = valueOf(root, "systemType", state.systemType) as ResearchSystemType
-  state.positionMode = valueOf(root, "positionMode", state.positionMode) as ResearchPositionMode
-  state.moduleType = valueOf(root, "moduleType", state.moduleType) as ResearchModuleType
-  state.modulePeriod = numericValue(root, "modulePeriod", state.modulePeriod)
-  state.lowerThreshold = numericValue(root, "lowerThreshold", state.lowerThreshold)
-  state.upperThreshold = numericValue(root, "upperThreshold", state.upperThreshold)
+  state.systemId = valueOf(root, "systemId", state.systemId)
+  state.systemYaml = valueOf(root, "systemYaml", state.systemYaml)
   state.feeBps = numericValue(root, "feeBps", state.feeBps)
   state.slippageBps = numericValue(root, "slippageBps", state.slippageBps)
   state.optimizationEnabled = checkedValue(root, "optimizationEnabled", state.optimizationEnabled)
-  state.optimizationTarget = valueOf(root, "optimizationTarget", state.optimizationTarget) as ResearchOptimizationTarget
+  state.optimizationTarget = valueOf(root, "optimizationTarget", state.optimizationTarget)
   state.optimizationFrom = numericValue(root, "optimizationFrom", state.optimizationFrom)
   state.optimizationTo = numericValue(root, "optimizationTo", state.optimizationTo)
   state.optimizationStep = numericValue(root, "optimizationStep", state.optimizationStep)
@@ -67,17 +58,9 @@ export function syncResearchStateFromInputs(root: ParentNode, state: ResearchSta
 }
 
 export function normalizeResearchState(state: ResearchState): void {
-  const moduleOptions = moduleOptionsForSystem(state.systemType)
-  if (!moduleOptions.some(option => option.value === state.moduleType)) {
-    state.moduleType = moduleOptions[0]?.value || "ema"
-  }
-
-  const optimizationOptions = optimizationOptionsForSystem(state.systemType)
-  if (!optimizationOptions.some(option => option.value === state.optimizationTarget)) {
-    state.optimizationTarget = optimizationOptions[0]?.value || "module.period"
-  }
-
-  if (state.modulePeriod < 1) state.modulePeriod = 1
+  if (!state.systemId) state.systemId = DEFAULT_RESEARCH_SYSTEM_ID
+  if (typeof state.systemPath !== "string") state.systemPath = ""
+  if (typeof state.systemYaml !== "string") state.systemYaml = ""
   if (state.optimizationStep <= 0) state.optimizationStep = 1
   if (!Number.isFinite(state.resultsSplitRatio)) state.resultsSplitRatio = 0.38
   state.resultsSplitRatio = Math.max(0.2, Math.min(0.75, state.resultsSplitRatio))
@@ -90,7 +73,7 @@ export function toDatetimeLocal(date: Date): string {
 }
 
 function valueOf(root: ParentNode, field: string, fallback: string): string {
-  const el = root.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-field="${field}"]`)
+  const el = root.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[data-field="${field}"]`)
   return el?.value || fallback
 }
 

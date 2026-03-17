@@ -25,34 +25,31 @@ module Research
         row = rows[idx]
         fill_row = rows[idx + 1]
 
-        signal = system.signal_for(prev_row:, row:, params: strategy_params)
-        next unless signal
+        signals = system.signals_for(prev_row:, row:, params: strategy_params)
+        next if signals.empty?
 
         fill_time = fill_row[:time]
         fill_open = fill_row.dig(:bar, :open).to_f
         fill_index = idx + 1
 
-        case signal
-        when :cross_up
-          if open_position&.direction == 'short'
-            trades << close_trade(open_position, fill_time:, fill_price: adjusted_price(fill_open, :buy), fill_index:)
-            open_position = nil
-          end
-          next if open_position || !allow_entry?(:long)
+        if open_position&.direction == 'long' && signals.fetch(:long_exit, false)
+          trades << close_trade(open_position, fill_time:, fill_price: adjusted_price(fill_open, :sell), fill_index:)
+          open_position = nil
+        elsif open_position&.direction == 'short' && signals.fetch(:short_exit, false)
+          trades << close_trade(open_position, fill_time:, fill_price: adjusted_price(fill_open, :buy), fill_index:)
+          open_position = nil
+        end
 
+        next if open_position
+
+        if signals.fetch(:long_entry, false) && !signals.fetch(:short_entry, false) && allow_entry?(:long)
           open_position = Position.new(
             direction: 'long',
             entry_time: fill_time,
             entry_price: adjusted_price(fill_open, :buy),
             entry_index: fill_index
           )
-        when :cross_down
-          if open_position&.direction == 'long'
-            trades << close_trade(open_position, fill_time:, fill_price: adjusted_price(fill_open, :sell), fill_index:)
-            open_position = nil
-          end
-          next if open_position || !allow_entry?(:short)
-
+        elsif signals.fetch(:short_entry, false) && !signals.fetch(:long_entry, false) && allow_entry?(:short)
           open_position = Position.new(
             direction: 'short',
             entry_time: fill_time,

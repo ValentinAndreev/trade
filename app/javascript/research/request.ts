@@ -15,7 +15,7 @@ export async function runResearch(state: ResearchState, runId?: string): Promise
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    showToast(error.error || "Research run failed")
+    showToast(error.diagnostics?.[0]?.message || error.error || "Research run failed")
     return null
   }
 
@@ -30,16 +30,9 @@ export function buildResearchRequest(state: ResearchState, runId?: string) {
     timeframe: state.timeframe,
     start_time: toIsoString(state.startTime),
     end_time: toIsoString(state.endTime),
-    system: {
-      type: state.systemType,
-      params: systemParamsPayload(state),
-    },
-    module: {
-      type: state.moduleType,
-      params: {
-        period: state.modulePeriod,
-      },
-    },
+    system_id: state.systemId,
+    system_path: state.systemPath || null,
+    system_yaml: state.systemYaml,
     execution: {
       fee_bps: state.feeBps,
       slippage_bps: state.slippageBps,
@@ -52,19 +45,6 @@ export function buildResearchRequest(state: ResearchState, runId?: string) {
       step: state.optimizationStep,
     },
   }
-}
-
-function systemParamsPayload(state: ResearchState): Record<string, number | string> {
-  const payload: Record<string, number | string> = {
-    position_mode: state.positionMode,
-  }
-
-  if (state.systemType === "oscillator_threshold") {
-    payload.lower_threshold = state.lowerThreshold
-    payload.upper_threshold = state.upperThreshold
-  }
-
-  return payload
 }
 
 function toIsoString(value: string): string {
