@@ -11,7 +11,7 @@ module Research
         module_payload = payload.fetch('module')
         params_payload = (payload['params'] || {}).transform_keys(&:to_s)
 
-        Research::Dsl::CompiledSystem.new(
+        Research::System.new(
           id: payload.fetch('id').to_s,
           name: payload.fetch('name').to_s,
           module_type: module_payload.fetch('type').to_s,
@@ -65,10 +65,7 @@ module Research
         targets = [ 'module.period' ] if targets.empty?
 
         targets.map do |target|
-          {
-            value: target,
-            label: optimization_target_label(module_type, target)
-          }
+          { value: target, label: optimization_target_label(module_type, target) }
         end
       end
 
@@ -79,15 +76,14 @@ module Research
         dictionary.dig('params', param_key, 'label') || target
       end
 
-      def numeric_like?(value)
-        Float(value)
-        true
-      rescue ArgumentError, TypeError
-        false
-      end
-
       def stringify_keys(hash)
         hash.to_h.transform_keys(&:to_s)
+      end
+
+      def numeric_like?(value)
+        Float(value) && true
+      rescue ArgumentError, TypeError
+        false
       end
     end
   end

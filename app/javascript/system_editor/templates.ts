@@ -1,4 +1,4 @@
-import { BG_HOVER, BG_PRIMARY, BORDER_COLOR } from "../config/theme"
+import { BG_HOVER, BG_PRIMARY, BORDER_COLOR, BG_MODAL, BG_SURFACE, BG_TOOLBAR, BG_INPUT } from "../config/theme"
 import { escapeHTML } from "../utils/dom"
 import type { ResearchCatalogEntry, ResearchDslDiagnostic, ResearchValidationResponse } from "../research/dsl"
 import type { SystemEditorConfig } from "../types/store"
@@ -40,11 +40,11 @@ export function renderSystemEditorHTML({
 
   return `
     <div class="flex h-full min-h-0 flex-col overflow-hidden text-white bg-[${BG_PRIMARY}]">
-      <div class="border-b border-[${BORDER_COLOR}] bg-[#141428] px-4 py-3 flex flex-wrap items-center gap-2">
+      <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
           data-action="click->system-editor#openFilePicker"
-          class="h-10 rounded border border-[${BORDER_COLOR}] bg-[#0f1020] px-3 text-sm text-gray-200 hover:text-white hover:bg-[${BG_HOVER}] cursor-pointer"
+          class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-200 hover:text-white hover:bg-[${BG_HOVER}] cursor-pointer"
         >Open file</button>
         ${toolbarButton("New", "click->system-editor#newSystem")}
         ${toolbarButton(validating ? "Validating…" : "Validate", "click->system-editor#validateNow", validating)}
@@ -60,14 +60,14 @@ export function renderSystemEditorHTML({
             placeholder="Search"
             data-field="searchQuery"
             data-action="input->system-editor#updateSearchQuery keydown->system-editor#handleSearchKeydown"
-            class="h-10 w-64 rounded border border-[${BORDER_COLOR}] bg-[#0f1020] px-3 text-sm text-white"
+            class="h-10 w-64 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white"
           >
           ${toolbarButton("Prev", "click->system-editor#findPrevious", !state.searchQuery.trim())}
           ${toolbarButton("Next", "click->system-editor#findNext", !state.searchQuery.trim())}
         </div>
       </div>
 
-      <div class="border-b border-[${BORDER_COLOR}] bg-[#10101f] px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400">
+      <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_TOOLBAR}] px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400">
         <div class="flex flex-wrap items-center gap-3">
           <span>File: ${currentFileNameHTML(sourceFileName)}</span>
           <span>State: <span class="${hasUnsavedChanges ? "text-amber-300" : "text-emerald-300"}">${hasUnsavedChanges ? "Unsaved changes" : "Saved"}</span></span>
@@ -78,12 +78,12 @@ export function renderSystemEditorHTML({
 
       <div class="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_22rem]">
         <div class="min-w-0 min-h-0 p-4">
-          <div class="h-full min-h-0 rounded-xl border border-[${BORDER_COLOR}] bg-[#141428] overflow-hidden shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
+          <div class="h-full min-h-0 rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] overflow-hidden shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
             <div class="border-b border-[${BORDER_COLOR}] px-4 py-2 text-xs uppercase tracking-[0.18em] text-gray-500">
               System YAML
             </div>
             <div class="relative h-[calc(100%-2.25rem)] min-h-0 overflow-hidden">
-              <div class="absolute inset-y-0 left-0 w-14 border-r border-[${BORDER_COLOR}] bg-[#0f1020] overflow-hidden pointer-events-none">
+              <div class="absolute inset-y-0 left-0 w-14 border-r border-[${BORDER_COLOR}] bg-[${BG_INPUT}] overflow-hidden pointer-events-none">
                 <pre data-system-editor-gutter class="px-2 py-4 font-mono text-xs leading-6 text-right text-gray-500">${buildLineNumbers(state.systemYaml, diagnostics)}</pre>
               </div>
               <textarea
@@ -97,21 +97,21 @@ export function renderSystemEditorHTML({
           </div>
         </div>
 
-        <aside class="min-h-0 overflow-auto border-l border-[${BORDER_COLOR}] bg-[#111223] px-4 py-4 flex flex-col gap-4">
-          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[#141428] p-3">
+        <aside class="min-h-0 overflow-auto border-l border-[${BORDER_COLOR}] bg-[${BG_MODAL}] px-4 py-4 flex flex-col gap-4">
+          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3">
             <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Current file</div>
             <div class="mt-2 text-sm">${currentFileNameHTML(sourceFileName, "mt-2 text-sm text-left")}</div>
             <div class="mt-1 text-xs text-gray-400">${escapeHTML(state.systemId || "No id detected yet")}</div>
           </div>
 
-          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[#141428] p-3">
+          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3">
             <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Diagnostics</div>
             <div class="mt-3 flex flex-col gap-2">
               ${diagnosticsHTML(diagnostics)}
             </div>
           </div>
 
-          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[#141428] p-3 text-xs text-gray-400 leading-5">
+          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3 text-xs text-gray-400 leading-5">
             <div><span class="text-gray-300">Shortcuts:</span> <span class="text-white">Ctrl/Cmd+S</span> save, <span class="text-white">Ctrl/Cmd+F</span> search, <span class="text-white">F3</span> next match.</div>
           </div>
         </aside>
@@ -146,7 +146,7 @@ function toolbarButton(label: string, action: string, disabled = false, extraCla
     <button
       type="button"
       data-action="${action}"
-      class="h-10 rounded border border-[${BORDER_COLOR}] bg-[#0f1020] px-3 text-sm text-gray-200 hover:text-white hover:bg-[${BG_HOVER}] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${extraClass}"
+      class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-200 hover:text-white hover:bg-[${BG_HOVER}] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${extraClass}"
       ${disabled ? "disabled" : ""}
     >${label}</button>
   `

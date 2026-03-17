@@ -13,22 +13,13 @@ import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerIn
 import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS, SYSTEM_STATS_MAX_RETRIES } from "../config/constants"
 import { buildDefaultResearchState, syncResearchStateFromInputs, type ResearchState } from "../research/state"
 import {
-  createResearchDirectory,
-  deleteResearchDirectory,
-  deleteResearchSystem,
   fetchResearchCatalog,
-  renameResearchDirectory,
-  renameResearchSystem,
   type ResearchCatalogEntry,
 } from "../research/dsl"
 import {
-  findEntry as findResearchEntry,
-  isPathInside,
   relativeDirname,
-  replacePathPrefix,
-  syncFileManagerSelectionState,
-  systemIdFromPath,
 } from "../research/file_manager"
+import { ResearchFilePicker } from "../research/research_file_picker"
 import { showToast } from "../services/toast"
 
 export default class extends Controller {
@@ -50,10 +41,7 @@ export default class extends Controller {
   private _tabDragJustEnded = false
   private _researchCatalog: ResearchCatalogEntry[] = []
   private _researchDirectories: string[] = []
-  private _researchFilePickerOpen = new Set<string>()
-  private _researchFilePickerQuery = new Map<string, string>()
-  private _researchFilePickerDirectory = new Map<string, string>()
-  private _researchFilePickerSelected = new Map<string, string | null>()
+  private _researchFilePicker!: ResearchFilePicker
 
   async connect() {
     this.store = new TabStore()
@@ -64,6 +52,22 @@ export default class extends Controller {
     this.config = config
     this._researchCatalog = researchCatalog.systems
     this._researchDirectories = researchCatalog.directories
+    this._researchFilePicker = new ResearchFilePicker({
+      getCatalog: () => this._researchCatalog,
+      setCatalog: (entries, dirs) => { this._researchCatalog = entries; this._researchDirectories = dirs },
+      getTabSystemPath: (tabId) => this.store.tabs.find(t => t.id === tabId)?.researchConfig?.systemPath || null,
+      onSystemOpened: (tabId, entry) => this.store.updateResearchConfig(tabId, {
+        systemId: entry.id, systemPath: entry.relative_path, systemYaml: "",
+      }),
+      onSystemPathChanged: (tabId, systemId, systemPath) => this.store.updateResearchConfig(tabId, {
+        systemId, systemPath, systemYaml: "",
+      }),
+      onSystemRemoved: (tabId) => this.store.updateResearchConfig(tabId, {
+        systemId: "", systemPath: "", systemYaml: "",
+      }),
+      onRender: () => this.render(),
+      getSidebarElement: () => this.sidebarTarget,
+    })
     this.renderer = new TabRenderer(this.tabBarTarget, this.panelsTarget, this.sidebarTarget, {
       controllerName: "tabs",
     })
@@ -667,230 +671,68 @@ export default class extends Controller {
   openResearchFilePicker() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    const currentPath = tab.researchConfig?.systemPath || ""
-    this._researchFilePickerOpen.add(tab.id)
-    this._researchFilePickerDirectory.set(tab.id, relativeDirname(currentPath))
-    this._researchFilePickerSelected.set(tab.id, currentPath || null)
-    this.render()
+    this._researchFilePicker.openPicker(tab.id, tab.researchConfig?.systemPath || null)
   }
 
   closeResearchFilePicker() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    this._researchFilePickerOpen.delete(tab.id)
-    this._researchFilePickerQuery.delete(tab.id)
-    this._researchFilePickerDirectory.delete(tab.id)
-    this._researchFilePickerSelected.delete(tab.id)
-    this.render()
+    this._researchFilePicker.closePicker(tab.id)
   }
 
   updateResearchFilePickerQuery(e: Event) {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    this._researchFilePickerQuery.set(tab.id, (e.currentTarget as HTMLInputElement).value)
-    this.render()
+    this._researchFilePicker.updateQuery(tab.id, (e.currentTarget as HTMLInputElement).value)
   }
 
   selectResearchFileManagerEntry(e: Event) {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    const button = e.currentTarget as HTMLElement
-    const path = button.dataset.path || null
-    const kind = button.dataset.kind || "file"
-
-    this._researchFilePickerSelected.set(tab.id, path)
-    this._syncResearchFileManagerSelection(path, kind)
-
-    if ((e as MouseEvent).detail >= 2 && path) {
-      this._openResearchFileManagerPath(tab.id, path, kind)
-    }
+    this._researchFilePicker.selectEntry(tab.id, e.currentTarget as HTMLElement, (e as MouseEvent).detail >= 2)
   }
 
   navigateResearchFileManager(e: Event) {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    const button = e.currentTarget as HTMLElement
-    const path = button.dataset.path || ""
-    this._researchFilePickerDirectory.set(tab.id, path)
-    this._researchFilePickerSelected.set(tab.id, path || null)
-    this.render()
+    this._researchFilePicker.navigate(tab.id, (e.currentTarget as HTMLElement).dataset.path || "")
   }
 
   openResearchFileManagerEntry(e: Event) {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    const button = e.currentTarget as HTMLElement
-    const path = button.dataset.path || ""
-    const kind = button.dataset.kind || "file"
-    this._openResearchFileManagerPath(tab.id, path, kind)
-  }
-
-  chooseResearchFile(_e: Event) {
-    this.confirmResearchFileSelection()
+    const el = e.currentTarget as HTMLElement
+    this._researchFilePicker.openEntry(tab.id, el.dataset.path || "", el.dataset.kind || "file")
   }
 
   confirmResearchFileSelection() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    const selectedPath = this._researchFilePickerSelected.get(tab.id) || null
-    if (!selectedPath) return
-    this._openResearchFile(tab.id, selectedPath)
+    this._researchFilePicker.confirmSelection(tab.id)
   }
 
   async createResearchDirectory() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    const directoryName = window.prompt("New folder name")?.trim()
-    if (!directoryName) return
-
-    const parentPath = this._researchFilePickerDirectory.get(tab.id) || ""
-    const response = await createResearchDirectory(parentPath || null, directoryName)
-    if (!response?.ok || !response.path) {
-      showToast(response?.diagnostics?.[0]?.message || "Folder create failed")
-      return
-    }
-
-    await this._refreshResearchCatalog()
-    this._researchFilePickerDirectory.set(tab.id, response.path)
-    this._researchFilePickerSelected.set(tab.id, response.path)
-    this.render()
+    await this._researchFilePicker.createDirectory(tab.id)
   }
 
   async renameResearchEntry() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    const selectedPath = this._researchFilePickerSelected.get(tab.id) || null
-    if (!selectedPath) return
-
-    const entry = findResearchEntry(this._researchCatalog, selectedPath)
-    if (entry) {
-      const nextId = window.prompt("New file name", entry.id)?.trim()
-      if (!nextId || nextId === entry.id) return
-
-      const response = await renameResearchSystem(selectedPath, nextId, entry.yaml)
-      if (!response?.ok || !response.system) {
-        showToast(response?.diagnostics?.[0]?.message || "File rename failed")
-        return
-      }
-
-      await this._refreshResearchCatalog()
-      this._researchFilePickerSelected.set(tab.id, response.system.relative_path)
-      this._researchFilePickerDirectory.set(tab.id, relativeDirname(response.system.relative_path))
-      this.store.updateResearchConfig(tab.id, {
-        systemId: response.system.id,
-        systemPath: response.system.relative_path,
-        systemYaml: "",
-      })
-      this.render()
-      return
-    }
-
-    const nextName = window.prompt("New folder name", selectedPath.split("/").pop() || "")?.trim()
-    if (!nextName) return
-
-    const response = await renameResearchDirectory(selectedPath, nextName)
-    if (!response?.ok || !response.path) {
-      showToast(response?.diagnostics?.[0]?.message || "Folder rename failed")
-      return
-    }
-
-    await this._refreshResearchCatalog()
-    const currentSystemPath = tab.researchConfig?.systemPath || null
-    const nextSystemPath = replacePathPrefix(currentSystemPath, selectedPath, response.path)
-    this._researchFilePickerSelected.set(tab.id, response.path)
-    this._researchFilePickerDirectory.set(tab.id, response.path)
-    if (currentSystemPath && nextSystemPath) {
-      this.store.updateResearchConfig(tab.id, {
-        systemId: systemIdFromPath(nextSystemPath),
-        systemPath: nextSystemPath,
-        systemYaml: "",
-      })
-    }
-    this.render()
+    await this._researchFilePicker.renameEntry(tab.id)
   }
 
   async deleteResearchEntry() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return
-
-    const selectedPath = this._researchFilePickerSelected.get(tab.id) || null
-    if (!selectedPath) return
-    if (!window.confirm(`Delete ${selectedPath}?`)) return
-
-    const entry = findResearchEntry(this._researchCatalog, selectedPath)
-    if (entry) {
-      const response = await deleteResearchSystem(selectedPath)
-      if (!response?.ok) {
-        showToast(response?.diagnostics?.[0]?.message || "File delete failed")
-        return
-      }
-    } else {
-      const response = await deleteResearchDirectory(selectedPath)
-      if (!response?.ok) {
-        showToast(response?.diagnostics?.[0]?.message || "Folder delete failed")
-        return
-      }
-    }
-
-    const currentSystemPath = tab.researchConfig?.systemPath || null
-    await this._refreshResearchCatalog()
-    this._researchFilePickerSelected.set(tab.id, null)
-    this._researchFilePickerDirectory.set(tab.id, relativeDirname(selectedPath))
-    if (currentSystemPath && isPathInside(selectedPath, currentSystemPath)) {
-      this.store.updateResearchConfig(tab.id, {
-        systemId: "",
-        systemPath: "",
-        systemYaml: "",
-      })
-    }
-    this.render()
+    await this._researchFilePicker.deleteEntry(tab.id)
   }
 
   stopFileManagerPropagation(e: Event) {
     e.stopPropagation()
   }
 
-  private _openResearchFile(tabId: string, path: string) {
-    const entry = findResearchEntry(this._researchCatalog, path)
-    if (!entry) return
-
-    this.store.updateResearchConfig(tabId, {
-      systemId: entry.id,
-      systemPath: entry.relative_path,
-      systemYaml: "",
-    })
-    this._researchFilePickerOpen.delete(tabId)
-    this._researchFilePickerQuery.delete(tabId)
-    this._researchFilePickerDirectory.delete(tabId)
-    this._researchFilePickerSelected.delete(tabId)
-    this.render()
-  }
-
-  private _openResearchFileManagerPath(tabId: string, path: string, kind: string) {
-    if (kind === "directory") {
-      this._researchFilePickerDirectory.set(tabId, path)
-      this._researchFilePickerSelected.set(tabId, path || null)
-      this.render()
-      return
-    }
-
-    this._openResearchFile(tabId, path)
-  }
-
-  private _syncResearchFileManagerSelection(path: string | null, kind: string | null) {
-    const modal = this.element.querySelector("[data-file-manager-modal]")
-    if (!modal) return
-    syncFileManagerSelectionState(modal, path, kind === "file" || kind === "directory" ? kind : null)
-  }
 
   openResearchSystemEditor() {
     const tab = this.store.activeTab
@@ -984,31 +826,25 @@ export default class extends Controller {
   private _activeResearchFilePickerOpen(): boolean {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return false
-    return this._researchFilePickerOpen.has(tab.id)
+    return this._researchFilePicker.isOpen(tab.id)
   }
 
   private _activeResearchFilePickerQuery(): string {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return ""
-    return this._researchFilePickerQuery.get(tab.id) || ""
+    return this._researchFilePicker.getQuery(tab.id)
   }
 
   private _activeResearchFilePickerDirectoryPath(): string {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return ""
-    return this._researchFilePickerDirectory.get(tab.id) || relativeDirname(tab.researchConfig?.systemPath || "")
+    return this._researchFilePicker.getDirectory(tab.id, tab.researchConfig?.systemPath || null)
   }
 
   private _activeResearchFilePickerSelectedPath(): string | null {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return null
-    return this._researchFilePickerSelected.get(tab.id) || tab.researchConfig?.systemPath || null
-  }
-
-  private async _refreshResearchCatalog() {
-    const snapshot = await fetchResearchCatalog()
-    this._researchCatalog = snapshot.systems
-    this._researchDirectories = snapshot.directories
+    return this._researchFilePicker.getSelected(tab.id, tab.researchConfig?.systemPath || null)
   }
 
   private _activeResearchController(): { run(state?: ResearchState): Promise<void> } | null {

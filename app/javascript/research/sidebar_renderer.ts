@@ -1,4 +1,4 @@
-import { BORDER_COLOR } from "../config/theme"
+import { BORDER_COLOR, BG_SURFACE, BG_INPUT } from "../config/theme"
 import type { ResearchConfig } from "../types/store"
 import { escapeHTML } from "../utils/dom"
 import { METRIC_OPTIONS } from "./catalog"
@@ -52,20 +52,20 @@ export default class ResearchSidebarRenderer {
         <div class="flex flex-col gap-3">
           <div class="flex flex-col gap-2 text-sm">
             <span class="text-gray-400">YAML file</span>
-            <div class="rounded border border-[${BORDER_COLOR}] bg-[#141428] px-3 py-2 font-mono text-xs text-gray-300">
+            <div class="rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 py-2 font-mono text-xs text-gray-300">
               ${selectedSystem ? escapeHTML(selectedSystem.relative_path) : '<span class="text-gray-500">No YAML file selected</span>'}
             </div>
             <button
               type="button"
               data-action="click->${this.ctrl}#openResearchFilePicker"
-              class="h-9 rounded border border-[${BORDER_COLOR}] bg-[#0f1020] text-sm text-gray-200 hover:text-white cursor-pointer"
+              class="h-9 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] text-sm text-gray-200 hover:text-white cursor-pointer"
             >Open file</button>
           </div>
           ${systemSummaryHTML(selectedSystem)}
           <button
             type="button"
             data-action="click->${this.ctrl}#openResearchSystemEditor"
-            class="h-9 rounded border border-[${BORDER_COLOR}] bg-[#141428] text-sm text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            class="h-9 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] text-sm text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             ${selectedSystem ? "" : "disabled"}
           >Open in System editor</button>
         </div>
@@ -80,7 +80,7 @@ export default class ResearchSidebarRenderer {
         <hr class="border-[#3a3a4e]">
 
         <div class="flex flex-col gap-3">
-          <label class="inline-flex items-center gap-2 h-10 px-3 rounded border border-[${BORDER_COLOR}] bg-[#141428]">
+          <label class="inline-flex items-center gap-2 h-10 px-3 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}]">
             <input
               type="checkbox"
               data-field="optimizationEnabled"
@@ -136,7 +136,7 @@ function selectFieldHTML(ctrl: string, label: string, field: string, options: st
       <select
         data-field="${field}"
         data-action="change->${ctrl}#updateResearchConfig"
-        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[#141428] px-3 text-white"
+        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white"
       >${html}</select>
     </label>
   `
@@ -167,7 +167,7 @@ function inputFieldHTML(
         ${attrs}
         data-field="${field}"
         data-action="change->${ctrl}#updateResearchConfig"
-        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[#141428] px-3 text-white disabled:cursor-not-allowed"
+        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white disabled:cursor-not-allowed"
       >
     </label>
   `
@@ -175,15 +175,15 @@ function inputFieldHTML(
 
 function systemSummaryHTML(system: ResearchCatalogEntry | null): string {
   if (!system) {
-    return `<div class="rounded border border-[${BORDER_COLOR}] bg-[#141428] px-3 py-2 text-sm text-gray-500">Open or save a YAML system in System editor first.</div>`
+    return `<div class="rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 py-2 text-sm text-gray-500">Open or save a YAML system in System editor first.</div>`
   }
 
   const moduleParams = Object.entries(system.metadata.module.params).map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`).join(", ")
   const runtimeParams = Object.entries(system.metadata.params).map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`).join(", ")
-  const conditions = system.metadata.conditions.map(name => `<span class="px-2 py-0.5 rounded bg-[#0f1020] text-blue-200">${escapeHTML(name)}</span>`).join("")
+  const conditions = system.metadata.conditions.map(name => `<span class="px-2 py-0.5 rounded bg-[${BG_INPUT}] text-blue-200">${escapeHTML(name)}</span>`).join("")
 
   return `
-    <div class="rounded border border-[${BORDER_COLOR}] bg-[#141428] px-3 py-2 text-sm flex flex-col gap-2">
+    <div class="rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 py-2 text-sm flex flex-col gap-2">
       <div><span class="text-gray-500">File:</span> <span class="text-white font-mono">${escapeHTML(system.relative_path)}</span></div>
       <div><span class="text-gray-500">Module:</span> <span class="text-white">${escapeHTML(system.metadata.module.type.toUpperCase())}</span> <span class="text-gray-400">${escapeHTML(moduleParams)}</span></div>
       <div><span class="text-gray-500">Params:</span> <span class="text-gray-300">${escapeHTML(runtimeParams || "none")}</span></div>
@@ -207,7 +207,7 @@ function optimizationFieldHTML(
       <select
         data-field="optimizationTarget"
         data-action="change->${ctrl}#updateResearchConfig"
-        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[#141428] px-3 text-white"
+        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white"
         ${disabled ? "disabled" : ""}
       >${html}</select>
     </label>
@@ -225,7 +225,7 @@ function metricFieldHTML(ctrl: string, selectedMetric: string, optimizationEnabl
       <select
         data-field="selectedMetric"
         data-action="change->${ctrl}#updateResearchConfig"
-        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[#141428] px-3 text-white"
+        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white"
         ${optimizationEnabled ? "" : "disabled"}
       >${options}</select>
     </label>

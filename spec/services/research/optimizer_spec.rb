@@ -4,18 +4,80 @@ require 'rails_helper'
 
 RSpec.describe Research::Optimizer do
   let(:executor) { instance_double(Research::Executor) }
-  let(:ema_system) { Research::SystemRegistry.fetch(system_type: 'price_module_cross', module_type: 'ema') }
-  let(:rsi_system) { Research::SystemRegistry.fetch(system_type: 'oscillator_threshold', module_type: 'rsi') }
+
+  let(:ema_system) do
+    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+      id: price_ema_cross
+      name: Price / EMA Cross
+      module:
+        type: ema
+        params:
+          period: 20
+      params:
+        position_mode: long_short
+      conditions:
+        long_entry:
+          operator: cross_above
+          left: close
+          right: module.value
+        long_exit:
+          operator: cross_below
+          left: close
+          right: module.value
+        short_entry:
+          operator: cross_below
+          left: close
+          right: module.value
+        short_exit:
+          operator: cross_above
+          left: close
+          right: module.value
+      optimization:
+        targets:
+          - module.period
+    YAML
+  end
+
+  let(:rsi_system) do
+    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+      id: rsi_threshold
+      name: RSI Threshold
+      module:
+        type: rsi
+        params:
+          period: 14
+      params:
+        position_mode: long_short
+        lower_threshold: 30
+        upper_threshold: 70
+      conditions:
+        long_entry:
+          operator: cross_below
+          left: module.value
+          right: params.lower_threshold
+        long_exit:
+          operator: cross_above
+          left: module.value
+          right: params.upper_threshold
+        short_entry:
+          operator: cross_above
+          left: module.value
+          right: params.upper_threshold
+        short_exit:
+          operator: cross_below
+          left: module.value
+          right: params.lower_threshold
+      optimization:
+        targets:
+          - module.period
+          - params.lower_threshold
+    YAML
+  end
 
   describe '#call' do
     it 'runs all parameter values and keeps each result in memory' do
       allow(executor).to receive(:run) do |params:, mode:, stage:|
-        {
-          mode: mode.to_s,
-          stage: stage.to_s,
-          params: params,
-          trades: []
-        }
+        { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
       end
 
       results = described_class.new(
@@ -44,7 +106,7 @@ RSpec.describe Research::Optimizer do
         system: rsi_system,
         base_params: { lower_threshold: 30.0 }
       ).call(
-        target: 'system.lower_threshold',
+        target: 'params.lower_threshold',
         from: 25,
         to: 26,
         step: 0.5
@@ -54,7 +116,10 @@ RSpec.describe Research::Optimizer do
     end
 
     it 'emits progress updates after each run' do
-      progress = instance_double(Research::ProgressBroadcaster, started: nil, run_completed: nil, finished: nil, failed: nil)
+      progress = instance_double(
+        Research::ProgressBroadcaster,
+        started: nil, run_completed: nil, finished: nil, failed: nil
+      )
 
       allow(executor).to receive(:run) do |params:, mode:, stage:|
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
@@ -79,7 +144,10 @@ RSpec.describe Research::Optimizer do
     end
 
     it 'throttles progress updates by elapsed time' do
-      progress = instance_double(Research::ProgressBroadcaster, started: nil, run_completed: nil, finished: nil, failed: nil)
+      progress = instance_double(
+        Research::ProgressBroadcaster,
+        started: nil, run_completed: nil, finished: nil, failed: nil
+      )
       clock_values = [
         0.0,  # started_at
         0.0,  # run1_started_at

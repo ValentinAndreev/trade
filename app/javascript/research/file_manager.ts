@@ -1,4 +1,4 @@
-import { BORDER_COLOR } from "../config/theme"
+import { BORDER_COLOR, BG_MODAL, BG_SURFACE, BG_TOOLBAR, BG_INPUT, BG_PANEL } from "../config/theme"
 import type { ResearchCatalogEntry } from "./dsl"
 import { escapeHTML } from "../utils/dom"
 
@@ -67,10 +67,10 @@ export function renderFileManagerModal({
     >
       <div
         data-file-manager-modal="true"
-        class="flex h-[min(85vh,820px)] w-[min(1100px,96vw)] min-h-[520px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[${BORDER_COLOR}] bg-[#111223] shadow-[0_20px_80px_rgba(0,0,0,0.55)]"
+        class="flex h-[min(85vh,820px)] w-[min(1100px,96vw)] min-h-[520px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_20px_80px_rgba(0,0,0,0.55)]"
         data-action="click->${ctrl}#stopFileManagerPropagation"
       >
-        <div class="flex items-center gap-3 border-b border-[${BORDER_COLOR}] bg-[#141428] px-5 py-4">
+        <div class="flex items-center gap-3 border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-5 py-4">
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-white">${escapeHTML(title)}</div>
             <div class="mt-1 text-xs text-gray-400 font-mono">${escapeHTML(currentDirectory.path || ".")}</div>
@@ -83,11 +83,11 @@ export function renderFileManagerModal({
           <button
             type="button"
             data-action="${closeAction}"
-            class="h-10 rounded border border-[${BORDER_COLOR}] bg-[#0f1020] px-3 text-sm text-gray-300 hover:text-white cursor-pointer"
+            class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-300 hover:text-white cursor-pointer"
           >Close</button>
         </div>
 
-        <div class="flex items-center gap-3 border-b border-[${BORDER_COLOR}] bg-[#10101f] px-5 py-3">
+        <div class="flex items-center gap-3 border-b border-[${BORDER_COLOR}] bg-[${BG_TOOLBAR}] px-5 py-3">
           <div class="min-w-0 flex-1 overflow-x-auto">
             <div class="flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap">
               ${breadcrumbsHTML(currentDirectory.path, navigateAction)}
@@ -98,12 +98,12 @@ export function renderFileManagerModal({
             value="${escapeHTML(searchQuery)}"
             placeholder="Search in current directory"
             data-action="${searchAction}"
-            class="h-10 w-72 rounded border border-[${BORDER_COLOR}] bg-[#0f1020] px-3 text-sm text-white"
+            class="h-10 w-72 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white"
           >
         </div>
 
         <div class="grid min-h-0 flex-1 grid-cols-[18rem_minmax(0,1fr)]">
-          <aside class="min-h-0 overflow-auto border-r border-[${BORDER_COLOR}] bg-[#0d0e1c] px-3 py-3">
+          <aside class="min-h-0 overflow-auto border-r border-[${BORDER_COLOR}] bg-[${BG_PANEL}] px-3 py-3">
             <div class="mb-2 px-2 text-[11px] uppercase tracking-[0.18em] text-gray-500">Directories</div>
             <div class="flex flex-col gap-0.5">
               ${directoryTreeHTML(root, currentDirectory.path, navigateAction)}
@@ -112,7 +112,7 @@ export function renderFileManagerModal({
 
           <section class="min-h-0 overflow-auto px-4 py-4">
             <div class="mb-3 text-[11px] uppercase tracking-[0.18em] text-gray-500">Entries</div>
-            <div class="overflow-hidden rounded-xl border border-[${BORDER_COLOR}] bg-[#0d0e1c]">
+            <div class="overflow-hidden rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_PANEL}]">
               ${listing.length ? listing.map(item => listItemHTML(item.kind, item.path, item.label, item.meta, selectedPath, selectAction)).join("") : `
                 <div class="px-4 py-8 text-sm text-gray-500">This directory is empty.</div>
               `}
@@ -353,7 +353,7 @@ function actionButton(label: string, action?: string, disabled = false, extraCla
       type="button"
       ${buttonKey ? `data-file-manager-button="${escapeHTML(buttonKey)}"` : ""}
       data-action="${action}"
-      class="h-10 rounded border border-[${BORDER_COLOR}] bg-[#0f1020] px-3 text-sm text-gray-200 hover:bg-white/5 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${extraClass}"
+      class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-200 hover:bg-white/5 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${extraClass}"
       ${disabled ? "disabled" : ""}
     >${escapeHTML(label)}</button>
   `

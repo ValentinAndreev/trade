@@ -1,5 +1,6 @@
 import type { AppConfig } from "../tabs/config"
 import type { ResearchConfig, ResearchMetricKey } from "../types/store"
+import { formFieldValue, formFieldNumber, formFieldChecked } from "../utils/dom"
 
 export type ResearchState = ResearchConfig
 
@@ -39,20 +40,20 @@ export function hydrateResearchState(config: AppConfig | null, stored: Partial<R
 }
 
 export function syncResearchStateFromInputs(root: ParentNode, state: ResearchState): void {
-  state.symbol = valueOf(root, "symbol", state.symbol)
-  state.timeframe = valueOf(root, "timeframe", state.timeframe)
-  state.startTime = valueOf(root, "startTime", state.startTime)
-  state.endTime = valueOf(root, "endTime", state.endTime)
-  state.systemId = valueOf(root, "systemId", state.systemId)
-  state.systemYaml = valueOf(root, "systemYaml", state.systemYaml)
-  state.feeBps = numericValue(root, "feeBps", state.feeBps)
-  state.slippageBps = numericValue(root, "slippageBps", state.slippageBps)
-  state.optimizationEnabled = checkedValue(root, "optimizationEnabled", state.optimizationEnabled)
-  state.optimizationTarget = valueOf(root, "optimizationTarget", state.optimizationTarget)
-  state.optimizationFrom = numericValue(root, "optimizationFrom", state.optimizationFrom)
-  state.optimizationTo = numericValue(root, "optimizationTo", state.optimizationTo)
-  state.optimizationStep = numericValue(root, "optimizationStep", state.optimizationStep)
-  state.selectedMetric = valueOf(root, "selectedMetric", state.selectedMetric) as ResearchMetricKey
+  state.symbol = formFieldValue(root, "symbol", state.symbol)
+  state.timeframe = formFieldValue(root, "timeframe", state.timeframe)
+  state.startTime = formFieldValue(root, "startTime", state.startTime)
+  state.endTime = formFieldValue(root, "endTime", state.endTime)
+  state.systemId = formFieldValue(root, "systemId", state.systemId)
+  state.systemYaml = formFieldValue(root, "systemYaml", state.systemYaml)
+  state.feeBps = formFieldNumber(root, "feeBps", state.feeBps)
+  state.slippageBps = formFieldNumber(root, "slippageBps", state.slippageBps)
+  state.optimizationEnabled = formFieldChecked(root, "optimizationEnabled", state.optimizationEnabled)
+  state.optimizationTarget = formFieldValue(root, "optimizationTarget", state.optimizationTarget)
+  state.optimizationFrom = formFieldNumber(root, "optimizationFrom", state.optimizationFrom)
+  state.optimizationTo = formFieldNumber(root, "optimizationTo", state.optimizationTo)
+  state.optimizationStep = formFieldNumber(root, "optimizationStep", state.optimizationStep)
+  state.selectedMetric = formFieldValue(root, "selectedMetric", state.selectedMetric) as ResearchMetricKey
 
   normalizeResearchState(state)
 }
@@ -72,18 +73,3 @@ export function toDatetimeLocal(date: Date): string {
   return local.toISOString().slice(0, 16)
 }
 
-function valueOf(root: ParentNode, field: string, fallback: string): string {
-  const el = root.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[data-field="${field}"]`)
-  return el?.value || fallback
-}
-
-function numericValue(root: ParentNode, field: string, fallback: number): number {
-  const el = root.querySelector<HTMLInputElement>(`[data-field="${field}"]`)
-  const value = Number(el?.value)
-  return Number.isFinite(value) ? value : fallback
-}
-
-function checkedValue(root: ParentNode, field: string, fallback: boolean): boolean {
-  const el = root.querySelector<HTMLInputElement>(`[data-field="${field}"]`)
-  return el ? el.checked : fallback
-}

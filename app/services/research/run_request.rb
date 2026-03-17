@@ -2,27 +2,16 @@
 
 module Research
   class RunRequest
-    attr_reader :system, :compiled_system
+    attr_reader :system
 
     def initialize(raw_params)
       @raw_params = raw_params.deep_symbolize_keys
       yaml = requested_yaml
-      if yaml.blank?
-        raise Research::Dsl::ValidationError.new([
-          Research::Dsl::Diagnostic.new(
-            message: 'System YAML is required',
-            line: 1,
-            column: 1,
-            length: 1,
-            code: 'yaml_missing'
-          )
-        ])
-      end
+      raise Research::Dsl::ValidationError.new([ Research::Dsl::Diagnostic.yaml_missing ]) if yaml.blank?
 
       validation = Research::Dsl::Catalog.validate(yaml)
       validation.raise_if_invalid!
-      @compiled_system = validation.compiled
-      @system = compiled_system.system
+      @system = validation.compiled
     end
 
     def executor_config
@@ -39,7 +28,7 @@ module Research
     end
 
     def runtime_params
-      @runtime_params ||= compiled_system.runtime_params.deep_symbolize_keys
+      @runtime_params ||= system.runtime_params.deep_symbolize_keys
     end
 
     def optimization_enabled?
@@ -62,12 +51,12 @@ module Research
       {
         strategy: system.strategy_key,
         system: {
-          type: compiled_system.id,
-          params: compiled_system.runtime_params.except(:module_period).transform_keys(&:to_s)
+          type: system.id,
+          params: system.runtime_params.except(:module_period).transform_keys(&:to_s)
         },
         module: {
-          type: compiled_system.module_type,
-          params: compiled_system.module_params
+          type: system.module_type,
+          params: system.module_params
         },
         dataset: dataset.except(:exchange),
         optimization: optimization_payload,

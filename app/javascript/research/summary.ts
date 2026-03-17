@@ -1,5 +1,6 @@
 import type { SystemStats } from "../types/store"
 import {
+  humanizeToken,
   moduleLabel,
   positionModeLabel,
   type ResearchMetricKey,
@@ -28,7 +29,7 @@ export function runSummary(run: ProcessedResearchRun): string {
   const positionMode = positionModeLabel(run.params.position_mode)
   const paramSummary = Object.entries(run.params)
     .filter(([key]) => !["system_id", "system_name", "module_type", "module_period", "position_mode"].includes(key))
-    .map(([key, value]) => `${humanizeParam(key)} ${formatMaybeNumber(value)}`)
+    .map(([key, value]) => `${humanizeToken(key)} ${formatMaybeNumber(value)}`)
     .join(" · ")
   const parts = [
     run.params.system_name ? String(run.params.system_name) : null,
@@ -49,10 +50,3 @@ function formatMaybeNumber(value: unknown): string {
   return Number.isFinite(numeric) ? numeric.toFixed(2) : String(value)
 }
 
-function humanizeParam(value: string): string {
-  return value
-    .split("_")
-    .filter(Boolean)
-    .map(token => token.charAt(0).toUpperCase() + token.slice(1))
-    .join(" ")
-}

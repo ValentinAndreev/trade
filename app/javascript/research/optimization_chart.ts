@@ -1,4 +1,4 @@
-import { BG_HOVER, BG_PRIMARY, BORDER_COLOR, ACCENT_COLOR } from "../config/theme"
+import { BG_HOVER, BG_PRIMARY, BORDER_COLOR, ACCENT_COLOR, TEXT_MUTED } from "../config/theme"
 
 export interface OptimizationPoint {
   index: number
@@ -90,7 +90,7 @@ export class OptimizationChart {
       const cy = scaleY(Number.isFinite(point.y) ? point.y : 0)
       const selected = point.index === this.selectedIndex
       const radius = selected ? 5 : 4
-      const fill = selected ? ACCENT_COLOR : "#9ca3af"
+      const fill = selected ? ACCENT_COLOR : TEXT_MUTED
       const stroke = selected ? "#ffffff" : "#1f2937"
 
       return `
@@ -114,19 +114,19 @@ export class OptimizationChart {
         <rect x="0" y="0" width="${width}" height="${height}" fill="${BG_PRIMARY}" />
         ${yTicks.map(tick => `
           <line x1="${padding.left}" y1="${tick.y}" x2="${width - padding.right}" y2="${tick.y}" stroke="${BG_HOVER}" stroke-width="1" />
-          <text x="${padding.left - 8}" y="${tick.y + 4}" text-anchor="end" fill="#9ca3af" font-size="11">${formatTick(tick.value)}</text>
+          <text x="${padding.left - 8}" y="${tick.y + 4}" text-anchor="end" fill="${TEXT_MUTED}" font-size="11">${formatTick(tick.value)}</text>
         `).join("")}
         ${xTicks.map(tick => `
           <line x1="${tick.x}" y1="${padding.top}" x2="${tick.x}" y2="${height - padding.bottom}" stroke="${BG_HOVER}" stroke-width="1" />
-          <text x="${tick.x}" y="${height - 12}" text-anchor="middle" fill="#9ca3af" font-size="11">${formatTick(tick.value)}</text>
+          <text x="${tick.x}" y="${height - 12}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="11">${formatTick(tick.value)}</text>
         `).join("")}
         <line x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" stroke="#6b7280" stroke-width="1" />
         <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}" stroke="#6b7280" stroke-width="1" />
         ${selectionBands}
         <polyline fill="none" stroke="${ACCENT_COLOR}" stroke-width="2" points="${polyline}" />
         ${circles}
-        <text x="${width / 2}" y="${height - 4}" text-anchor="middle" fill="#9ca3af" font-size="12">${this.xLabel}</text>
-        <text x="14" y="${height / 2}" text-anchor="middle" fill="#9ca3af" font-size="12" transform="rotate(-90 14 ${height / 2})">${this.yLabel}</text>
+        <text x="${width / 2}" y="${height - 4}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="12">${this.xLabel}</text>
+        <text x="14" y="${height / 2}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="12" transform="rotate(-90 14 ${height / 2})">${this.yLabel}</text>
       </svg>
     `
 

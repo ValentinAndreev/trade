@@ -12,6 +12,14 @@ export const BG_HOVER      = "#2a2a3e"
 export const BORDER_COLOR  = "#3a3a4e"
 export const ACCENT_COLOR  = "#3b82f6"
 
+// Modal / surface / input backgrounds (research & system editor)
+export const BG_MODAL    = "#111223"   // modal container
+export const BG_SURFACE  = "#141428"   // card / panel surface
+export const BG_TOOLBAR  = "#10101f"   // toolbar / status bar
+export const BG_INPUT    = "#0f1020"   // input / textarea
+export const BG_PANEL    = "#0d0e1c"   // darker panel / aside
+export const TEXT_MUTED  = "#9ca3af"   // muted text / labels
+
 export const CHART_THEME: DeepPartial<ChartOptions> = {
   layout: { background: { color: BG_PRIMARY }, textColor: "#e0e0e0" },
   grid: { vertLines: { color: BG_HOVER }, horzLines: { color: BG_HOVER } },

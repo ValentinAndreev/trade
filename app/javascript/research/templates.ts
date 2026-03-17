@@ -1,4 +1,4 @@
-import { BG_HOVER, BG_PRIMARY, BORDER_COLOR } from "../config/theme"
+import { BG_HOVER, BG_PRIMARY, BORDER_COLOR, BG_SURFACE, BG_INPUT } from "../config/theme"
 import { metricLabel } from "./catalog"
 import type { ResearchProgressInfo } from "./progress"
 import type { ResearchState } from "./state"
@@ -20,7 +20,7 @@ export function renderResearchHTML({ state, busy, runsCount, progress }: Researc
           data-optimization-pane
           class="${showOptimization ? "flex-none min-h-[16rem] overflow-hidden border-b border-[${BG_HOVER}] flex flex-col" : "hidden"}"
         >
-          <div class="flex items-center justify-between px-4 py-2 bg-[#141428]">
+          <div class="flex items-center justify-between px-4 py-2 bg-[${BG_SURFACE}]">
             <div class="text-sm text-gray-300">Optimization runs</div>
             <div class="text-xs text-gray-500">${showOptimization ? `${runsCount} runs` : ""}</div>
           </div>
@@ -51,10 +51,10 @@ export function selectedRunPlaceholderHTML(busy: boolean, progress: ResearchProg
 
     return `
       <div class="flex items-center justify-center h-full p-6">
-        <div class="w-full max-w-md rounded-xl border border-[${BORDER_COLOR}] bg-[#141428] p-4 text-center">
+        <div class="w-full max-w-md rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-4 text-center">
           <div class="text-sm font-medium text-white">${progress?.title || "Running research"}</div>
           <div class="mt-2 text-sm text-gray-300">${progress?.detail || "Waiting for server response…"}</div>
-          <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-[#0f1020]">
+          <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-[${BG_INPUT}]">
             <div class="h-full rounded-full bg-blue-500/80 transition-[width] duration-300" style="width: ${width}%"></div>
           </div>
           <div class="mt-3 flex items-center justify-center gap-3 text-xs text-gray-500">

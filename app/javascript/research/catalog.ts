@@ -10,7 +10,7 @@ export type {
   ResearchPositionMode,
 }
 
-export type LabeledOption<T extends string> = {
+type LabeledOption<T extends string> = {
   value: T
   label: string
 }
@@ -60,7 +60,7 @@ export function moduleLabel(moduleType: string): string {
   return moduleType.toUpperCase()
 }
 
-function humanizeToken(value: string): string {
+export function humanizeToken(value: string): string {
   return value
     .split(/[._]/g)
     .filter(Boolean)

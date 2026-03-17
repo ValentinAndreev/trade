@@ -1,5 +1,21 @@
 // Shared DOM utilities
 
+export function formFieldValue(root: ParentNode, field: string, fallback: string): string {
+  const el = root.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[data-field="${field}"]`)
+  return el?.value || fallback
+}
+
+export function formFieldNumber(root: ParentNode, field: string, fallback: number): number {
+  const el = root.querySelector<HTMLInputElement>(`[data-field="${field}"]`)
+  const value = Number(el?.value)
+  return Number.isFinite(value) ? value : fallback
+}
+
+export function formFieldChecked(root: ParentNode, field: string, fallback: boolean): boolean {
+  const el = root.querySelector<HTMLInputElement>(`[data-field="${field}"]`)
+  return el ? el.checked : fallback
+}
+
 export function escapeHTML(value: unknown): string {
   return String(value)
     .replaceAll("&", "&amp;")

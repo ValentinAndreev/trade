@@ -1,4 +1,4 @@
-import { BG_HOVER } from "../config/theme"
+import { BG_HOVER, BG_SURFACE } from "../config/theme"
 import { StatsPanel, type StatsPanelState } from "../system_stats/stats_panel"
 import type { ResearchProgressInfo } from "./progress"
 import { formatValue, runSummary } from "./summary"
@@ -23,7 +23,7 @@ export class SelectedRunView {
 
     this.container.innerHTML = `
       <div class="flex flex-col h-full overflow-hidden">
-        <div class="flex-none px-4 py-2 bg-[#141428] border-b border-[${BG_HOVER}] text-sm text-gray-300">
+        <div class="flex-none px-4 py-2 bg-[${BG_SURFACE}] border-b border-[${BG_HOVER}] text-sm text-gray-300">
           Selected run: ${runSummary(run)} · Trades ${run.stats.totalTrades} · Net ${formatValue(run.stats.netProfit)} (${formatValue(run.stats.netProfitPercent)}%)
         </div>
         <div class="flex-1 min-h-0 overflow-hidden" data-selected-run-layout></div>

@@ -2,6 +2,11 @@
 
 module Research
   class Executor
+    MODULES = {
+      ema: Research::Modules::Ema,
+      rsi: Research::Modules::Rsi
+    }.freeze
+
     private attr_reader :system, :symbol, :timeframe, :start_time, :end_time, :exchange, :fee_bps, :slippage_bps
 
     def initialize(system:, symbol:, timeframe:, start_time:, end_time:, exchange: 'bitfinex', fee_bps: 0.0, slippage_bps: 0.0)
@@ -66,7 +71,10 @@ module Research
 
     def module_runner(module_key)
       @module_runners ||= {}
-      @module_runners[module_key] ||= Research::ModuleRegistry.fetch(module_key).new(candles: candles)
+      @module_runners[module_key] ||= begin
+        klass = MODULES.fetch(module_key) { raise ArgumentError, "Unsupported research module: #{module_key}" }
+        klass.new(candles: candles)
+      end
     end
 
     def candles

@@ -7,7 +7,6 @@ export interface ResearchDslDiagnostic {
   length: number
   path: string | null
   code: string | null
-  suggestion: string | null
 }
 
 export interface ResearchOptimizationTargetOption {
@@ -34,11 +33,6 @@ export interface ResearchCatalogEntry {
   relative_path: string
   yaml: string
   metadata: ResearchValidatedSystem
-}
-
-export interface ResearchCatalogResponse {
-  systems: ResearchCatalogEntry[]
-  directories: string[]
 }
 
 export interface ResearchCatalogSnapshot {
@@ -75,7 +69,7 @@ export async function fetchResearchCatalog(): Promise<ResearchCatalogSnapshot> {
   const response = await apiFetch("/api/research/catalog")
   if (!response?.ok) return { systems: [], directories: [] }
 
-  const payload = await response.json() as ResearchCatalogResponse
+  const payload = await response.json() as ResearchCatalogSnapshot
   return {
     systems: Array.isArray(payload.systems) ? payload.systems : [],
     directories: Array.isArray(payload.directories) ? payload.directories.filter((path): path is string => typeof path === "string") : [],
