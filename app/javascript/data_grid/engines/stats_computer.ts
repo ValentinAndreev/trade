@@ -86,7 +86,7 @@ export function computeSystemStats(trades: Trade[]): SystemStats {
     : 0
 
   return {
-    totalTrades:          trades.length,
+    totalTrades:          closed.length,
     winningTrades:        wins.length,
     losingTrades:         losses.length,
     winRate:              +winRate.toFixed(2),

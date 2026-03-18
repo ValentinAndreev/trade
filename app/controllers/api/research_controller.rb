@@ -10,11 +10,7 @@ class Api::ResearchController < Api::ApplicationController
 
   def validate
     yaml = params[:system_yaml].presence || Research::Dsl::Catalog.load_yaml(params[:system_id], relative_path: params[:system_path])
-
-    if yaml.blank?
-      render json: { ok: false, diagnostics: [ Research::Dsl::Diagnostic.yaml_missing.to_h ], system: nil }
-      return
-    end
+    return render json: missing_yaml_response, status: :unprocessable_entity if yaml.blank?
 
     validation = Research::Dsl::Catalog.validate(yaml)
     render json: {
@@ -26,10 +22,7 @@ class Api::ResearchController < Api::ApplicationController
 
   def save_system
     yaml = params[:system_yaml].to_s
-    if yaml.blank?
-      render json: missing_yaml_response, status: :unprocessable_entity
-      return
-    end
+    return render json: missing_yaml_response, status: :unprocessable_entity if yaml.blank?
 
     entry = Research::Dsl::Catalog.save_system(
       yaml,
@@ -43,10 +36,7 @@ class Api::ResearchController < Api::ApplicationController
 
   def rename_system
     yaml = params[:system_yaml].to_s
-    if yaml.blank?
-      render json: missing_yaml_response, status: :unprocessable_entity
-      return
-    end
+    return render json: missing_yaml_response, status: :unprocessable_entity if yaml.blank?
 
     entry = Research::Dsl::Catalog.rename_entry(
       source_relative_path: params[:source_path],

@@ -48,11 +48,13 @@ export default class extends Controller {
     this.filePicker = new FilePickerModule(this.element as HTMLElement, {
       getState: () => this.state,
       getCatalog: () => this.catalog,
+      getDirectories: () => this.directories,
       setCatalog: (entries, dirs) => { this.catalog = entries; this.directories = dirs },
       updateState: updater => { if (this.state) updater(this.state) },
       onRender: () => this._renderSafely(),
       onPersist: () => this._persistState(),
       onCatalogChanged: system => this._dispatchCatalogChanged(system),
+      onOpenSystem: () => this._revalidateOpenedSystem(),
     })
 
     this.element.innerHTML = `<div class="flex items-center justify-center h-full text-gray-500 text-sm animate-pulse">Loading system editor…</div>`
@@ -447,6 +449,13 @@ export default class extends Controller {
       bubbles: true,
       detail: { system },
     }))
+  }
+
+  private _revalidateOpenedSystem() {
+    this.validation = null
+    this.validating = false
+    this._renderSafely()
+    void this.validator.run(this.state, true)
   }
 
   private _storedConfig(): Partial<SystemEditorConfig> | null {

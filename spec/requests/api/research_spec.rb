@@ -79,6 +79,23 @@ RSpec.describe 'Api::Research' do
       expect(response.parsed_body.fetch('directories')).to be_a(Array)
     end
 
+    it 'lists files and directories without validating unopened yaml files' do
+      Dir.mktmpdir do |dir|
+        allow(Research::Dsl::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
+        FileUtils.mkdir_p(File.join(dir, 'examples'))
+        File.write(File.join(dir, 'examples', 'price_ema_cross.yml'), yaml_system)
+        File.write(File.join(dir, 'my_sysyte.yml'), '')
+
+        get '/api/research/catalog'
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.fetch('directories')).to include('examples')
+        expect(
+          response.parsed_body.fetch('systems').map { |entry| entry.fetch('relative_path') }
+        ).to match_array([ 'examples/price_ema_cross.yml', 'my_sysyte.yml' ])
+      end
+    end
+
     it 'validates yaml systems and returns metadata' do
       post '/api/research/validate', params: {
         system_id: 'price_ema_cross',

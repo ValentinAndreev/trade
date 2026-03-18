@@ -11,7 +11,7 @@ module Research
       end
 
       def valid?
-        diagnostics.empty?
+        diagnostics.empty? && !compiled.nil?
       end
 
       def invalid?
@@ -25,7 +25,7 @@ module Research
       def raise_if_invalid!
         return self if valid?
 
-        raise Research::Dsl::ValidationError.new(diagnostics)
+        raise Research::Dsl::ValidationError.new(diagnostics.presence || [ Research::Dsl::Diagnostic.yaml_missing ])
       end
     end
   end

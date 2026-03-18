@@ -22,12 +22,7 @@ module Research
         end
 
         def entries
-          template_paths.sort.map do |path|
-            yaml       = File.read(path)
-            validation = validate(yaml)
-            validation.raise_if_invalid!
-            build_entry(Pathname.new(path), yaml, validation)
-          end
+          template_paths.sort.map { |path| build_catalog_entry(Pathname.new(path)) }
         end
 
         def directory_paths
@@ -40,13 +35,19 @@ module Research
         end
 
         def find(id)
-          entries.find { |e| e.id == id.to_s }
+          return if id.blank?
+
+          path = template_paths.find { |candidate| file_id_for(candidate) == id.to_s }
+          path ? build_catalog_entry(Pathname.new(path)) : nil
         end
 
         def find_by_relative_path(relative_path)
-          return nil if relative_path.blank?
+          return if relative_path.blank?
 
-          entries.find { |e| e.relative_path == relative_path.to_s }
+          path = resolve_relative_path(relative_path)
+          return unless path&.file?
+
+          build_catalog_entry(path)
         end
 
         def load_yaml(id = nil, relative_path: nil)
@@ -65,28 +66,29 @@ module Research
           system_id = validation.compiled.id.to_s
           validate_name!(system_id, code: 'invalid_system_id')
 
-          path = if source_relative_path.present?
-            resolve_or_raise!(source_relative_path, 'system_missing')
-          elsif directory_relative_path.present?
-            dir      = resolve_directory!(directory_relative_path)
-            new_path = dir.join("#{system_id}.yml")
-            raise_error!("System #{system_id} already exists", path: 'id', code: 'system_exists', length: system_id.length) if new_path.exist?
-            new_path
-          else
-            systems_dir.join("#{system_id}.yml")
-          end
+          path = system_path_for(
+            system_id,
+            source_relative_path:,
+            directory_relative_path:
+          )
 
           FileUtils.mkdir_p(path.dirname)
           File.write(path, yaml)
-          build_entry(path, yaml, validation)
+          build_validated_entry(path, yaml, validation)
         end
 
         def rename_entry(source_relative_path:, target_id:, yaml:)
           source_path = resolve_or_raise!(source_relative_path, 'system_missing')
           validate_name!(target_id, code: 'invalid_system_id')
 
-          target_path = source_path.dirname.join("#{target_id}.yml")
-          raise_error!("System #{target_id} already exists", path: 'id', code: 'system_exists', length: target_id.length) if target_path.exist? && target_path != source_path
+          target_path = ensure_available_path!(
+            source_path.dirname.join("#{target_id}.yml"),
+            label: target_id,
+            kind: 'System',
+            path: 'id',
+            code: 'system_exists',
+            ignore_path: source_path
+          )
 
           renamed_yaml = replace_root_id(yaml, target_id)
           validation   = validate(renamed_yaml)
@@ -95,7 +97,7 @@ module Research
           FileUtils.mkdir_p(target_path.dirname)
           File.write(target_path, renamed_yaml)
           File.delete(source_path) if source_path.exist? && source_path != target_path
-          build_entry(target_path, renamed_yaml, validation)
+          build_validated_entry(target_path, renamed_yaml, validation)
         end
 
         def delete_entry(source_relative_path:)
@@ -105,11 +107,14 @@ module Research
 
         def create_directory(parent_relative_path:, directory_name:)
           validate_name!(directory_name, code: 'invalid_path_name', path: 'directory_name')
-          parent_path = resolve_parent_directory(parent_relative_path)
-          raise_error!("Directory #{parent_relative_path.presence || '.'} was not found", path: 'source_path', code: 'directory_missing', length: parent_relative_path.to_s.length) unless parent_path
-
-          target_path = parent_path.join(directory_name)
-          raise_error!("Directory #{directory_name} already exists", path: 'directory_name', code: 'directory_exists', length: directory_name.length) if target_path.exist?
+          parent_path = parent_relative_path.present? ? resolve_directory!(parent_relative_path) : systems_dir
+          target_path = ensure_available_path!(
+            parent_path.join(directory_name),
+            label: directory_name,
+            kind: 'Directory',
+            path: 'directory_name',
+            code: 'directory_exists'
+          )
 
           FileUtils.mkdir_p(target_path)
           relative_path_for(target_path)
@@ -117,21 +122,28 @@ module Research
 
         def rename_directory(source_relative_path:, target_name:)
           validate_name!(target_name, code: 'invalid_path_name', path: 'target_name')
-          source_path = resolve_relative_path(source_relative_path)
-          raise_error!("Directory #{source_relative_path.presence || '.'} was not found", path: 'source_path', code: 'directory_missing', length: source_relative_path.to_s.length) unless source_path&.directory?
-          raise_error!('Root directory cannot be renamed', path: 'source_path', code: 'invalid_directory', length: source_relative_path.to_s.length) if source_path == systems_dir
-
-          target_path = source_path.dirname.join(target_name)
-          raise_error!("Directory #{target_name} already exists", path: 'target_name', code: 'directory_exists', length: target_name.length) if target_path.exist? && target_path != source_path
+          source_path = resolve_non_root_directory!(
+            source_relative_path,
+            root_message: 'Root directory cannot be renamed'
+          )
+          target_path = ensure_available_path!(
+            source_path.dirname.join(target_name),
+            label: target_name,
+            kind: 'Directory',
+            path: 'target_name',
+            code: 'directory_exists',
+            ignore_path: source_path
+          )
 
           FileUtils.mv(source_path, target_path)
           relative_path_for(target_path)
         end
 
         def delete_directory(source_relative_path:)
-          source_path = resolve_relative_path(source_relative_path)
-          raise_error!("Directory #{source_relative_path.presence || '.'} was not found", path: 'source_path', code: 'directory_missing', length: source_relative_path.to_s.length) unless source_path&.directory?
-          raise_error!('Root directory cannot be deleted', path: 'source_path', code: 'invalid_directory', length: source_relative_path.to_s.length) if source_path == systems_dir
+          source_path = resolve_non_root_directory!(
+            source_relative_path,
+            root_message: 'Root directory cannot be deleted'
+          )
 
           FileUtils.rm_r(source_path) if source_path.exist?
         end
@@ -147,13 +159,13 @@ module Research
         end
 
         def resolve_relative_path(relative_path)
-          return nil if relative_path.blank?
+          return if relative_path.blank?
 
           path         = systems_dir.join(relative_path.to_s).cleanpath
           systems_root = systems_dir.cleanpath.to_s
           path_str     = path.to_s
-          return nil unless path_str == systems_root || path_str.start_with?("#{systems_root}/")
-          return nil unless path.exist?
+          return unless path_str == systems_root || path_str.start_with?("#{systems_root}/")
+          return unless path.exist?
 
           path
         end
@@ -164,14 +176,39 @@ module Research
           Dir[systems_dir.join('**/*.yml')]
         end
 
-        def build_entry(path, yaml, validation)
+        def build_catalog_entry(path)
+          yaml = File.read(path)
+          system_id = file_id_for(path)
+
+          build_entry(
+            path,
+            id: system_id,
+            name: humanized_name_for(system_id),
+            yaml:,
+            metadata: nil
+          )
+        end
+
+        def build_validated_entry(path, yaml, validation)
+          build_entry(
+            path,
+            id: validation.compiled.id,
+            name: validation.compiled.name,
+            yaml:,
+            metadata: validation.metadata
+          )
+        end
+
+        def build_entry(path, id:, name:, yaml:, metadata:)
+          path = Pathname.new(path)
+
           Entry.new(
-            id:            validation.compiled.id,
-            name:          validation.compiled.name,
-            file_name:     Pathname.new(path).basename.to_s,
+            id:,
+            name:,
+            file_name: path.basename.to_s,
             relative_path: relative_path_for(path),
-            yaml:          yaml,
-            metadata:      validation.metadata
+            yaml:,
+            metadata:
           )
         end
 
@@ -181,24 +218,52 @@ module Research
           path
         end
 
-        def resolve_directory!(relative_path)
-          path = resolve_relative_path(relative_path)
-          dir  = path&.directory? ? path : nil
-          raise_error!("Directory #{relative_path} was not found", path: 'source_path', code: 'directory_missing', length: relative_path.to_s.length) unless dir
-          dir
+        def system_path_for(system_id, source_relative_path:, directory_relative_path:)
+          return resolve_or_raise!(source_relative_path, 'system_missing') if source_relative_path.present?
+
+          base_dir = directory_relative_path.present? ? resolve_directory!(directory_relative_path) : systems_dir
+          ensure_available_path!(
+            base_dir.join("#{system_id}.yml"),
+            label: system_id,
+            kind: 'System',
+            path: 'id',
+            code: 'system_exists'
+          )
         end
 
-        def resolve_parent_directory(relative_path)
-          return systems_dir if relative_path.blank?
+        def file_id_for(path)
+          Pathname.new(path).basename('.yml').to_s
+        end
 
+        def humanized_name_for(system_id)
+          system_id.to_s.tr('_-', ' ').split.map(&:capitalize).join(' ')
+        end
+
+        def resolve_directory!(relative_path)
           path = resolve_relative_path(relative_path)
-          path if path&.directory?
+          directory = path if path&.directory?
+          raise_error!("Directory #{relative_path} was not found", path: 'source_path', code: 'directory_missing', length: relative_path.to_s.length) unless directory
+
+          directory
+        end
+
+        def resolve_non_root_directory!(relative_path, root_message:)
+          directory = resolve_directory!(relative_path)
+          raise_error!(root_message, path: 'source_path', code: 'invalid_directory', length: relative_path.to_s.length) if directory == systems_dir
+
+          directory
         end
 
         def validate_name!(name, code:, path: 'id')
           return if name.to_s.match?(/\A[a-z0-9][a-z0-9_-]*\z/)
 
           raise_error!('Name must use lowercase letters, numbers, "_" or "-"', path: path, code: code, length: name.to_s.length)
+        end
+
+        def ensure_available_path!(target_path, label:, kind:, path:, code:, ignore_path: nil)
+          return target_path unless target_path.exist? && target_path != ignore_path
+
+          raise_error!("#{kind} #{label} already exists", path:, code:, length: label.length)
         end
 
         def replace_root_id(yaml, target_id)

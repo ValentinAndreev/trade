@@ -13,16 +13,16 @@ import {
   relativeDirname,
   replacePathPrefix,
   syncFileManagerSelectionState,
-  systemIdFromPath,
 } from "./file_manager"
 import { showToast } from "../services/toast"
 
 export type ResearchFilePickerCallbacks = {
   getCatalog: () => ResearchCatalogEntry[]
+  getDirectories: () => string[]
   setCatalog: (entries: ResearchCatalogEntry[], directories: string[]) => void
   getTabSystemPath: (tabId: string) => string | null
   onSystemOpened: (tabId: string, entry: ResearchCatalogEntry) => void
-  onSystemPathChanged: (tabId: string, systemId: string, systemPath: string) => void
+  onSystemPathChanged: (tabId: string, systemPath: string) => void
   onSystemRemoved: (tabId: string) => void
   onRender: () => void
   getSidebarElement: () => Element | null
@@ -57,9 +57,19 @@ export class ResearchFilePicker {
   // — Actions —
 
   openPicker(tabId: string, systemPath: string | null): void {
+    const catalog = this.cb.getCatalog()
+    const directories = this.cb.getDirectories()
+    const selectedPath = systemPath && catalog.some(entry => entry.relative_path === systemPath)
+      ? systemPath
+      : null
+
     this.open.add(tabId)
-    this.directory.set(tabId, relativeDirname(systemPath || ""))
-    this.selected.set(tabId, systemPath || null)
+    this.directory.set(
+      tabId,
+      this.resolveDirectoryPath(directories, selectedPath ? relativeDirname(selectedPath) : relativeDirname(systemPath || ""))
+    )
+    this.selected.set(tabId, selectedPath)
+    this.query.set(tabId, "")
     this.cb.onRender()
   }
 
@@ -204,7 +214,7 @@ export class ResearchFilePicker {
     await this.refreshCatalog()
     this.selected.set(tabId, response.system.relative_path)
     this.directory.set(tabId, relativeDirname(response.system.relative_path))
-    this.cb.onSystemPathChanged(tabId, response.system.id, response.system.relative_path)
+    this.cb.onSystemPathChanged(tabId, response.system.relative_path)
     this.cb.onRender()
   }
 
@@ -226,7 +236,7 @@ export class ResearchFilePicker {
     if (currentSystemPath && isPathInside(selectedPath, currentSystemPath)) {
       const nextSystemPath = replacePathPrefix(currentSystemPath, selectedPath, response.path)
       if (nextSystemPath) {
-        this.cb.onSystemPathChanged(tabId, systemIdFromPath(nextSystemPath), nextSystemPath)
+        this.cb.onSystemPathChanged(tabId, nextSystemPath)
       }
     }
     this.cb.onRender()
@@ -238,8 +248,18 @@ export class ResearchFilePicker {
     syncFileManagerSelectionState(modal, path, kind === "file" || kind === "directory" ? kind : null)
   }
 
-  private async refreshCatalog(): Promise<void> {
+  private async refreshCatalog() {
     const snapshot = await fetchResearchCatalog()
     this.cb.setCatalog(snapshot.systems, snapshot.directories)
+    return snapshot
+  }
+
+  private resolveDirectoryPath(directoryPaths: string[], requestedPath: string | null | undefined): string {
+    let candidate = (requestedPath || "").trim().replace(/^\/+|\/+$/g, "")
+    while (candidate.length > 0) {
+      if (directoryPaths.includes(candidate)) return candidate
+      candidate = relativeDirname(candidate)
+    }
+    return ""
   }
 }

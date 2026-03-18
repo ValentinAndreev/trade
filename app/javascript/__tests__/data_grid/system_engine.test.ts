@@ -220,8 +220,9 @@ describe("computeSystemStats", () => {
       { entryTime: 3, entryPrice: 100, exitTime: null, exitPrice: null, direction: "long" as const, pnl: 5, pnlPercent: 5, bars: null },
     ]
     const stats = computeSystemStats(trades)
-    expect(stats.totalTrades).toBe(2)   // includes open
-    expect(stats.winningTrades).toBe(1) // only closed winners
+    expect(stats.totalTrades).toBe(1)
+    expect(stats.winningTrades).toBe(1)
+    expect(stats.losingTrades).toBe(0)
   })
 
   it("maxDrawdownPercent uses initialCapital as base", () => {

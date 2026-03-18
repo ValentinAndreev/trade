@@ -2,7 +2,7 @@ import { BORDER_COLOR, BG_SURFACE, BG_INPUT } from "../config/theme"
 import type { ResearchConfig } from "../types/store"
 import { escapeHTML } from "../utils/dom"
 import { METRIC_OPTIONS } from "./catalog"
-import type { ResearchCatalogEntry } from "./dsl"
+import type { ResearchCatalogEntry, ResearchValidatedSystem } from "./dsl"
 import { renderFileManagerModal } from "./file_manager"
 
 export default class ResearchSidebarRenderer {
@@ -21,13 +21,16 @@ export default class ResearchSidebarRenderer {
     filePickerQuery: string,
     filePickerDirectoryPath: string,
     filePickerSelectedPath: string | null,
+    validationSystem: ResearchValidatedSystem | null,
   ): void {
     const selectedSystem = catalog.find(entry => entry.relative_path === config.systemPath)
       || catalog.find(entry => entry.id === config.systemId)
       || catalog[0]
       || null
-    const metadata = selectedSystem?.metadata || null
-    const optimizationTargets = metadata?.optimization_targets || []
+    const metadata = validationSystem
+    const optimizationTargets = metadata?.optimization_targets?.length
+      ? metadata.optimization_targets
+      : [{ value: config.optimizationTarget, label: config.optimizationTarget }]
     const selectedOptimizationTarget = optimizationTargets.some(option => option.value === config.optimizationTarget)
       ? config.optimizationTarget
       : (optimizationTargets[0]?.value || config.optimizationTarget)
@@ -55,13 +58,13 @@ export default class ResearchSidebarRenderer {
             <div class="rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 py-2 font-mono text-xs text-gray-300">
               ${selectedSystem ? escapeHTML(selectedSystem.relative_path) : '<span class="text-gray-500">No YAML file selected</span>'}
             </div>
-            <button
-              type="button"
-              data-action="click->${this.ctrl}#openResearchFilePicker"
-              class="h-9 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] text-sm text-gray-200 hover:text-white cursor-pointer"
-            >Open file</button>
+          <button
+            type="button"
+            data-action="click->${this.ctrl}#openResearchFilePicker"
+            class="h-9 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] text-sm text-gray-200 hover:text-white cursor-pointer"
+          >Open file</button>
           </div>
-          ${systemSummaryHTML(selectedSystem)}
+          ${systemSummaryHTML(selectedSystem, metadata)}
           <button
             type="button"
             data-action="click->${this.ctrl}#openResearchSystemEditor"
@@ -128,7 +131,9 @@ export default class ResearchSidebarRenderer {
 }
 
 function selectFieldHTML(ctrl: string, label: string, field: string, options: string[], value: string): string {
-  const html = options.map(option => `<option value="${escapeHTML(option)}" ${option === value ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")
+  const html = options
+    .map(option => selectOptionHTML(option, option, option === value))
+    .join("")
 
   return `
     <label class="flex flex-col gap-1 text-sm">
@@ -137,6 +142,7 @@ function selectFieldHTML(ctrl: string, label: string, field: string, options: st
         data-field="${field}"
         data-action="change->${ctrl}#updateResearchConfig"
         class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white"
+        style="color-scheme: dark"
       >${html}</select>
     </label>
   `
@@ -173,19 +179,22 @@ function inputFieldHTML(
   `
 }
 
-function systemSummaryHTML(system: ResearchCatalogEntry | null): string {
+function systemSummaryHTML(system: ResearchCatalogEntry | null, metadata: ResearchValidatedSystem | null): string {
   if (!system) {
     return `<div class="rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 py-2 text-sm text-gray-500">Open or save a YAML system in System editor first.</div>`
   }
+  if (!metadata) {
+    return ""
+  }
 
-  const moduleParams = Object.entries(system.metadata.module.params).map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`).join(", ")
-  const runtimeParams = Object.entries(system.metadata.params).map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`).join(", ")
-  const conditions = system.metadata.conditions.map(name => `<span class="px-2 py-0.5 rounded bg-[${BG_INPUT}] text-blue-200">${escapeHTML(name)}</span>`).join("")
+  const moduleParams = Object.entries(metadata.module.params).map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`).join(", ")
+  const runtimeParams = Object.entries(metadata.params).map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`).join(", ")
+  const conditions = metadata.conditions.map(name => `<span class="px-2 py-0.5 rounded bg-[${BG_INPUT}] text-blue-200">${escapeHTML(name)}</span>`).join("")
 
   return `
     <div class="rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 py-2 text-sm flex flex-col gap-2">
       <div><span class="text-gray-500">File:</span> <span class="text-white font-mono">${escapeHTML(system.relative_path)}</span></div>
-      <div><span class="text-gray-500">Module:</span> <span class="text-white">${escapeHTML(system.metadata.module.type.toUpperCase())}</span> <span class="text-gray-400">${escapeHTML(moduleParams)}</span></div>
+      <div><span class="text-gray-500">Module:</span> <span class="text-white">${escapeHTML(metadata.module.type.toUpperCase())}</span> <span class="text-gray-400">${escapeHTML(moduleParams)}</span></div>
       <div><span class="text-gray-500">Params:</span> <span class="text-gray-300">${escapeHTML(runtimeParams || "none")}</span></div>
       <div class="flex flex-wrap gap-1"><span class="text-gray-500 mr-1">Conditions:</span>${conditions || '<span class="text-gray-500">none</span>'}</div>
     </div>
@@ -199,7 +208,9 @@ function optimizationFieldHTML(
   optimizationEnabled: boolean,
 ): string {
   const disabled = !optimizationEnabled || options.length === 0
-  const html = options.map(option => `<option value="${escapeHTML(option.value)}" ${option.value === value ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")
+  const html = options
+    .map(option => selectOptionHTML(option.value, option.label, option.value === value))
+    .join("")
 
   return `
     <label class="flex flex-col gap-1 text-sm ${disabled ? "opacity-50" : ""}">
@@ -208,6 +219,7 @@ function optimizationFieldHTML(
         data-field="optimizationTarget"
         data-action="change->${ctrl}#updateResearchConfig"
         class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white"
+        style="color-scheme: dark"
         ${disabled ? "disabled" : ""}
       >${html}</select>
     </label>
@@ -215,9 +227,9 @@ function optimizationFieldHTML(
 }
 
 function metricFieldHTML(ctrl: string, selectedMetric: string, optimizationEnabled: boolean): string {
-  const options = METRIC_OPTIONS.map(option => `
-    <option value="${option.key}" ${option.key === selectedMetric ? "selected" : ""}>${option.label}</option>
-  `).join("")
+  const options = METRIC_OPTIONS
+    .map(option => selectOptionHTML(option.key, option.label, option.key === selectedMetric))
+    .join("")
 
   return `
     <label class="flex flex-col gap-1 text-sm ${optimizationEnabled ? "" : "opacity-50"}">
@@ -226,8 +238,13 @@ function metricFieldHTML(ctrl: string, selectedMetric: string, optimizationEnabl
         data-field="selectedMetric"
         data-action="change->${ctrl}#updateResearchConfig"
         class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white"
+        style="color-scheme: dark"
         ${optimizationEnabled ? "" : "disabled"}
       >${options}</select>
     </label>
   `
+}
+
+function selectOptionHTML(value: string, label: string, selected: boolean): string {
+  return `<option value="${escapeHTML(value)}" ${selected ? "selected" : ""} style="color:#f3f4f6;background-color:#141428">${escapeHTML(label)}</option>`
 }

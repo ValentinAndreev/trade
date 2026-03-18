@@ -73,7 +73,7 @@ export function renderFileManagerModal({
         <div class="flex items-center gap-3 border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-5 py-4">
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-white">${escapeHTML(title)}</div>
-            <div class="mt-1 text-xs text-gray-400 font-mono">${escapeHTML(currentDirectory.path || ".")}</div>
+            <div class="mt-1 text-xs text-gray-400 font-mono">${escapeHTML(displayDirectoryPath(currentDirectory.path))}</div>
           </div>
           ${actionButton("New folder", createDirectoryAction)}
           ${actionButton("New file", createFileAction)}
@@ -127,7 +127,7 @@ export function renderFileManagerModal({
 export function buildDirectoryTree(catalog: ResearchCatalogEntry[], directoryPaths: string[] = []): DirectoryNode {
   const root: DirectoryNode = {
     kind: "directory",
-    name: ".",
+    name: "systems",
     path: "",
     directories: [],
     files: [],
@@ -277,7 +277,7 @@ function listDirectory(directory: DirectoryNode, searchQuery: string) {
 function breadcrumbsHTML(path: string, navigateAction: string): string {
   const parts = path ? path.split("/") : []
   const crumbs = [
-    { label: ".", path: "" },
+    { label: "systems", path: "" },
     ...parts.map((_part, index) => ({
       label: parts[index],
       path: parts.slice(0, index + 1).join("/"),
@@ -309,12 +309,16 @@ function directoryTreeHTML(node: DirectoryNode, currentPath: string, navigateAct
         class="flex w-full items-center rounded px-2 py-1.5 text-left text-sm cursor-pointer ${selected ? "bg-blue-500/15 text-blue-100" : "text-gray-300 hover:bg-white/5 hover:text-white"}"
         style="padding-left:${padding}px"
       >
-        <span class="mr-2 text-xs text-gray-500">${node.path === "" ? "root" : "dir"}</span>
+        <span class="mr-2 text-xs text-gray-500">dir</span>
         <span class="truncate">${escapeHTML(node.name)}</span>
       </button>
       ${node.directories.map(directory => directoryTreeHTML(directory, currentPath, navigateAction, depth + 1)).join("")}
     </div>
   `
+}
+
+function displayDirectoryPath(path: string): string {
+  return path ? `systems/${path}` : "systems"
 }
 
 function listItemHTML(

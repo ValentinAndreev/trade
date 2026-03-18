@@ -14,7 +14,10 @@ import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS, SYSTEM_STATS_MAX_R
 import { buildDefaultResearchState, syncResearchStateFromInputs, type ResearchState } from "../research/state"
 import {
   fetchResearchCatalog,
+  validateResearchSystem,
   type ResearchCatalogEntry,
+  type ResearchValidationResponse,
+  type ResearchValidatedSystem,
 } from "../research/dsl"
 import {
   relativeDirname,
@@ -42,6 +45,8 @@ export default class extends Controller {
   private _researchCatalog: ResearchCatalogEntry[] = []
   private _researchDirectories: string[] = []
   private _researchFilePicker!: ResearchFilePicker
+  private _researchValidation = new Map<string, { key: string; result: ResearchValidationResponse | null }>()
+  private _researchValidationPending = new Map<string, string>()
 
   async connect() {
     this.store = new TabStore()
@@ -54,17 +59,12 @@ export default class extends Controller {
     this._researchDirectories = researchCatalog.directories
     this._researchFilePicker = new ResearchFilePicker({
       getCatalog: () => this._researchCatalog,
+      getDirectories: () => this._researchDirectories,
       setCatalog: (entries, dirs) => { this._researchCatalog = entries; this._researchDirectories = dirs },
       getTabSystemPath: (tabId) => this.store.tabs.find(t => t.id === tabId)?.researchConfig?.systemPath || null,
-      onSystemOpened: (tabId, entry) => this.store.updateResearchConfig(tabId, {
-        systemId: entry.id, systemPath: entry.relative_path, systemYaml: "",
-      }),
-      onSystemPathChanged: (tabId, systemId, systemPath) => this.store.updateResearchConfig(tabId, {
-        systemId, systemPath, systemYaml: "",
-      }),
-      onSystemRemoved: (tabId) => this.store.updateResearchConfig(tabId, {
-        systemId: "", systemPath: "", systemYaml: "",
-      }),
+      onSystemOpened: (tabId, entry) => this._setResearchSystem(tabId, entry),
+      onSystemPathChanged: (tabId, systemPath) => this._syncResearchSystemPath(tabId, systemPath),
+      onSystemRemoved: (tabId) => this._clearResearchSystem(tabId),
       onRender: () => this.render(),
       getSidebarElement: () => this.sidebarTarget,
     })
@@ -195,11 +195,16 @@ export default class extends Controller {
 
     const timeframe = this.config.timeframes.includes("1h") ? "1h" : (this.config.timeframes[0] || "1h")
     const tab = this.store.addResearchTab({ symbol: this.config.symbols[0] || "BTCUSD", timeframe })
-    this.store.updateResearchConfig(tab.id, {
-      systemId,
-      systemPath: systemPath || "",
-      systemYaml: "",
-    })
+    const entry = this._findResearchCatalogEntry(systemPath || null, systemId)
+    if (entry) {
+      this._setResearchSystem(tab.id, entry)
+    } else {
+      this.store.updateResearchConfig(tab.id, {
+        systemId,
+        systemPath: systemPath || "",
+        systemYaml: "",
+      })
+    }
     this.render()
   }
 
@@ -757,6 +762,20 @@ export default class extends Controller {
 
   render(): void {
     this.dataActions.syncIndicatorsFromChart()
+    const activeTab = this.store.activeTab
+    let researchValidationSystem: ResearchValidatedSystem | null = null
+
+    if (activeTab?.type === "research" && activeTab.researchConfig) {
+      const entry = this._syncResearchSystemFromCatalog(activeTab.id, activeTab.researchConfig)
+      if (entry) {
+        this._ensureResearchValidation(activeTab.id, entry)
+      } else {
+        this._researchValidation.delete(activeTab.id)
+        this._researchValidationPending.delete(activeTab.id)
+      }
+      researchValidationSystem = this._researchValidation.get(activeTab.id)?.result?.system || null
+    }
+
     const panel = this.store.selectedPanel
     const vp = panel?.volumeProfile ?? { enabled: false, opacity: 0.3 }
     const chartTabOptions = this.store.tabs
@@ -784,6 +803,7 @@ export default class extends Controller {
       researchFilePickerQuery: this._activeResearchFilePickerQuery(),
       researchFilePickerDirectoryPath: this._activeResearchFilePickerDirectoryPath(),
       researchFilePickerSelectedPath: this._activeResearchFilePickerSelectedPath(),
+      researchValidationSystem,
     })
     requestAnimationFrame(() => {
       this._syncSelectedOverlayScale()
@@ -856,6 +876,98 @@ export default class extends Controller {
 
     const app = this.application as StimulusApp
     return app.getControllerForElementAndIdentifier(wrapper, "research") as { run(state?: ResearchState): Promise<void> } | null
+  }
+
+  private _findResearchCatalogEntry(systemPath: string | null, systemId: string | null): ResearchCatalogEntry | null {
+    if (systemPath) {
+      const byPath = this._researchCatalog.find(entry => entry.relative_path === systemPath)
+      if (byPath) return byPath
+    }
+    if (systemId) {
+      const byId = this._researchCatalog.find(entry => entry.id === systemId)
+      if (byId) return byId
+    }
+    return null
+  }
+
+  private _setResearchSystem(tabId: string, entry: ResearchCatalogEntry) {
+    this.store.updateResearchConfig(tabId, {
+      systemId: entry.id,
+      systemPath: entry.relative_path,
+      systemYaml: entry.yaml,
+    })
+    this._researchValidation.delete(tabId)
+    this._researchValidationPending.delete(tabId)
+    this._ensureResearchValidation(tabId, entry)
+  }
+
+  private _syncResearchSystemPath(tabId: string, systemPath: string) {
+    const entry = this._findResearchCatalogEntry(systemPath, null)
+    if (entry) {
+      this._setResearchSystem(tabId, entry)
+      return
+    }
+
+    this.store.updateResearchConfig(tabId, {
+      systemPath,
+      systemYaml: "",
+    })
+    this._researchValidation.delete(tabId)
+    this._researchValidationPending.delete(tabId)
+  }
+
+  private _clearResearchSystem(tabId: string) {
+    this.store.updateResearchConfig(tabId, {
+      systemId: "",
+      systemPath: "",
+      systemYaml: "",
+    })
+    this._researchValidation.delete(tabId)
+    this._researchValidationPending.delete(tabId)
+  }
+
+  private _syncResearchSystemFromCatalog(tabId: string, config: ResearchState): ResearchCatalogEntry | null {
+    const entry = this._findResearchCatalogEntry(config.systemPath || null, config.systemId || null)
+    if (!entry) return null
+
+    if (
+      config.systemId !== entry.id ||
+      config.systemPath !== entry.relative_path ||
+      config.systemYaml !== entry.yaml
+    ) {
+      this.store.updateResearchConfig(tabId, {
+        systemId: entry.id,
+        systemPath: entry.relative_path,
+        systemYaml: entry.yaml,
+      })
+    }
+
+    return entry
+  }
+
+  private _ensureResearchValidation(tabId: string, entry: ResearchCatalogEntry) {
+    const key = `${entry.relative_path}\u0000${entry.yaml}`
+    if (this._researchValidation.get(tabId)?.key === key) return
+    if (this._researchValidationPending.get(tabId) === key) return
+
+    this._researchValidationPending.set(tabId, key)
+
+    void validateResearchSystem(entry.yaml, entry.id).then((result) => {
+      if (this._researchValidationPending.get(tabId) !== key) return
+
+      this._researchValidationPending.delete(tabId)
+      this._researchValidation.set(tabId, { key, result })
+
+      const targets = result?.system?.optimization_targets || []
+      const currentTarget = this.store.tabs.find(tab => tab.id === tabId && tab.type === "research")?.researchConfig?.optimizationTarget
+      const fallbackTarget = targets[0]?.value
+
+      if (fallbackTarget && currentTarget && !targets.some(option => option.value === currentTarget)) {
+        this.store.updateResearchConfig(tabId, { optimizationTarget: fallbackTarget })
+      }
+
+      this.render()
+    })
   }
 
   _getSelectedChartCtrl() {

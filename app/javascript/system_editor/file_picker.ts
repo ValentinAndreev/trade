@@ -30,11 +30,13 @@ export type FilePickerState = {
 export type FilePickerCallbacks = {
   getState: () => SystemEditorConfig | null
   getCatalog: () => ResearchCatalogEntry[]
+  getDirectories: () => string[]
   setCatalog: (entries: ResearchCatalogEntry[], directories: string[]) => void
   updateState: (updater: (s: SystemEditorConfig) => void) => void
   onRender: () => void
   onPersist: () => void
   onCatalogChanged: (system: ResearchCatalogEntry | null) => void
+  onOpenSystem: () => void
 }
 
 export class FilePickerModule {
@@ -49,9 +51,19 @@ export class FilePickerModule {
   ) {}
 
   openPicker(currentDirectoryPath: string, sourcePath: string | null): void {
-    this.directoryPath = currentDirectoryPath
-    this.selectedPath = sourcePath
+    const catalog = this.cb.getCatalog()
+    const directories = this.cb.getDirectories()
+    const selectedPath = sourcePath && catalog.some(entry => entry.relative_path === sourcePath)
+      ? sourcePath
+      : null
+
+    this.directoryPath = this.resolveDirectoryPath(
+      directories,
+      selectedPath ? relativeDirname(selectedPath) : currentDirectoryPath
+    )
+    this.selectedPath = selectedPath
     this.open = true
+    this.query = ""
     this.cb.onRender()
   }
 
@@ -260,6 +272,7 @@ export class FilePickerModule {
     this.query = ""
     this.selectedPath = null
     this.cb.onPersist()
+    this.cb.onOpenSystem()
     this.cb.onRender()
   }
 
@@ -279,8 +292,18 @@ export class FilePickerModule {
     syncFileManagerSelectionState(modal, path, kind === "file" || kind === "directory" ? kind : null)
   }
 
-  private async refreshCatalog(): Promise<void> {
+  private async refreshCatalog() {
     const snapshot = await fetchResearchCatalog()
     this.cb.setCatalog(snapshot.systems, snapshot.directories)
+    return snapshot
+  }
+
+  private resolveDirectoryPath(directoryPaths: string[], requestedPath: string | null | undefined): string {
+    let candidate = (requestedPath || "").trim().replace(/^\/+|\/+$/g, "")
+    while (candidate.length > 0) {
+      if (directoryPaths.includes(candidate)) return candidate
+      candidate = relativeDirname(candidate)
+    }
+    return ""
   }
 }

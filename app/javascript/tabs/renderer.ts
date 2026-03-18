@@ -1,7 +1,7 @@
 import SidebarRenderer from "./sidebar_renderer"
 import DataSidebarRenderer from "../data_grid/sidebar_renderer"
 import ResearchSidebarRenderer from "../research/sidebar_renderer"
-import type { ResearchCatalogEntry } from "../research/dsl"
+import type { ResearchCatalogEntry, ResearchValidatedSystem } from "../research/dsl"
 import PanelRenderer from "./panel_renderer"
 import { tabButtonHTML, addTabButtonHTML } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
@@ -35,6 +35,7 @@ export interface TabRenderOpts {
   researchFilePickerQuery?: string
   researchFilePickerDirectoryPath?: string
   researchFilePickerSelectedPath?: string | null
+  researchValidationSystem?: ResearchValidatedSystem | null
 }
 
 export default class TabRenderer {
@@ -88,6 +89,7 @@ export default class TabRenderer {
           opts.researchFilePickerQuery || "",
           opts.researchFilePickerDirectoryPath || "",
           opts.researchFilePickerSelectedPath || activeTab.researchConfig.systemPath || null,
+          opts.researchValidationSystem || null,
         )
       } else {
         this.sidebarEl.innerHTML = ""

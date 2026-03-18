@@ -32,7 +32,7 @@ export interface ResearchCatalogEntry {
   file_name: string
   relative_path: string
   yaml: string
-  metadata: ResearchValidatedSystem
+  metadata: ResearchValidatedSystem | null
 }
 
 export interface ResearchCatalogSnapshot {

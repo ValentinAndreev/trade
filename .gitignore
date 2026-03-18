@@ -41,5 +41,10 @@
 
 /config/dashboard.current.yml
 
+# Keep only shared example research systems in git.
+/config/research/systems/*
+!/config/research/systems/examples/
+!/config/research/systems/examples/**
+
 # RBS collection (generated, re-created by `bundle exec rbs collection install`)
 /.gem_rbs_collection/

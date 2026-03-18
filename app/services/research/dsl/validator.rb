@@ -35,7 +35,11 @@ module Research
       # --- YAML parsing ---
 
       def parse_document
-        Psych.parse(@yaml_text)
+        document = Psych.parse(@yaml_text)
+        return document unless document == false || document.nil?
+
+        @diagnostics << Diagnostic.yaml_missing
+        nil
       rescue Psych::SyntaxError => e
         @diagnostics << Diagnostic.new(
           message: e.problem, line: e.line || 1, column: e.column || 1, length: 1, code: 'yaml_syntax'
