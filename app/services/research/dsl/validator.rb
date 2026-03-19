@@ -80,6 +80,19 @@ module Research
         )
       end
 
+      def add_expression_error(message:, path:, offset:, length:, code:)
+        location = @source_map&.value_location_for_offset(path, offset, length) || { line: 1, column: 1, length: 1 }
+
+        @diagnostics << Diagnostic.new(
+          message: message,
+          line: location[:line],
+          column: location[:column],
+          length: location[:length],
+          path: Array(path).join('.'),
+          code: code
+        )
+      end
+
       # --- Shared type helpers (used by all validator modules) ---
 
       def numeric_like?(value)
@@ -119,6 +132,20 @@ module Research
 
         def value_location(path)
           location_for(@value_nodes[path_key(path)])
+        end
+
+        def value_location_for_offset(path, offset, length = 1)
+          node = @value_nodes[path_key(path)]
+          return fallback_location unless node&.respond_to?(:value)
+
+          line_offset, column_offset = offset_position(node.value.to_s, offset)
+          base_column = line_offset.zero? ? node.start_column.to_i + 1 : 1
+
+          {
+            line: node.start_line.to_i + 1 + line_offset,
+            column: base_column + column_offset,
+            length: [ length.to_i, 1 ].max
+          }
         end
 
         private
@@ -169,6 +196,14 @@ module Research
           end
 
           { line: start_line, column: start_column, length: length }
+        end
+
+        def offset_position(value, offset)
+          safe_offset = [ [ offset.to_i, 0 ].max, value.length ].min
+          prefix = value[0, safe_offset]
+          parts = prefix.split("\n", -1)
+
+          [ parts.length - 1, parts.last.to_s.length ]
         end
 
         def fallback_location

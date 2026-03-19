@@ -25,6 +25,7 @@ const KW_COLOR  = '#e06c75'  // dark red  – YAML keys
 const VAL_COLOR = '#61afef'  // dark blue – valid values / module types / references
 const CMT_COLOR = '#5c6370'  // gray      – comments
 const NUM_COLOR = '#d19a66'  // amber     – numeric literals
+const DOTTED_TOKEN_RE = /^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)+$/i
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -40,7 +41,7 @@ function colorValue(raw: string): string {
   const trailing = raw.slice(leadLen + trimmed.length)
 
   let color = ''
-  if (values.has(trimmed) || /^(params\.|module\.)/.test(trimmed)) {
+  if (values.has(trimmed) || DOTTED_TOKEN_RE.test(trimmed)) {
     color = VAL_COLOR
   } else if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
     color = NUM_COLOR

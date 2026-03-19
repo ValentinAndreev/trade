@@ -121,6 +121,10 @@ export function renderSystemEditorHTML({
 
           <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3 text-xs text-gray-400 leading-5">
             <div><span class="text-gray-300">Shortcuts:</span> <span class="text-white">Ctrl/Cmd+S</span> save, <span class="text-white">Ctrl/Cmd+Z</span> undo, <span class="text-white">Ctrl/Cmd+Shift+Z</span> redo, <span class="text-white">Ctrl/Cmd+F</span> search, <span class="text-white">F3</span> next match.</div>
+            <div class="mt-2 border-t border-white/5 pt-2 text-[11px] leading-5 text-gray-500">
+              <span class="text-gray-300">Target condition syntax:</span>
+              <span class="text-gray-400"> Use quoted expressions like <span class="text-white">"(ema.value &lt;&lt; close) &amp;&amp; ((sentiment.value &lt; 100) || (rsi.value &gt; 90))"</span> where <span class="text-white">&lt;&lt;</span>/<span class="text-white">&gt;&gt;</span> = cross_below/cross_above, <span class="text-white">&lt;</span>/<span class="text-white">&gt;</span> = compare, <span class="text-white">&amp;&amp;</span>/<span class="text-white">||</span> = and/or.</span>
+            </div>
           </div>
         </aside>
       </div>
@@ -208,7 +212,7 @@ export function buildLineNumbers(yaml: string, diagnostics: ResearchDslDiagnosti
 }
 
 export function statusLabel(validation: ResearchValidationResponse | null, validating: boolean): string {
-  if (validating) return "Validating…"
+  if (validating && !(validation?.diagnostics?.length)) return "Validating…"
   if (!validation) return "Not validated"
   return validation.ok ? "YAML valid" : "YAML invalid"
 }

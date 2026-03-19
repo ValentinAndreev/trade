@@ -8,7 +8,7 @@ export interface ResearchSystemPayload {
 }
 
 export interface ResearchModulePayload {
-  type: string | null
+  name: string | null
   params: Record<string, number | string | boolean>
 }
 
@@ -31,6 +31,7 @@ export interface ResearchApiResponse {
   strategy: string
   system: ResearchSystemPayload
   module: ResearchModulePayload
+  modules: Record<string, Record<string, number | string | boolean>>
   dataset: ResearchDatasetPayload
   optimization: ResearchOptimizationPayload
   runs: ResearchRunPayload[]

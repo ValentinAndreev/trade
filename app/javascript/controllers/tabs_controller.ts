@@ -962,7 +962,7 @@ export default class extends Controller {
       const currentTarget = this.store.tabs.find(tab => tab.id === tabId && tab.type === "research")?.researchConfig?.optimizationTarget
       const fallbackTarget = targets[0]?.value
 
-      if (fallbackTarget && currentTarget && !targets.some(option => option.value === currentTarget)) {
+      if (fallbackTarget && (!currentTarget || !targets.some(option => option.value === currentTarget))) {
         this.store.updateResearchConfig(tabId, { optimizationTarget: fallbackTarget })
       }
 

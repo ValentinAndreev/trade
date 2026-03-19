@@ -14,9 +14,8 @@ describe("buildResearchRequest", () => {
       systemYaml: [
         "id: rsi_threshold",
         "name: RSI Threshold Reversal",
-        "module:",
-        "  type: rsi",
-        "  params:",
+        "modules:",
+        "  rsi:",
         "    period: 14",
       ].join("\n"),
       feeBps: 4,

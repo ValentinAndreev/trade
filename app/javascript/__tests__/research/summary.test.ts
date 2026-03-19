@@ -8,6 +8,7 @@ describe("research summary helpers", () => {
       system_name: "RSI Threshold Reversal",
       module_type: "rsi",
       module_period: 14,
+      rsi_period: 14,
       lower_threshold: 30,
       upper_threshold: 70,
       position_mode: "long_short",
@@ -44,14 +45,14 @@ describe("research summary helpers", () => {
   }
 
   it("maps optimization targets to runtime param keys", () => {
-    expect(optimizationParamKey("module.period")).toBe("module_period")
+    expect(optimizationParamKey("rsi.period")).toBe("rsi_period")
     expect(optimizationParamKey("params.lower_threshold")).toBe("lower_threshold")
     expect(optimizationParamValue(run, "params.upper_threshold")).toBe(70)
   })
 
   it("builds readable run summary", () => {
     expect(runSummary(run)).toContain("RSI Threshold Reversal")
-    expect(runSummary(run)).toContain("RSI period 14.00")
+    expect(runSummary(run)).toContain("RSI Period 14.00")
     expect(runSummary(run)).toContain("Lower Threshold 30.00")
   })
 })

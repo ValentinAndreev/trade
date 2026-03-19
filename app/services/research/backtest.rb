@@ -29,7 +29,7 @@ module Research
         mode:   mode.to_s,
         stage:  stage.to_s,
         params: system.run_params(p),
-        trades: simulate(rows_for(p.fetch(:module_period).to_i), p)
+        trades: simulate(rows_for(system.module_runtime_configs(p)), p)
       }
     end
 
@@ -37,22 +37,34 @@ module Research
 
     # --- Data loading ---
 
-    def rows_for(period)
-      results_by_time = (@module_cache[period] ||= module_runner.call(period:))
-        .to_h { |pt| [ pt[:time], pt[:result] ] }
+    def rows_for(module_configs)
+      cache_key = module_configs.sort_by { |module_name, _| module_name.to_s }.map do |module_name, config|
+        [ module_name.to_s, config[:type].to_s, config[:params].sort_by { |key, _| key.to_s } ]
+      end
+      results_by_module = (@module_cache[cache_key] ||= build_results_by_module(module_configs))
 
       candles.map do |c|
         {
           time:   c[:time],
           bar:    c.slice(:open, :high, :low, :close, :volume),
-          result: { system.module_key => results_by_time[c[:time]] || {} }
+          result: results_by_module.each_with_object({}) do |(module_name, results_by_time), acc|
+            acc[module_name.to_sym] = results_by_time[c[:time]] || {}
+          end
         }
       end
     end
 
-    def module_runner
-      @module_runner ||= begin
-        klass = MODULES.fetch(system.module_key) { raise ArgumentError, "Unsupported module: #{system.module_key}" }
+    def build_results_by_module(module_configs)
+      module_configs.each_with_object({}) do |(module_name, config), acc|
+        acc[module_name] = module_runner(config[:type]).call(**config[:params].symbolize_keys)
+          .to_h { |pt| [ pt[:time], pt[:result] ] }
+      end
+    end
+
+    def module_runner(module_type)
+      @module_runners ||= {}
+      @module_runners[module_type.to_s] ||= begin
+        klass = MODULES.fetch(module_type.to_sym) { raise ArgumentError, "Unsupported module: #{module_type}" }
         klass.new(candles:)
       end
     end

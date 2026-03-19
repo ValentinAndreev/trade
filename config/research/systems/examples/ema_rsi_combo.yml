@@ -1,0 +1,26 @@
+id: ema_rsi_combo
+name: EMA + RSI Combo
+
+modules:
+  ema:
+    period: 20
+  rsi:
+    period: 14
+
+params:
+  position_mode: long_short
+  lower_threshold: 30
+  upper_threshold: 70
+
+conditions:
+  long_entry: "(close >> ema.value) && (rsi.value < params.lower_threshold)"
+  long_exit: "(close << ema.value) || (rsi.value > params.upper_threshold)"
+  short_entry: "(close << ema.value) && (rsi.value > params.upper_threshold)"
+  short_exit: "(close >> ema.value) || (rsi.value < params.lower_threshold)"
+
+optimization:
+  targets:
+    - ema.period
+    - rsi.period
+    - params.lower_threshold
+    - params.upper_threshold

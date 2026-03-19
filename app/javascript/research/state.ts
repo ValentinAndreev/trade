@@ -23,7 +23,7 @@ export function buildDefaultResearchState(config: AppConfig | null): ResearchSta
     feeBps: 4,
     slippageBps: 2,
     optimizationEnabled: false,
-    optimizationTarget: "module.period",
+    optimizationTarget: "",
     optimizationFrom: 5,
     optimizationTo: 50,
     optimizationStep: 1,
@@ -62,6 +62,7 @@ export function normalizeResearchState(state: ResearchState): void {
   if (!state.systemId) state.systemId = DEFAULT_RESEARCH_SYSTEM_ID
   if (typeof state.systemPath !== "string") state.systemPath = ""
   if (typeof state.systemYaml !== "string") state.systemYaml = ""
+  if (typeof state.optimizationTarget !== "string") state.optimizationTarget = ""
   if (state.optimizationStep <= 0) state.optimizationStep = 1
   if (!Number.isFinite(state.resultsSplitRatio)) state.resultsSplitRatio = 0.38
   state.resultsSplitRatio = Math.max(0.2, Math.min(0.75, state.resultsSplitRatio))
@@ -72,4 +73,3 @@ export function toDatetimeLocal(date: Date): string {
   const local = new Date(date.getTime() - offset * 60 * 1000)
   return local.toISOString().slice(0, 16)
 }
-

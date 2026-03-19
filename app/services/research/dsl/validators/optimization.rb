@@ -36,18 +36,31 @@ module Research
             return
           end
 
-          if value == 'module.period'
-            module_payload = @payload['module']
-            period = module_payload.is_a?(Hash) ? module_payload.dig('params', 'period') : nil
-            add_error(message: 'module.period target requires module.params.period', path: path, code: 'optimization_target') unless numeric_like?(period)
+          if value.start_with?('params.')
+            validate_param_target(value, path)
             return
           end
 
-          unless value.start_with?('params.')
-            add_error(message: "Unsupported optimization target: #{value}", path: path, code: 'optimization_target')
+          module_name, param_key = value.split('.', 2)
+          modules_payload = @payload['modules']
+          module_payload = modules_payload.is_a?(Hash) ? modules_payload[module_name] : nil
+          unless module_payload.is_a?(Hash)
+            add_error(message: "Unknown optimization target: #{value}", path: path, code: 'optimization_target')
             return
           end
 
+          module_param_rule = @dictionary.dig('modules', 'types', module_name, 'params', param_key)
+          unless module_param_rule
+            add_error(message: "Unknown optimization target: #{value}", path: path, code: 'optimization_target')
+            return
+          end
+
+          return if module_payload.key?(param_key)
+
+          add_error(message: "Optimization target param is not defined: #{value}", path: path, code: 'optimization_target')
+        end
+
+        def validate_param_target(value, path)
           param_key = value.delete_prefix('params.')
           unless @dictionary.fetch('params').key?(param_key)
             add_error(message: "Unknown optimization target: #{value}", path: path, code: 'optimization_target')

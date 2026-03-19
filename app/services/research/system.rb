@@ -13,19 +13,26 @@ module Research
 
     def id           = payload['id'].to_s
     def name         = payload['name'].to_s
-    def module_type  = payload.dig('module', 'type').to_s
-    def module_key   = module_type.to_sym
     def strategy_key = id
 
-    def module_params
-      payload.dig('module', 'params').to_h.transform_keys(&:to_s)
+    def modules
+      @modules ||= normalize_modules(payload.fetch('modules'))
     end
 
     def runtime_params
       @runtime_params ||= begin
-        result = { module_period: payload.dig('module', 'params', 'period').to_i }
+        result = {}
+        modules.each do |module_name, module_params|
+          module_params.each do |param_key, value|
+            result[module_param_key(module_name, param_key)] = to_numeric(value)
+          end
+        end
         (payload['params'] || {}).each { |key, val| result[key.to_sym] = to_numeric(val) }
         result[:position_mode] = result[:position_mode].presence || 'long_short'
+        if (primary_period = primary_module_params['period'])
+          result[:module_period] = to_numeric(primary_period)
+        end
+        result[:module_type] = primary_module_name if primary_module_name.present?
         result
       end
     end
@@ -33,21 +40,22 @@ module Research
     def optimization_targets
       @optimization_targets ||= begin
         targets = Array(payload.dig('optimization', 'targets'))
-        targets = [ 'module.period' ] if targets.empty?
+        targets = [ default_module_target ].compact if targets.empty?
         targets.map { |t| { value: t, label: target_label(t) } }
       end
     end
 
     def default_optimization_target
-      optimization_targets.first&.fetch(:value, nil) || 'module.period'
+      optimization_targets.first&.fetch(:value, nil) || default_module_target
     end
 
     def metadata
       {
         id: id,
         name: name,
-        module: { type: module_type, params: module_params },
-        params: runtime_params.except(:module_period),
+        module: { name: primary_module_name, params: primary_module_params },
+        modules: modules.transform_values(&:dup),
+        params: system_params,
         conditions: payload['conditions'].keys,
         optimization_targets: optimization_targets
       }
@@ -58,72 +66,119 @@ module Research
       result = {
         system_id: id,
         system_name: name,
-        module_type: module_type,
-        module_period: p.fetch(:module_period).to_i,
+        module_type: primary_module_name,
         position_mode: p[:position_mode].presence || 'long_short'
       }
+      result[:module_period] = to_numeric(p[module_param_key(primary_module_name, 'period')]) if primary_module_name && p.key?(module_param_key(primary_module_name, 'period'))
+      modules.each do |module_name, module_params|
+        module_params.each_key do |param_key|
+          flat_key = module_param_key(module_name, param_key)
+          result[flat_key] = to_numeric(p.fetch(flat_key))
+        end
+      end
       p.each do |key, val|
-        next if %i[module_period position_mode].include?(key)
+        next if module_param_keys.include?(key) || key == :position_mode
         result[key] = to_numeric(val)
       end
       result
     end
 
+    def system_params
+      runtime_params.except(:module_period, :module_type, *module_param_keys)
+    end
+
+    def primary_module
+      { name: primary_module_name, params: primary_module_params }
+    end
+
     def optimization_param_key(target)
       t = target.presence || default_optimization_target
-      return :module_period if t == 'module.period'
       return t.delete_prefix('params.').to_sym if t.start_with?('params.')
+      return module_param_key(*t.split('.', 2)) if t.include?('.')
 
       raise ArgumentError, "Unsupported optimization target: #{target}"
     end
 
     def signals_for(prev_row:, row:, params:)
-      payload['conditions'].to_h do |key, cond|
-        [ key.to_sym, evaluate(cond, prev_row:, row:, params:) ]
+      parsed_conditions.to_h do |key, ast|
+        [
+          key.to_sym,
+          Research::Dsl::ConditionExpression::Evaluator.new(ast, resolver: method(:resolve_reference)).call(
+            row: row,
+            prev_row: prev_row,
+            params: params
+          )
+        ]
+      end
+    end
+
+    def module_runtime_configs(params)
+      p = params.to_h.symbolize_keys
+      modules.each_with_object({}) do |(module_name, module_params), result|
+        result[module_name] = {
+          type: module_name,
+          params: module_params.each_with_object({}) do |(param_key, default_value), acc|
+            acc[param_key.to_sym] = to_numeric(p.fetch(module_param_key(module_name, param_key), default_value))
+          end
+        }
       end
     end
 
     private
 
-    def evaluate(cond, prev_row:, row:, params:)
-      l = resolve(cond['left'],  row:, params:)
-      r = resolve(cond['right'], row:, params:)
-      return false if l.nil? || r.nil?
-
-      case cond['operator']
-      when 'gt'  then l > r
-      when 'gte' then l >= r
-      when 'lt'  then l < r
-      when 'lte' then l <= r
-      when 'cross_above'
-        return false unless prev_row
-        pl = resolve(cond['left'],  row: prev_row, params:)
-        pr = resolve(cond['right'], row: prev_row, params:)
-        pl && pr && pl <= pr && l > r
-      when 'cross_below'
-        return false unless prev_row
-        pl = resolve(cond['left'],  row: prev_row, params:)
-        pr = resolve(cond['right'], row: prev_row, params:)
-        pl && pr && pl >= pr && l < r
-      else
-        false
+    def parsed_conditions
+      @parsed_conditions ||= payload.fetch('conditions').to_h.transform_values do |expression|
+        Research::Dsl::ConditionExpression::Parser.new(expression.to_s).parse
       end
     end
 
-    def resolve(ref, row:, params:)
-      s = ref.to_s
-      return to_f_or_nil(row.dig(:bar, s.to_sym))                      if BAR_FIELDS.include?(s)
-      return to_f_or_nil(row.dig(:result, module_key, :value))          if s == 'module.value'
-      return to_f_or_nil(params[s.delete_prefix('params.').to_sym])     if s.start_with?('params.')
+    def resolve_reference(ref, row:, params:)
+      reference = ref.to_s
+      return to_f_or_nil(row.dig(:bar, reference.to_sym)) if BAR_FIELDS.include?(reference)
+      return to_f_or_nil(params[reference.delete_prefix('params.').to_sym]) if reference.start_with?('params.')
 
-      Float(s) rescue nil
+      module_name, attribute = reference.split('.', 2)
+      return nil unless attribute == 'value'
+
+      to_f_or_nil(row.dig(:result, module_name.to_sym, :value))
     end
 
     def target_label(target)
-      return dictionary.dig('module', 'types', module_type, 'params', 'period', 'label') if target == 'module.period'
+      return dictionary.dig('params', target.delete_prefix('params.'), 'label') if target.start_with?('params.')
 
-      param_key = target.delete_prefix('params.')
-      dictionary.dig('params', param_key, 'label') || target
+      module_name, param_key = target.split('.', 2)
+      param_label = dictionary.dig('modules', 'types', module_name, 'params', param_key, 'label')
+      param_label || param_key
+    end
+
+    def primary_module_name
+      modules.keys.first
+    end
+
+    def primary_module_params
+      modules[primary_module_name] || {}
+    end
+
+    def default_module_target
+      module_name = primary_module_name
+      param_key = primary_module_params.keys.first
+      module_name && param_key ? "#{module_name}.#{param_key}" : nil
+    end
+
+    def module_param_key(module_name, param_key)
+      :"#{module_name}_#{param_key}"
+    end
+
+    def module_param_keys
+      @module_param_keys ||= modules.flat_map do |module_name, module_params|
+        module_params.keys.map { |param_key| module_param_key(module_name, param_key) }
+      end
+    end
+
+    def normalize_modules(raw_modules)
+      raw_modules.each_with_object({}) do |(module_name, module_payload), result|
+        result[module_name.to_s] = module_payload.to_h.transform_keys(&:to_s)
+      end
     end
 
     def to_f_or_nil(value)

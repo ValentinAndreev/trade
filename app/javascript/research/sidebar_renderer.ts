@@ -30,7 +30,7 @@ export default class ResearchSidebarRenderer {
     const metadata = validationSystem
     const optimizationTargets = metadata?.optimization_targets?.length
       ? metadata.optimization_targets
-      : [{ value: config.optimizationTarget, label: config.optimizationTarget }]
+      : (config.optimizationTarget ? [{ value: config.optimizationTarget, label: config.optimizationTarget }] : [])
     const selectedOptimizationTarget = optimizationTargets.some(option => option.value === config.optimizationTarget)
       ? config.optimizationTarget
       : (optimizationTargets[0]?.value || config.optimizationTarget)
@@ -187,14 +187,22 @@ function systemSummaryHTML(system: ResearchCatalogEntry | null, metadata: Resear
     return ""
   }
 
-  const moduleParams = Object.entries(metadata.module.params).map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`).join(", ")
+  const modules = Object.entries(metadata.modules || {})
+    .map(([moduleName, moduleParamsPayload]) => {
+      const moduleParams = Object.entries(moduleParamsPayload)
+        .map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`)
+        .join(", ")
+      const suffix = moduleParams ? ` <span class="text-gray-400">${escapeHTML(moduleParams)}</span>` : ""
+      return `<div><span class="text-white">${escapeHTML(moduleName.toUpperCase())}</span>${suffix}</div>`
+    })
+    .join("")
   const runtimeParams = Object.entries(metadata.params).map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`).join(", ")
   const conditions = metadata.conditions.map(name => `<span class="px-2 py-0.5 rounded bg-[${BG_INPUT}] text-blue-200">${escapeHTML(name)}</span>`).join("")
 
   return `
     <div class="rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 py-2 text-sm flex flex-col gap-2">
       <div><span class="text-gray-500">File:</span> <span class="text-white font-mono">${escapeHTML(system.relative_path)}</span></div>
-      <div><span class="text-gray-500">Module:</span> <span class="text-white">${escapeHTML(metadata.module.type.toUpperCase())}</span> <span class="text-gray-400">${escapeHTML(moduleParams)}</span></div>
+      <div class="flex flex-col gap-1"><span class="text-gray-500">Modules:</span>${modules || '<span class="text-gray-500">none</span>'}</div>
       <div><span class="text-gray-500">Params:</span> <span class="text-gray-300">${escapeHTML(runtimeParams || "none")}</span></div>
       <div class="flex flex-wrap gap-1"><span class="text-gray-500 mr-1">Conditions:</span>${conditions || '<span class="text-gray-500">none</span>'}</div>
     </div>

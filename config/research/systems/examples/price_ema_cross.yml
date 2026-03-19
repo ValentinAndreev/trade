@@ -1,32 +1,19 @@
-id: price_ema_cross2
+id: price_ema_cross
 name: Price / EMA Cross
 
-module:
-  type: ema
-  params:
+modules:
+  ema:
     period: 20
 
 params:
   position_mode: long_short
 
 conditions:
-  long_entry:
-    operator: cross_above
-    left: close
-    right: module.value
-  long_exit:
-    operator: cross_below
-    left: close
-    right: module.value
-  short_entry:
-    operator: cross_below
-    left: close
-    right: module.value
-  short_exit:
-    operator: cross_above
-    left: close
-    right: module.value
+  long_entry: "close >> ema.value"
+  long_exit: "close << ema.value"
+  short_entry: "close << ema.value"
+  short_exit: "close >> ema.value"
 
 optimization:
   targets:
-    - module.period
+    - ema.period

@@ -6,6 +6,7 @@ import {
   renameResearchSystem,
   saveResearchSystem,
   type ResearchCatalogEntry,
+  type ResearchDslDiagnostic,
   type ResearchValidationResponse,
 } from "../research/dsl"
 import { setHighlightConfig } from "../system_editor/yaml_highlighter"
@@ -23,6 +24,7 @@ import { EditorCore } from "../system_editor/editor_core"
 import monitor from "../services/connection_monitor"
 import { ValidationModule } from "../system_editor/validation"
 import { FilePickerModule } from "../system_editor/file_picker"
+import { collectConditionExpressionDiagnostics } from "../system_editor/condition_expression"
 import type { SystemEditorConfig } from "../types/store"
 import { buildStarterSystemYaml } from "../system_editor/state"
 
@@ -36,6 +38,7 @@ export default class extends Controller {
   private catalog: ResearchCatalogEntry[] = []
   private directories: string[] = []
   private validation: ResearchValidationResponse | null = null
+  private localDiagnostics: ResearchDslDiagnostic[] = []
   private validating = false
   private saving = false
 
@@ -84,6 +87,7 @@ export default class extends Controller {
     this.directories = snapshot.directories
     this.state = hydrateSystemEditorState(this._storedConfig())
     this._ensureLoadedYaml()
+    this._refreshLocalDiagnostics()
     this._persistState()
     this._renderSafely()
     await this.validator.run(this.state, true)
@@ -101,6 +105,7 @@ export default class extends Controller {
     if (JSON.stringify(this.state) === JSON.stringify(next)) return
     this.state = next
     this._ensureLoadedYaml()
+    this._refreshLocalDiagnostics()
     this._renderSafely()
     void this.validator.run(this.state, true)
   }
@@ -166,6 +171,7 @@ export default class extends Controller {
     this.state.directoryPath = this._currentDirectoryPath()
     this.state.systemYaml = buildStarterSystemYaml()
     this.validation = null
+    this._refreshLocalDiagnostics()
     this._persistState()
     this._renderSafely()
     void this.validator.run(this.state, true)
@@ -182,6 +188,7 @@ export default class extends Controller {
     this.state.sourcePath = entry.relative_path
     this.state.directoryPath = relativeDirname(entry.relative_path)
     this.state.systemYaml = entry.yaml
+    this._refreshLocalDiagnostics()
     this._persistState()
     this._renderSafely()
     void this.validator.run(this.state, true)
@@ -193,6 +200,7 @@ export default class extends Controller {
     if (!textarea) return
 
     this.state.systemYaml = textarea.value
+    this._refreshLocalDiagnostics()
     this._persistState()
     this.autocomplete.handleInput(textarea)
     if (!this._refreshDynamicView()) {
@@ -245,6 +253,7 @@ export default class extends Controller {
       this.state.directoryPath = relativeDirname(saved.relative_path)
       this.state.systemYaml = saved.yaml
       this.validation = { ok: true, diagnostics: [], system: saved.metadata }
+      this._refreshLocalDiagnostics()
       this._persistState()
       this._renderSafely()
       this._dispatchCatalogChanged(saved)
@@ -284,6 +293,7 @@ export default class extends Controller {
       this.state.directoryPath = relativeDirname(renamed.relative_path)
       this.state.systemYaml = renamed.yaml
       this.validation = { ok: true, diagnostics: [], system: renamed.metadata }
+      this._refreshLocalDiagnostics()
       this._persistState()
       this._renderSafely()
       this._dispatchCatalogChanged(renamed)
@@ -444,7 +454,7 @@ export default class extends Controller {
     this.element.innerHTML = renderSystemEditorHTML({
       state: this.state,
       catalog: this.catalog,
-      validation: this.validation,
+      validation: this._displayValidation(),
       validating: this.validating,
       saving: this.saving,
       sourceFileName: this._currentEntry()?.relative_path || null,
@@ -479,7 +489,8 @@ export default class extends Controller {
     const textarea = this.editor.yamlTextarea()
     if (!textarea) return false
 
-    const diagnostics = this.validation?.diagnostics || []
+    const validation = this._displayValidation()
+    const diagnostics = validation?.diagnostics || []
     const sourceFileName = this._currentEntry()?.relative_path || null
     const hasUnsavedChanges = this._hasUnsavedChanges()
     const searchQuery = this.state.searchQuery.trim()
@@ -501,14 +512,14 @@ export default class extends Controller {
 
     const validationStatus = this._role<HTMLElement>("validation-status")
     if (validationStatus) {
-      validationStatus.className = this.validating
+      validationStatus.className = this.validating && !diagnostics.length
         ? "text-gray-400"
-        : this.validation?.ok
+        : validation?.ok
           ? "text-emerald-300"
           : diagnostics.length
             ? "text-red-300"
             : "text-gray-400"
-      validationStatus.textContent = statusLabel(this.validation, this.validating)
+      validationStatus.textContent = statusLabel(validation, this.validating)
     }
 
     const diagnosticsList = this._role<HTMLElement>("diagnostics-list")
@@ -606,8 +617,20 @@ export default class extends Controller {
   private _revalidateOpenedSystem() {
     this.validation = null
     this.validating = false
+    this._refreshLocalDiagnostics()
     this._renderSafely()
     void this.validator.run(this.state, true)
+  }
+
+  private _refreshLocalDiagnostics() {
+    this.localDiagnostics = collectConditionExpressionDiagnostics(this.state?.systemYaml || "")
+  }
+
+  private _displayValidation(): ResearchValidationResponse | null {
+    if (!this.localDiagnostics.length) return this.validation
+
+    const diagnostics = mergeDiagnostics(this.localDiagnostics, this.validation?.diagnostics || [])
+    return { ok: false, diagnostics, system: null }
   }
 
   private _storedConfig(): Partial<SystemEditorConfig> | null {
@@ -658,4 +681,24 @@ function isRedoShortcut(e: KeyboardEvent): boolean {
 function applyNativeHistory(ta: HTMLTextAreaElement, command: "undo" | "redo"): void {
   ta.focus()
   document.execCommand(command)
+}
+
+function mergeDiagnostics(
+  localDiagnostics: ResearchDslDiagnostic[],
+  serverDiagnostics: ResearchDslDiagnostic[],
+): ResearchDslDiagnostic[] {
+  const seen = new Set<string>()
+
+  return [ ...localDiagnostics, ...serverDiagnostics ].filter(diagnostic => {
+    const key = [
+      diagnostic.line,
+      diagnostic.column,
+      diagnostic.length,
+      diagnostic.code,
+      diagnostic.message,
+    ].join(":")
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }

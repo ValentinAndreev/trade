@@ -1,9 +1,8 @@
 id: rsi_threshold
 name: RSI Threshold Reversal
 
-module:
-  type: rsi
-  params:
+modules:
+  rsi:
     period: 14
 
 params:
@@ -12,25 +11,13 @@ params:
   upper_threshold: 70
 
 conditions:
-  long_entry:
-    operator: cross_below
-    left: module.value
-    right: params.lower_threshold
-  long_exit:
-    operator: cross_above
-    left: module.value
-    right: params.upper_threshold
-  short_entry:
-    operator: cross_above
-    left: module.value
-    right: params.upper_threshold
-  short_exit:
-    operator: cross_below
-    left: module.value
-    right: params.lower_threshold
+  long_entry: "rsi.value << params.lower_threshold"
+  long_exit: "rsi.value >> params.upper_threshold"
+  short_entry: "rsi.value >> params.upper_threshold"
+  short_exit: "rsi.value << params.lower_threshold"
 
 optimization:
   targets:
-    - module.period
+    - rsi.period
     - params.lower_threshold
     - params.upper_threshold

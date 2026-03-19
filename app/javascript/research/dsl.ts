@@ -18,9 +18,10 @@ export interface ResearchValidatedSystem {
   id: string
   name: string
   module: {
-    type: string
+    name: string | null
     params: Record<string, number | string | boolean>
   }
+  modules: Record<string, Record<string, number | string | boolean>>
   params: Record<string, number | string | boolean>
   conditions: string[]
   optimization_targets: ResearchOptimizationTargetOption[]

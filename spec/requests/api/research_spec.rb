@@ -7,32 +7,19 @@ RSpec.describe 'Api::Research' do
     <<~YAML
       id: price_ema_cross
       name: Price / EMA Cross
-      module:
-        type: ema
-        params:
+      modules:
+        ema:
           period: 3
       params:
         position_mode: long_short
       conditions:
-        long_entry:
-          operator: cross_above
-          left: close
-          right: module.value
-        long_exit:
-          operator: cross_below
-          left: close
-          right: module.value
-        short_entry:
-          operator: cross_below
-          left: close
-          right: module.value
-        short_exit:
-          operator: cross_above
-          left: close
-          right: module.value
+        long_entry: "close >> ema.value"
+        long_exit: "close << ema.value"
+        short_entry: "close << ema.value"
+        short_exit: "close >> ema.value"
       optimization:
         targets:
-          - module.period
+          - ema.period
     YAML
   end
 
@@ -106,9 +93,10 @@ RSpec.describe 'Api::Research' do
 
       json = response.parsed_body
       expect(json['ok']).to eq(true)
-      expect(json.dig('system', 'module', 'type')).to eq('ema')
+      expect(json.dig('system', 'module', 'name')).to eq('ema')
+      expect(json.dig('system', 'modules', 'ema', 'period')).to eq(3)
       expect(json.dig('system', 'optimization_targets')).to include(
-        a_hash_including('value' => 'module.period')
+        a_hash_including('value' => 'ema.period')
       )
     end
 
@@ -235,7 +223,7 @@ RSpec.describe 'Api::Research' do
       json = response.parsed_body
       expect(json['strategy']).to eq('price_ema_cross')
       expect(json.dig('system', 'type')).to eq('price_ema_cross')
-      expect(json.dig('module', 'type')).to eq('ema')
+      expect(json.dig('module', 'name')).to eq('ema')
       expect(json.dig('system', 'params')).to eq({
         'position_mode' => 'long_short'
       })
@@ -243,7 +231,8 @@ RSpec.describe 'Api::Research' do
       expect(json['runs'].first['params']).to include(
         'system_id' => 'price_ema_cross',
         'module_type' => 'ema',
-        'module_period' => 3
+        'module_period' => 3.0,
+        'ema_period' => 3.0
       )
     end
 
@@ -256,50 +245,37 @@ RSpec.describe 'Api::Research' do
         system_id: 'price_ema_cross',
         system_yaml: yaml_system,
         execution: { fee_bps: 4, slippage_bps: 2 },
-        optimization: { enabled: true, target: 'module.period', from: 3, to: 7, step: 2 }
+        optimization: { enabled: true, target: 'ema.period', from: 3, to: 7, step: 2 }
       }, as: :json
 
       expect(response).to have_http_status(:ok)
 
       json = response.parsed_body
       expect(json.dig('optimization', 'enabled')).to eq(true)
-      expect(json.dig('optimization', 'param')).to eq('module.period')
+      expect(json.dig('optimization', 'param')).to eq('ema.period')
       expect(json['runs'].length).to eq(3)
-      expect(json['runs'].map { |run| run.dig('params', 'module_period') }).to eq([ 3, 5, 7 ])
+      expect(json['runs'].map { |run| run.dig('params', 'ema_period') }).to eq([ 3.0, 5.0, 7.0 ])
     end
 
     it 'runs RSI threshold research and can optimize lower threshold' do
       rsi_yaml = <<~YAML
         id: rsi_threshold
         name: RSI Threshold Reversal
-        module:
-          type: rsi
-          params:
+        modules:
+          rsi:
             period: 3
         params:
           position_mode: long_short
           lower_threshold: 35
           upper_threshold: 65
         conditions:
-          long_entry:
-            operator: cross_below
-            left: module.value
-            right: params.lower_threshold
-          long_exit:
-            operator: cross_above
-            left: module.value
-            right: params.upper_threshold
-          short_entry:
-            operator: cross_above
-            left: module.value
-            right: params.upper_threshold
-          short_exit:
-            operator: cross_below
-            left: module.value
-            right: params.lower_threshold
+          long_entry: "rsi.value << params.lower_threshold"
+          long_exit: "rsi.value >> params.upper_threshold"
+          short_entry: "rsi.value >> params.upper_threshold"
+          short_exit: "rsi.value << params.lower_threshold"
         optimization:
           targets:
-            - module.period
+            - rsi.period
             - params.lower_threshold
             - params.upper_threshold
       YAML
@@ -320,7 +296,7 @@ RSpec.describe 'Api::Research' do
       json = response.parsed_body
       expect(json['strategy']).to eq('rsi_threshold')
       expect(json.dig('system', 'type')).to eq('rsi_threshold')
-      expect(json.dig('module', 'type')).to eq('rsi')
+      expect(json.dig('module', 'name')).to eq('rsi')
       expect(json.dig('optimization', 'param')).to eq('params.lower_threshold')
       expect(json['runs'].map { |run| run.dig('params', 'lower_threshold') }).to eq([ 30.0, 35.0, 40.0 ])
     end

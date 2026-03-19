@@ -12,6 +12,7 @@ describe("research state", () => {
     expect(state.symbol).toBe("ETHUSD")
     expect(state.timeframe).toBe("1h")
     expect(state.systemId).toBe("price_ema_cross")
+    expect(state.optimizationTarget).toBe("")
     expect(state.systemYaml).toBe("")
   })
 

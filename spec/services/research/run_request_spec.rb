@@ -7,34 +7,21 @@ RSpec.describe Research::RunRequest do
     <<~YAML
       id: rsi_threshold
       name: RSI Threshold Reversal
-      module:
-        type: rsi
-        params:
+      modules:
+        rsi:
           period: 14
       params:
         position_mode: long_short
         lower_threshold: 30
         upper_threshold: 70
       conditions:
-        long_entry:
-          operator: cross_below
-          left: module.value
-          right: params.lower_threshold
-        long_exit:
-          operator: cross_above
-          left: module.value
-          right: params.upper_threshold
-        short_entry:
-          operator: cross_above
-          left: module.value
-          right: params.upper_threshold
-        short_exit:
-          operator: cross_below
-          left: module.value
-          right: params.lower_threshold
+        long_entry: "rsi.value << params.lower_threshold"
+        long_exit: "rsi.value >> params.upper_threshold"
+        short_entry: "rsi.value >> params.upper_threshold"
+        short_exit: "rsi.value << params.lower_threshold"
       optimization:
         targets:
-          - module.period
+          - rsi.period
           - params.lower_threshold
     YAML
   end
@@ -67,7 +54,9 @@ RSpec.describe Research::RunRequest do
 
       expect(request.system).to be_a(Research::System)
       expect(request.runtime_params).to eq({
-        module_period: 14,
+        rsi_period: 14.0,
+        module_type: 'rsi',
+        module_period: 14.0,
         position_mode: 'long_short',
         lower_threshold: 30.0,
         upper_threshold: 70.0
@@ -79,11 +68,12 @@ RSpec.describe Research::RunRequest do
     it 'formats yaml metadata through the compiled system' do
       request = described_class.new(dsl_params)
 
-      payload = request.response_payload(runs: [ { params: { module_period: 14 }, trades: [] } ])
+      payload = request.response_payload(runs: [ { params: { rsi_period: 14 }, trades: [] } ])
 
       expect(payload[:strategy]).to eq('rsi_threshold')
       expect(payload.dig(:system, :type)).to eq('rsi_threshold')
-      expect(payload.dig(:module, :type)).to eq('rsi')
+      expect(payload.dig(:module, :name)).to eq('rsi')
+      expect(payload.dig(:modules, 'rsi', 'period')).to eq(14)
       expect(payload.dig(:optimization, :param)).to eq('params.lower_threshold')
     end
   end

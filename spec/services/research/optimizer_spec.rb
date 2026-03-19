@@ -9,32 +9,19 @@ RSpec.describe Research::Optimizer do
     Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
       id: price_ema_cross
       name: Price / EMA Cross
-      module:
-        type: ema
-        params:
+      modules:
+        ema:
           period: 20
       params:
         position_mode: long_short
       conditions:
-        long_entry:
-          operator: cross_above
-          left: close
-          right: module.value
-        long_exit:
-          operator: cross_below
-          left: close
-          right: module.value
-        short_entry:
-          operator: cross_below
-          left: close
-          right: module.value
-        short_exit:
-          operator: cross_above
-          left: close
-          right: module.value
+        long_entry: "close >> ema.value"
+        long_exit: "close << ema.value"
+        short_entry: "close << ema.value"
+        short_exit: "close >> ema.value"
       optimization:
         targets:
-          - module.period
+          - ema.period
     YAML
   end
 
@@ -42,34 +29,21 @@ RSpec.describe Research::Optimizer do
     Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
       id: rsi_threshold
       name: RSI Threshold
-      module:
-        type: rsi
-        params:
+      modules:
+        rsi:
           period: 14
       params:
         position_mode: long_short
         lower_threshold: 30
         upper_threshold: 70
       conditions:
-        long_entry:
-          operator: cross_below
-          left: module.value
-          right: params.lower_threshold
-        long_exit:
-          operator: cross_above
-          left: module.value
-          right: params.upper_threshold
-        short_entry:
-          operator: cross_above
-          left: module.value
-          right: params.upper_threshold
-        short_exit:
-          operator: cross_below
-          left: module.value
-          right: params.lower_threshold
+        long_entry: "rsi.value << params.lower_threshold"
+        long_exit: "rsi.value >> params.upper_threshold"
+        short_entry: "rsi.value >> params.upper_threshold"
+        short_exit: "rsi.value << params.lower_threshold"
       optimization:
         targets:
-          - module.period
+          - rsi.period
           - params.lower_threshold
     YAML
   end
@@ -83,15 +57,15 @@ RSpec.describe Research::Optimizer do
       results = described_class.new(
         backtest: backtest,
         system: ema_system,
-        base_params: { module_period: 20 }
+        base_params: { ema_period: 20 }
       ).call(
-        target: 'module.period',
+        target: 'ema.period',
         from: 5,
         to: 9,
         step: 2
       )
 
-      expect(results.map { |run| run[:params][:module_period] }).to eq([ 5, 7, 9 ])
+      expect(results.map { |run| run[:params][:ema_period] }).to eq([ 5, 7, 9 ])
       expect(results.map { |run| run[:mode] }).to all(eq('optimization'))
       expect(results.map { |run| run[:stage] }).to all(eq('in_sample'))
     end
@@ -128,17 +102,17 @@ RSpec.describe Research::Optimizer do
       described_class.new(
         backtest: backtest,
         system: ema_system,
-        base_params: { module_period: 20 },
+        base_params: { ema_period: 20 },
         progress_interval: 0
       ).call(
-        target: 'module.period',
+        target: 'ema.period',
         from: 5,
         to: 9,
         step: 2,
         progress: progress
       )
 
-      expect(progress).to have_received(:started).with(total_runs: 3, mode: :optimization, target: 'module.period')
+      expect(progress).to have_received(:started).with(total_runs: 3, mode: :optimization, target: 'ema.period')
       expect(progress).to have_received(:run_completed).exactly(3).times
       expect(progress).to have_received(:finished).with(hash_including(total_runs: 3))
     end
@@ -166,14 +140,14 @@ RSpec.describe Research::Optimizer do
       optimizer = described_class.new(
         backtest: backtest,
         system: ema_system,
-        base_params: { module_period: 20 },
+        base_params: { ema_period: 20 },
         progress_interval: 1.0
       )
 
       allow(optimizer).to receive(:monotonic_now).and_return(*clock_values)
 
       optimizer.call(
-        target: 'module.period',
+        target: 'ema.period',
         from: 5,
         to: 7,
         step: 1,

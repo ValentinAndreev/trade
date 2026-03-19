@@ -1,15 +1,12 @@
 root_keys:
   - id
   - name
-  - module
+  - modules
   - params
   - conditions
   - optimization
 
-module:
-  keys:
-    - type
-    - params
+modules:
   types:
     ema:
       label: EMA
@@ -47,23 +44,23 @@ conditions:
     - long_exit
     - short_entry
     - short_exit
-  rule_keys:
-    - operator
-    - left
-    - right
   operators:
-    cross_above:
+    ">>":
       label: Cross above
-    cross_below:
+    "<<":
       label: Cross below
-    gt:
+    ">":
       label: Greater than
-    gte:
+    ">=":
       label: Greater or equal
-    lt:
+    "<":
       label: Less than
-    lte:
+    "<=":
       label: Less or equal
+    "&&":
+      label: Logical and
+    "||":
+      label: Logical or
 
 references:
   fields:
@@ -72,8 +69,8 @@ references:
     - low
     - close
     - volume
-  module:
-    - module.value
+  values:
+    - value
 
 optimization:
   keys:

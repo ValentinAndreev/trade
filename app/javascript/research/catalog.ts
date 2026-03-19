@@ -44,9 +44,12 @@ export function metricLabel(key: ResearchMetricKey): string {
 }
 
 export function optimizationTargetLabel(target: ResearchOptimizationTarget): string {
-  if (target === "module.period") return "Module period"
   if (target.startsWith("params.")) {
     return humanizeToken(target.slice("params.".length))
+  }
+  const [moduleName, ...rest] = target.split(".")
+  if (moduleName && rest.length) {
+    return `${moduleName.toUpperCase()} ${humanizeToken(rest.join("."))}`
   }
   return humanizeToken(target)
 }
@@ -54,10 +57,6 @@ export function optimizationTargetLabel(target: ResearchOptimizationTarget): str
 export function positionModeLabel(value: unknown): string {
   const str = String(value || "long_short")
   return POSITION_MODE_OPTIONS.find(option => option.value === str)?.label || str
-}
-
-export function moduleLabel(moduleType: string): string {
-  return moduleType.toUpperCase()
 }
 
 export function humanizeToken(value: string): string {

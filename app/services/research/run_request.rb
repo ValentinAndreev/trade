@@ -52,12 +52,10 @@ module Research
         strategy: system.strategy_key,
         system: {
           type: system.id,
-          params: system.runtime_params.except(:module_period).transform_keys(&:to_s)
+          params: system.system_params.transform_keys(&:to_s)
         },
-        module: {
-          type: system.module_type,
-          params: system.module_params
-        },
+        module: system.primary_module,
+        modules: system.modules.transform_values(&:dup),
         dataset: dataset.except(:exchange),
         optimization: optimization_payload,
         runs: runs

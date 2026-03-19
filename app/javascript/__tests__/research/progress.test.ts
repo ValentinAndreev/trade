@@ -14,7 +14,7 @@ const baseState: ResearchState = {
   feeBps: 4,
   slippageBps: 2,
   optimizationEnabled: false,
-  optimizationTarget: "module.period",
+  optimizationTarget: "ema.period",
   optimizationFrom: 5,
   optimizationTo: 50,
   optimizationStep: 5,
@@ -53,7 +53,7 @@ describe("research progress helpers", () => {
 
     const info = buildResearchProgressInfo({ ...baseState, optimizationEnabled: true }, 1, snapshot)
     expect(info.detail).toContain("4/10 runs")
-    expect(info.note).toContain("Current Module period 23")
+    expect(info.note).toContain("Current EMA Period 23")
     expect(info.statusLabel).toBe("40%")
     expect(info.percent).toBe(40)
     expect(info.elapsedLabel).toBe("00:12")

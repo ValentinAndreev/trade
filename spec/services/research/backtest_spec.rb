@@ -8,7 +8,7 @@ RSpec.describe Research::Backtest do
   let(:close_values) { [ 100, 101, 102, 101, 99, 97, 98, 100, 103, 104, 102, 99, 96, 97, 100, 104 ] }
 
   let(:ema_system) do
-    entry = Research::Dsl::Catalog.find('price_ema_cross2')
+    entry = Research::Dsl::Catalog.find('price_ema_cross')
     raise 'ema system not found' unless entry
 
     Research::Dsl::Catalog.validate(entry.yaml).raise_if_invalid!.compiled
@@ -40,11 +40,11 @@ RSpec.describe Research::Backtest do
         system: ema_system, symbol: 'BTCUSD', timeframe: '1m',
         start_time: start_time.iso8601, end_time: end_time.iso8601,
         fee_bps: 4, slippage_bps: 2
-      ).run(params: { module_period: 3 }, mode: :normal, stage: :in_sample)
+      ).run(params: { ema_period: 3 }, mode: :normal, stage: :in_sample)
 
       expect(result[:mode]).to eq('normal')
       expect(result[:stage]).to eq('in_sample')
-      expect(result[:params]).to include(module_period: 3)
+      expect(result[:params]).to include(module_period: 3, ema_period: 3)
       expect(result[:trades]).to be_an(Array)
       expect(result[:trades]).not_to be_empty
       expect(result[:trades].first).to include(:entryTime, :entryPrice, :direction, :pnl)
@@ -54,9 +54,9 @@ RSpec.describe Research::Backtest do
       result = described_class.new(
         system: ema_system, symbol: 'BTCUSD', timeframe: '1m',
         start_time: start_time.iso8601, end_time: end_time.iso8601
-      ).run(params: { module_period: 3, position_mode: 'long_only' })
+      ).run(params: { ema_period: 3, position_mode: 'long_only' })
 
-      expect(result[:params]).to include(module_period: 3, position_mode: 'long_only')
+      expect(result[:params]).to include(module_period: 3, ema_period: 3, position_mode: 'long_only')
       expect(result[:trades].map { |t| t[:direction] }.uniq).to eq([ 'long' ])
     end
 
@@ -64,10 +64,10 @@ RSpec.describe Research::Backtest do
       result = described_class.new(
         system: rsi_system, symbol: 'BTCUSD', timeframe: '1m',
         start_time: start_time.iso8601, end_time: end_time.iso8601
-      ).run(params: { module_period: 3, position_mode: 'long_short', lower_threshold: 35, upper_threshold: 65 })
+      ).run(params: { rsi_period: 3, position_mode: 'long_short', lower_threshold: 35, upper_threshold: 65 })
 
       expect(result[:params]).to include(
-        module_period: 3, position_mode: 'long_short',
+        module_period: 3, rsi_period: 3, position_mode: 'long_short',
         lower_threshold: 35.0, upper_threshold: 65.0
       )
       expect(result[:trades]).to be_an(Array)
