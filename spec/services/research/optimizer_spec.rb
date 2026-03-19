@@ -5,6 +5,10 @@ require 'rails_helper'
 RSpec.describe Research::Optimizer do
   let(:backtest) { instance_double(Research::Backtest) }
 
+  before do
+    Research::CancellationRegistry.reset!
+  end
+
   let(:ema_system) do
     Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
       id: price_ema_cross
@@ -162,6 +166,39 @@ RSpec.describe Research::Optimizer do
         last_run_ms: be_within(0.001).of(600.0),
         elapsed_ms: 1400.0
       )
+    end
+
+    it 'stops optimization when the run is cancelled' do
+      progress = instance_double(
+        Research::ProgressBroadcaster,
+        started: nil, run_completed: nil, finished: nil, failed: nil, cancelled: nil
+      )
+      run_count = 0
+
+      allow(backtest).to receive(:run) do |params:, mode:, stage:|
+        run_count += 1
+        Research::CancellationRegistry.cancel('run-123') if run_count == 1
+        { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
+      end
+
+      results = described_class.new(
+        backtest: backtest,
+        system: ema_system,
+        base_params: { ema_period: 20 }
+      ).call(
+        target: 'ema.period',
+        from: 5,
+        to: 9,
+        step: 2,
+        run_id: 'run-123',
+        progress: progress
+      )
+
+      expect(results.length).to eq(1)
+      expect(results.first.dig(:params, :ema_period)).to eq(5)
+      expect(backtest).to have_received(:run).once
+      expect(progress).to have_received(:cancelled).with(hash_including(total_runs: 3, completed_runs: 1))
+      expect(progress).not_to have_received(:finished)
     end
   end
 end

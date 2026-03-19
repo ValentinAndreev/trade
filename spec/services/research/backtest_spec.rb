@@ -21,6 +21,27 @@ RSpec.describe Research::Backtest do
     Research::Dsl::Catalog.validate(entry.yaml).raise_if_invalid!.compiled
   end
 
+  let(:ema_rsi_system) do
+    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+      id: ema_rsi_combo
+      name: EMA + RSI Combo
+      modules:
+        ema:
+          period: 20
+        rsi:
+          period: 14
+      params:
+        position_mode: long_short
+        lower_threshold: 30
+        upper_threshold: 70
+      conditions:
+        long_entry: "(close >> ema.value) && (rsi.value < params.lower_threshold)"
+        long_exit: "(close << ema.value) || (rsi.value > params.upper_threshold)"
+        short_entry: "(close << ema.value) && (rsi.value > params.upper_threshold)"
+        short_exit: "(close >> ema.value) || (rsi.value < params.lower_threshold)"
+    YAML
+  end
+
   before do
     Rails.cache.clear
 
@@ -71,6 +92,54 @@ RSpec.describe Research::Backtest do
         lower_threshold: 35.0, upper_threshold: 65.0
       )
       expect(result[:trades]).to be_an(Array)
+    end
+
+    it 'reuses unchanged module results across runs' do
+      ema_runner = instance_double(Research::Modules::Ema)
+      rsi_runner = instance_double(Research::Modules::Rsi)
+      candle_times = Candle.order(:ts).pluck(:ts)
+
+      allow(Research::Modules::Ema).to receive(:new).and_return(ema_runner)
+      allow(Research::Modules::Rsi).to receive(:new).and_return(rsi_runner)
+      allow(ema_runner).to receive(:call) do |period:|
+        candle_times.map { |time| { time:, result: { value: period.to_f } } }
+      end
+      allow(rsi_runner).to receive(:call) do |period:|
+        candle_times.map { |time| { time:, result: { value: period.to_f } } }
+      end
+
+      backtest = described_class.new(
+        system: ema_rsi_system, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      )
+
+      backtest.run(params: { ema_period: 5, rsi_period: 14, lower_threshold: 30, upper_threshold: 70 })
+      backtest.run(params: { ema_period: 8, rsi_period: 14, lower_threshold: 30, upper_threshold: 70 })
+
+      expect(ema_runner).to have_received(:call).twice
+      expect(rsi_runner).to have_received(:call).once
+    end
+
+    it 'evaluates only the signals needed for the current position state' do
+      signal_calls = []
+      system = instance_double(Research::System)
+
+      allow(system).to receive(:module_runtime_configs).and_return({})
+      allow(system).to receive(:run_params) { |params| params }
+      allow(system).to receive(:signal_for) do |name, prev_row:, row:, params:|
+        signal_calls << name
+        name == :long_entry && row[:time] == (start_time + 1.minute).to_i
+      end
+
+      described_class.new(
+        system:, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      ).run(params: { position_mode: 'long_short' })
+
+      expect(signal_calls.count(:long_entry)).to eq(1)
+      expect(signal_calls.count(:short_entry)).to eq(1)
+      expect(signal_calls.count(:long_exit)).to eq(close_values.length - 3)
+      expect(signal_calls.count(:short_exit)).to eq(0)
     end
   end
 end

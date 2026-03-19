@@ -29,6 +29,7 @@ RSpec.describe 'Api::Research' do
 
   before do
     Rails.cache.clear
+    Research::CancellationRegistry.reset!
 
     close_values.each_with_index do |close, index|
       ts = start_time + index.minutes
@@ -299,6 +300,14 @@ RSpec.describe 'Api::Research' do
       expect(json.dig('module', 'name')).to eq('rsi')
       expect(json.dig('optimization', 'param')).to eq('params.lower_threshold')
       expect(json['runs'].map { |run| run.dig('params', 'lower_threshold') }).to eq([ 30.0, 35.0, 40.0 ])
+    end
+
+    it 'stores cancellation requests by run id' do
+      post '/api/research/cancel', params: { run_id: 'run-123' }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['ok']).to eq(true)
+      expect(Research::CancellationRegistry.cancelled?('run-123')).to eq(true)
     end
   end
 end

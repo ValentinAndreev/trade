@@ -16,7 +16,7 @@ class Api::ResearchController < Api::ApplicationController
     run_id = params[:run_id].to_s
     return render json: { ok: false }, status: :bad_request if run_id.blank?
 
-    Rails.cache.write("research_cancel/#{run_id}", true, expires_in: 2.minutes)
+    Research::CancellationRegistry.cancel(run_id)
     render json: { ok: true }
   end
 

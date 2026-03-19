@@ -6,8 +6,57 @@ module Research
       ema: Research::Modules::Ema,
       rsi: Research::Modules::Rsi
     }.freeze
+    EMPTY_HASH = {}.freeze
+    EMPTY_SERIES = [].freeze
 
     Position = Struct.new(:direction, :entry_time, :entry_price, :entry_index, keyword_init: true)
+    RowCursor = Struct.new(:candles, :module_series, :index, keyword_init: true) do
+      def [](key)
+        case key
+        when :time then candle[:time]
+        when :bar then candle
+        when :result then current_results
+        end
+      end
+
+      def dig(*keys)
+        return nil if keys.empty?
+
+        case keys.first
+        when :time
+          keys.length == 1 ? candle[:time] : nil
+        when :bar
+          dig_value(candle, keys.drop(1))
+        when :result
+          module_name = keys[1]
+          dig_value(module_result(module_name), keys.drop(2))
+        else
+          nil
+        end
+      end
+
+      private
+
+      def candle
+        candles[index] || EMPTY_HASH
+      end
+
+      def module_result(module_name)
+        (module_series[module_name.to_sym] || EMPTY_SERIES)[index] || EMPTY_HASH
+      end
+
+      def current_results
+        module_series.each_with_object({}) do |(module_name, results), acc|
+          acc[module_name] = results[index] || EMPTY_HASH
+        end
+      end
+
+      def dig_value(value, keys)
+        return value if keys.empty?
+
+        value.respond_to?(:dig) ? value.dig(*keys) : nil
+      end
+    end
 
     private attr_reader :system, :symbol, :timeframe, :start_time, :end_time, :exchange, :fee_bps, :slippage_bps
 
@@ -20,17 +69,18 @@ module Research
       @exchange     = exchange
       @fee_bps        = fee_bps.to_f
       @slippage_bps   = slippage_bps.to_f
-      @module_cache   = {}
+      @module_results_cache = {}
       @module_runners = {}
     end
 
     def run(params:, mode: :normal, stage: :in_sample)
       p = params.to_h.symbolize_keys
+      module_series = module_results_for(system.module_runtime_configs(p))
       {
         mode:   mode.to_s,
         stage:  stage.to_s,
         params: system.run_params(p),
-        trades: simulate(rows_for(system.module_runtime_configs(p)), p)
+        trades: simulate(candles, module_series, p)
       }
     end
 
@@ -38,28 +88,32 @@ module Research
 
     # --- Data loading ---
 
-    def rows_for(module_configs)
-      cache_key = module_configs.sort_by { |module_name, _| module_name.to_s }.map do |module_name, config|
-        [ module_name.to_s, config[:type].to_s, config[:params].sort_by { |key, _| key.to_s } ]
-      end
-      results_by_module = (@module_cache[cache_key] ||= build_results_by_module(module_configs))
-
-      candles.map do |c|
-        {
-          time:   c[:time],
-          bar:    c.slice(:open, :high, :low, :close, :volume),
-          result: results_by_module.each_with_object({}) do |(module_name, results_by_time), acc|
-            acc[module_name.to_sym] = results_by_time[c[:time]] || {}
-          end
-        }
+    def module_results_for(module_configs)
+      module_configs.each_with_object({}) do |(module_name, config), acc|
+        acc[module_name.to_sym] = cached_module_results(config[:type], config[:params])
       end
     end
 
-    def build_results_by_module(module_configs)
-      module_configs.each_with_object({}) do |(module_name, config), acc|
-        acc[module_name] = module_runner(config[:type]).call(**config[:params].symbolize_keys)
-          .to_h { |pt| [ pt[:time], pt[:result] ] }
+    def cached_module_results(module_type, params)
+      cache_key = [ module_type.to_s, normalized_module_params(params) ]
+      @module_results_cache[cache_key] ||= build_module_results(module_type, params)
+    end
+
+    def build_module_results(module_type, params)
+      results = Array.new(candles.length)
+      module_runner(module_type).call(**params.symbolize_keys).each do |point|
+        index = candle_index_by_time[point[:time]]
+        results[index] = point[:result] if index
       end
+      results
+    end
+
+    def normalized_module_params(params)
+      params.to_h.sort_by { |key, _| key.to_s }
+    end
+
+    def candle_index_by_time
+      @candle_index_by_time ||= candles.each_with_index.to_h { |candle, index| [ candle[:time], index ] }
     end
 
     def module_runner(module_type)
@@ -77,38 +131,56 @@ module Research
 
     # --- Simulation ---
 
-    def simulate(rows, params)
-      return [] if rows.length < 3
+    def simulate(candles, module_series, params)
+      return [] if candles.length < 3
 
       trades        = []
       open_position = nil
       position_mode = params[:position_mode].presence || 'long_short'
+      prev_row = RowCursor.new(candles:, module_series:, index: 0)
+      row = RowCursor.new(candles:, module_series:, index: 1)
 
-      (1...(rows.length - 1)).each do |idx|
-        signals    = system.signals_for(prev_row: rows[idx - 1], row: rows[idx], params:)
-        fill_open  = rows[idx + 1].dig(:bar, :open).to_f
-        fill_time  = rows[idx + 1][:time]
+      (1...(candles.length - 1)).each do |idx|
+        prev_row.index = idx - 1
+        row.index = idx
+        fill_open  = candles[idx + 1][:open].to_f
+        fill_time  = candles[idx + 1][:time]
         fill_index = idx + 1
 
-        if open_position&.direction == 'long' && signals[:long_exit]
-          trades << close_trade(open_position, fill_time:, fill_price: with_slip(fill_open, :sell), fill_index:)
-          open_position = nil
-        elsif open_position&.direction == 'short' && signals[:short_exit]
-          trades << close_trade(open_position, fill_time:, fill_price: with_slip(fill_open, :buy), fill_index:)
-          open_position = nil
+        if open_position
+          if exit_signal?(open_position, prev_row:, row:, params:)
+            trades << close_trade(open_position, fill_time:, fill_price: close_fill_price(open_position.direction, fill_open), fill_index:)
+            open_position = nil
+          else
+            next
+          end
         end
 
-        next if open_position
-
-        if signals[:long_entry] && !signals[:short_entry] && position_mode != 'short_only'
+        long_entry, short_entry = entry_signals(prev_row:, row:, params:, position_mode:)
+        if long_entry && !short_entry && position_mode != 'short_only'
           open_position = Position.new(direction: 'long',  entry_time: fill_time, entry_price: with_slip(fill_open, :buy),  entry_index: fill_index)
-        elsif signals[:short_entry] && !signals[:long_entry] && position_mode != 'long_only'
+        elsif short_entry && !long_entry && position_mode != 'long_only'
           open_position = Position.new(direction: 'short', entry_time: fill_time, entry_price: with_slip(fill_open, :sell), entry_index: fill_index)
         end
       end
 
-      trades << open_trade(open_position, rows) if open_position
+      trades << open_trade(open_position, candles) if open_position
       trades.sort_by { |t| t[:entryTime] }
+    end
+
+    def exit_signal?(position, prev_row:, row:, params:)
+      condition_name = position.direction == 'long' ? :long_exit : :short_exit
+      system.signal_for(condition_name, prev_row:, row:, params:)
+    end
+
+    def entry_signals(prev_row:, row:, params:, position_mode:)
+      long_entry = position_mode == 'short_only' ? false : system.signal_for(:long_entry, prev_row:, row:, params:)
+      short_entry = position_mode == 'long_only' ? false : system.signal_for(:short_entry, prev_row:, row:, params:)
+      [ long_entry, short_entry ]
+    end
+
+    def close_fill_price(direction, fill_open)
+      direction == 'long' ? with_slip(fill_open, :sell) : with_slip(fill_open, :buy)
     end
 
     def close_trade(position, fill_time:, fill_price:, fill_index:)
@@ -125,8 +197,8 @@ module Research
       }
     end
 
-    def open_trade(position, rows)
-      mark  = rows.last.dig(:bar, :close).to_f
+    def open_trade(position, candles)
+      mark  = candles.last[:close].to_f
       price = position.direction == 'long' ? with_slip(mark, :sell) : with_slip(mark, :buy)
       pnl   = calc_pnl(position.direction, position.entry_price, price)
       {

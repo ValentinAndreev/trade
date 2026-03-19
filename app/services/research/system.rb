@@ -99,8 +99,8 @@ module Research
       raise ArgumentError, "Unsupported optimization target: #{target}"
     end
 
-    def signals_for(prev_row:, row:, params:)
-      signal_evaluator.call(prev_row: prev_row, row: row, params: params)
+    def signal_for(name, prev_row:, row:, params:)
+      signal_evaluator.call(name:, prev_row: prev_row, row: row, params: params)
     end
 
     def module_runtime_configs(params)

@@ -11,7 +11,6 @@ module Research
       @mode                  = mode
       @stage                 = stage
       @progress_interval     = [ progress_interval.to_f, 0.0 ].max
-      @next_cancel_check_at  = 0.0
     end
 
     def call(target:, from:, to:, step:, progress: nil, run_id: nil)
@@ -73,20 +72,10 @@ module Research
       (finished_at - started_at) * 1000.0
     end
 
-    # Throttled to a cache read at most every 2 seconds to avoid a DB hit on
-    # every iteration (Solid Cache = SQL).  The `now` argument is passed in so
-    # the caller can reuse the timestamp already acquired for progress tracking.
-    def cancelled?(run_id, now)
+    def cancelled?(run_id, _now)
       return false if run_id.blank?
-      return false if now < @next_cancel_check_at
 
-      @next_cancel_check_at = now + 2.0
-      if Rails.cache.read("research_cancel/#{run_id}")
-        Rails.cache.delete("research_cancel/#{run_id}")
-        true
-      else
-        false
-      end
+      Research::CancellationRegistry.cancelled?(run_id)
     end
 
     def should_publish_progress?(now, next_progress_at, index, total_runs)
