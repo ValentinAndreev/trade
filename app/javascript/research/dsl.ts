@@ -65,6 +65,25 @@ export interface ResearchDirectoryMutationResponse {
   deleted_path?: string | null
 }
 
+export interface ResearchHighlightConfig {
+  keywords: string[]
+  values: string[]
+}
+
+export async function fetchResearchDictionary(): Promise<ResearchHighlightConfig | null> {
+  const response = await apiFetch("/api/research/dictionary", {}, { silent: true })
+  if (!response?.ok) return null
+  return await response.json() as ResearchHighlightConfig
+}
+
+export async function cancelResearch(runId: string): Promise<void> {
+  await apiFetch("/api/research/cancel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_id: runId }),
+  }, { silent: true })
+}
+
 export async function fetchResearchCatalog(): Promise<ResearchCatalogSnapshot> {
   const response = await apiFetch("/api/research/catalog")
   if (!response?.ok) return { systems: [], directories: [] }

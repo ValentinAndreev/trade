@@ -9,6 +9,7 @@ import {
   optimizationTargetLabel,
 } from "../research/catalog"
 import { runResearch } from "../research/request"
+import { cancelResearch } from "../research/dsl"
 import { serializeResearchResult } from "../research/results"
 import { buildResearchProgressInfo } from "../research/progress"
 import {
@@ -39,6 +40,8 @@ export default class extends Controller {
   private state: ResearchState | null = null
   private selectedRunIndex = 0
   private busy = false
+  private cancelling = false
+  private currentRunId: string | null = null
   private busyStartedAt: number | null = null
   private busyElapsedSeconds = 0
   private busyTimer: ReturnType<typeof setInterval> | null = null
@@ -72,6 +75,8 @@ export default class extends Controller {
 
     const runId = buildResearchRunId()
     this.busy = true
+    this.cancelling = false
+    this.currentRunId = runId
     this.runs = []
     this.selectedRunIndex = 0
     this.busyStartedAt = Date.now()
@@ -81,6 +86,9 @@ export default class extends Controller {
     this._persistResult()
     this.progressSubscription = new ResearchProgressSubscription(runId, (snapshot) => {
       this.serverProgress = snapshot
+      if (snapshot.event === "cancelled") {
+        this.cancelling = false
+      }
       this._renderSafely()
     })
     await this.progressSubscription.connect()
@@ -97,11 +105,20 @@ export default class extends Controller {
       showToast("Research run failed")
     } finally {
       this.busy = false
+      this.cancelling = false
+      this.currentRunId = null
       this._stopBusyTimer()
       this.serverProgress = null
       this._disconnectProgressSubscription()
       this._renderSafely()
     }
+  }
+
+  async cancelRun() {
+    if (!this.busy || this.cancelling || !this.currentRunId) return
+    this.cancelling = true
+    this._renderSafely()
+    await cancelResearch(this.currentRunId)
   }
 
   private _render() {
@@ -115,7 +132,7 @@ export default class extends Controller {
       state: this.state,
       busy: this.busy,
       runsCount: this.runs.length,
-      progress: this.busy ? buildResearchProgressInfo(this.state, this.busyElapsedSeconds, this.serverProgress) : null,
+      progress: this.busy ? { ...buildResearchProgressInfo(this.state, this.busyElapsedSeconds, this.serverProgress), cancelling: this.cancelling } : null,
     })
 
     this._renderSelectedRun()

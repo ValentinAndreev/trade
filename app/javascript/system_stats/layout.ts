@@ -16,10 +16,10 @@ export function layoutHTML(equityColor: string, equityType: string): string {
                class="w-5 h-5 rounded cursor-pointer bg-transparent border-0 p-0 ml-1 shrink-0"
                title="Chart color">
       </div>
-      <div data-chart-area class="flex-none w-full" style="height:500px; min-height:80px"></div>
+      <div data-chart-area class="w-full" style="flex: 1 1 50%; min-height: 80px; max-height: 500px"></div>
       <div data-resize-handle
            class="flex-none h-1.5 w-full bg-[${BG_HOVER}] hover:bg-blue-500 cursor-row-resize transition-colors shrink-0"></div>
-      <div class="flex flex-row flex-1 min-h-0 overflow-hidden w-full">
+      <div class="flex flex-row min-h-0 overflow-hidden w-full" style="flex: 1 1 50%">
         <div class="flex-none w-[27rem] overflow-y-auto p-4 border-r border-[${BG_HOVER}]" data-metrics></div>
         <div class="flex-1 min-w-0" data-trades></div>
       </div>
@@ -43,7 +43,7 @@ export function setupResizeHandle(
 
   const onMove = (e: MouseEvent) => {
     const newH = Math.max(80, Math.min(startH + (e.clientY - startY), window.innerHeight * 0.75))
-    chartArea.style.height = `${newH}px`
+    chartArea.style.flex = `0 0 ${newH}px`
     onChartResize()
   }
   const onUp = () => {

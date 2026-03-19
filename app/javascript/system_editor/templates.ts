@@ -1,5 +1,6 @@
 import { BG_HOVER, BG_PRIMARY, BORDER_COLOR, BG_MODAL, BG_SURFACE, BG_TOOLBAR, BG_INPUT } from "../config/theme"
 import { escapeHTML } from "../utils/dom"
+import { highlightYaml } from "./yaml_highlighter"
 import type { ResearchCatalogEntry, ResearchDslDiagnostic, ResearchValidationResponse } from "../research/dsl"
 import type { SystemEditorConfig } from "../types/store"
 import { renderFileManagerModal } from "../research/file_manager"
@@ -18,6 +19,7 @@ type SystemEditorTemplateArgs = {
   filePickerQuery: string
   filePickerDirectoryPath: string
   filePickerSelectedPath: string | null
+  isOnline: boolean
 }
 
 export function renderSystemEditorHTML({
@@ -34,25 +36,23 @@ export function renderSystemEditorHTML({
   filePickerQuery,
   filePickerDirectoryPath,
   filePickerSelectedPath,
+  isOnline,
 }: SystemEditorTemplateArgs): string {
   const diagnostics = validation?.diagnostics || []
   const valid = validation?.ok === true
+  const offline = !isOnline
 
   return `
     <div class="flex h-full min-h-0 flex-col overflow-hidden text-white bg-[${BG_PRIMARY}]">
       <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          data-action="click->system-editor#openFilePicker"
-          class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-200 hover:text-white hover:bg-[${BG_HOVER}] cursor-pointer"
-        >Open file</button>
-        ${toolbarButton("New", "click->system-editor#newSystem")}
-        ${toolbarButton(validating ? "Validating…" : "Validate", "click->system-editor#validateNow", validating)}
-        ${toolbarButton(saving ? "Saving…" : "Save", "click->system-editor#saveSystem", saving)}
-        ${toolbarButton("Rename", "click->system-editor#renameSystem", saving || !sourceFileName)}
-        ${toolbarButton("Delete", "click->system-editor#deleteSystem", saving || !sourceFileName, "border-red-500/30 text-red-200 hover:text-red-100 hover:bg-red-500/10")}
-        ${toolbarButton("Reload", "click->system-editor#resetSystem", !sourceFileName)}
-        ${toolbarButton("Open in Test", "click->system-editor#openInTest", !sourceFileName || hasUnsavedChanges)}
+        ${toolbarButton("Open file", "click->system-editor#openFilePicker", offline)}
+        ${toolbarButton("New", "click->system-editor#newSystem", offline)}
+        ${toolbarButton(validating ? "Validating…" : "Validate", "click->system-editor#validateNow", offline || validating, "", `data-role="validate-button"`)}
+        ${toolbarButton(saving ? "Saving…" : "Save", "click->system-editor#saveSystem", offline || saving)}
+        ${toolbarButton("Rename", "click->system-editor#renameSystem", offline || saving || !sourceFileName)}
+        ${toolbarButton("Delete", "click->system-editor#deleteSystem", offline || saving || !sourceFileName, "border-red-500/30 text-red-200 hover:text-red-100 hover:bg-red-500/10")}
+        ${toolbarButton("Reload", "click->system-editor#resetSystem", offline || !sourceFileName)}
+        ${toolbarButton("Open in Test", "click->system-editor#openInTest", offline || !sourceFileName || hasUnsavedChanges, "", `data-role="open-in-test-button"`)}
         <div class="ml-auto flex items-center gap-2">
           <input
             type="search"
@@ -62,18 +62,22 @@ export function renderSystemEditorHTML({
             data-action="input->system-editor#updateSearchQuery keydown->system-editor#handleSearchKeydown"
             class="h-10 w-64 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white"
           >
-          ${toolbarButton("Prev", "click->system-editor#findPrevious", !state.searchQuery.trim())}
-          ${toolbarButton("Next", "click->system-editor#findNext", !state.searchQuery.trim())}
+          ${toolbarButton("Prev", "click->system-editor#findPrevious", !state.searchQuery.trim(), "", `data-role="search-prev-button"`)}
+          ${toolbarButton("Next", "click->system-editor#findNext", !state.searchQuery.trim(), "", `data-role="search-next-button"`)}
         </div>
       </div>
 
       <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_TOOLBAR}] px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400">
         <div class="flex flex-wrap items-center gap-3">
-          <span>File: ${currentFileNameHTML(sourceFileName)}</span>
-          <span>State: <span class="${hasUnsavedChanges ? "text-amber-300" : "text-emerald-300"}">${hasUnsavedChanges ? "Unsaved changes" : "Saved"}</span></span>
-          <span>Search: <span class="text-white">${searchMatchCount} matches</span></span>
+          <span>File: <span data-role="current-file-name">${currentFileNameHTML(sourceFileName)}</span></span>
+          <span>State: <span data-role="save-state" class="${hasUnsavedChanges ? "text-amber-300" : "text-emerald-300"}">${hasUnsavedChanges ? "Unsaved changes" : "Saved"}</span></span>
+          <span>Search: <span data-role="search-match-count" class="text-white">${searchMatchCount} matches</span></span>
+          ${offline ? `<span class="text-red-400 font-medium">● Server offline</span>` : ""}
         </div>
-        <div class="${valid ? "text-emerald-300" : diagnostics.length ? "text-red-300" : "text-gray-400"}">${statusLabel(validation, validating)}</div>
+        <div
+          data-role="validation-status"
+          class="${valid ? "text-emerald-300" : diagnostics.length ? "text-red-300" : "text-gray-400"}"
+        >${statusLabel(validation, validating)}</div>
       </div>
 
       <div class="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_22rem]">
@@ -86,10 +90,14 @@ export function renderSystemEditorHTML({
               <div class="absolute inset-y-0 left-0 w-14 border-r border-[${BORDER_COLOR}] bg-[${BG_INPUT}] overflow-hidden pointer-events-none">
                 <pre data-system-editor-gutter class="px-2 py-4 font-mono text-xs leading-6 text-right text-gray-500">${buildLineNumbers(state.systemYaml, diagnostics)}</pre>
               </div>
+              <div data-system-editor-highlight class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+                <pre data-system-editor-highlight-pre class="m-0 pl-16 pr-4 py-4 font-mono text-[13px] leading-6 text-white whitespace-pre">${highlightYaml(state.systemYaml)}</pre>
+              </div>
               <textarea
                 data-field="systemYaml"
                 data-action="input->system-editor#updateYaml scroll->system-editor#syncEditorScroll keydown->system-editor#handleEditorKeydown"
-                class="block h-full w-full resize-none bg-transparent pl-16 pr-4 py-4 font-mono text-[13px] leading-6 text-white outline-none"
+                class="block h-full w-full resize-none bg-transparent pl-16 pr-4 py-4 font-mono text-[13px] leading-6 outline-none"
+                style="color: transparent; caret-color: white"
                 spellcheck="false"
                 wrap="off"
               >${escapeHTML(state.systemYaml)}</textarea>
@@ -100,19 +108,19 @@ export function renderSystemEditorHTML({
         <aside class="min-h-0 overflow-auto border-l border-[${BORDER_COLOR}] bg-[${BG_MODAL}] px-4 py-4 flex flex-col gap-4">
           <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3">
             <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Current file</div>
-            <div class="mt-2 text-sm">${currentFileNameHTML(sourceFileName, "mt-2 text-sm text-left")}</div>
-            <div class="mt-1 text-xs text-gray-400">${escapeHTML(state.systemId || "No id detected yet")}</div>
+            <div data-role="current-file-card-name" class="mt-2 text-sm">${currentFileNameHTML(sourceFileName, "mt-2 text-sm text-left")}</div>
+            <div data-role="current-system-id" class="mt-1 text-xs text-gray-400">${escapeHTML(state.systemId || "No id detected yet")}</div>
           </div>
 
           <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3">
             <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Diagnostics</div>
-            <div class="mt-3 flex flex-col gap-2">
+            <div data-role="diagnostics-list" class="mt-3 flex flex-col gap-2">
               ${diagnosticsHTML(diagnostics)}
             </div>
           </div>
 
           <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3 text-xs text-gray-400 leading-5">
-            <div><span class="text-gray-300">Shortcuts:</span> <span class="text-white">Ctrl/Cmd+S</span> save, <span class="text-white">Ctrl/Cmd+F</span> search, <span class="text-white">F3</span> next match.</div>
+            <div><span class="text-gray-300">Shortcuts:</span> <span class="text-white">Ctrl/Cmd+S</span> save, <span class="text-white">Ctrl/Cmd+Z</span> undo, <span class="text-white">Ctrl/Cmd+Shift+Z</span> redo, <span class="text-white">Ctrl/Cmd+F</span> search, <span class="text-white">F3</span> next match.</div>
           </div>
         </aside>
       </div>
@@ -141,18 +149,19 @@ export function renderSystemEditorHTML({
   `
 }
 
-function toolbarButton(label: string, action: string, disabled = false, extraClass = ""): string {
+function toolbarButton(label: string, action: string, disabled = false, extraClass = "", extraAttrs = ""): string {
   return `
     <button
       type="button"
       data-action="${action}"
+      ${extraAttrs}
       class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-200 hover:text-white hover:bg-[${BG_HOVER}] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${extraClass}"
       ${disabled ? "disabled" : ""}
     >${label}</button>
   `
 }
 
-function currentFileNameHTML(sourceFileName: string | null, className = "text-white font-mono"): string {
+export function currentFileNameHTML(sourceFileName: string | null, className = "text-white font-mono"): string {
   if (!sourceFileName) {
     return `<span class="${className}">Unsaved draft</span>`
   }
@@ -167,7 +176,7 @@ function currentFileNameHTML(sourceFileName: string | null, className = "text-wh
   `
 }
 
-function diagnosticsHTML(diagnostics: ResearchDslDiagnostic[]): string {
+export function diagnosticsHTML(diagnostics: ResearchDslDiagnostic[]): string {
   if (!diagnostics.length) {
     return `<div class="text-sm text-emerald-300">No YAML errors.</div>`
   }
@@ -187,7 +196,7 @@ function diagnosticsHTML(diagnostics: ResearchDslDiagnostic[]): string {
   `).join("")
 }
 
-function buildLineNumbers(yaml: string, diagnostics: ResearchDslDiagnostic[]): string {
+export function buildLineNumbers(yaml: string, diagnostics: ResearchDslDiagnostic[]): string {
   const errorLines = new Set(diagnostics.map(diagnostic => diagnostic.line))
   const lineCount = Math.max(1, yaml.split("\n").length)
 
@@ -198,7 +207,7 @@ function buildLineNumbers(yaml: string, diagnostics: ResearchDslDiagnostic[]): s
   }).join("")
 }
 
-function statusLabel(validation: ResearchValidationResponse | null, validating: boolean): string {
+export function statusLabel(validation: ResearchValidationResponse | null, validating: boolean): string {
   if (validating) return "Validating…"
   if (!validation) return "Not validated"
   return validation.ok ? "YAML valid" : "YAML invalid"

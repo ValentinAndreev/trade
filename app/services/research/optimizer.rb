@@ -13,7 +13,7 @@ module Research
       @progress_interval = [ progress_interval.to_f, 0.0 ].max
     end
 
-    def call(target:, from:, to:, step:, progress: nil)
+    def call(target:, from:, to:, step:, progress: nil, run_id: nil)
       started_at = monotonic_now
       param_key = system.optimization_param_key(target)
       values = values_for(from:, to:, step:)
@@ -21,13 +21,24 @@ module Research
 
       progress&.started(total_runs: values.length, mode: mode, target: target)
 
-      runs = values.each_with_index.map do |value, index|
+      completed_runs = []
+      values.each_with_index do |value, index|
+        if cancelled?(run_id)
+          progress&.cancelled(
+            total_runs: values.length,
+            completed_runs: index,
+            elapsed_ms: elapsed_ms(started_at)
+          )
+          return completed_runs
+        end
+
         run_started_at = monotonic_now
         result = backtest.run(
           params: base_params.merge(param_key => value),
           mode: mode,
           stage: stage
         )
+        completed_runs << result
         now = monotonic_now
         if progress && should_publish_progress?(now, next_progress_at, index, values.length)
           progress.run_completed(
@@ -39,11 +50,10 @@ module Research
           )
           next_progress_at = now + progress_interval
         end
-        result
       end
 
       progress&.finished(total_runs: values.length, elapsed_ms: elapsed_ms(started_at))
-      runs
+      completed_runs
     rescue StandardError => e
       progress&.failed(message: e.message, total_runs: values&.length, elapsed_ms: elapsed_ms(started_at))
       raise
@@ -59,6 +69,17 @@ module Research
 
     def elapsed_ms(started_at, finished_at = monotonic_now)
       (finished_at - started_at) * 1000.0
+    end
+
+    def cancelled?(run_id)
+      return false if run_id.blank?
+
+      if Rails.cache.read("research_cancel/#{run_id}")
+        Rails.cache.delete("research_cancel/#{run_id}")
+        true
+      else
+        false
+      end
     end
 
     def should_publish_progress?(now, next_progress_at, index, total_runs)

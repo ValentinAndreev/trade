@@ -48,11 +48,23 @@ export function renderResearchHTML({ state, busy, runsCount, progress }: Researc
 export function selectedRunPlaceholderHTML(busy: boolean, progress: ResearchProgressInfo | null = null): string {
   if (busy) {
     const width = progress && progress.percent > 0 ? Math.max(6, progress.percent) : 0
+    const cancelling = progress?.cancelling === true
 
     return `
       <div class="flex items-center justify-center h-full p-6">
         <div class="w-full max-w-md rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-4 text-center">
-          <div class="text-sm font-medium text-white">${progress?.title || "Running research"}</div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex-1 text-sm font-medium text-white">${progress?.title || "Running research"}</div>
+            ${cancelling
+              ? `<span class="text-xs text-amber-400 shrink-0">Cancelling…</span>`
+              : `<button
+                   type="button"
+                   data-action="click->research#cancelRun"
+                   title="Stop optimization"
+                   class="shrink-0 flex items-center justify-center w-6 h-6 rounded text-gray-400 hover:text-white hover:bg-red-500/20 transition-colors cursor-pointer"
+                 >✕</button>`
+            }
+          </div>
           <div class="mt-2 text-sm text-gray-300">${progress?.detail || "Waiting for server response…"}</div>
           <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-[${BG_INPUT}]">
             <div class="h-full rounded-full bg-blue-500/80 transition-[width] duration-300" style="width: ${width}%"></div>

@@ -1,7 +1,7 @@
 import type { Subscription } from "@rails/actioncable"
 import { consumer } from "../chart/feeds/cable_consumer"
 
-type ResearchProgressEvent = "started" | "progress" | "completed" | "failed"
+type ResearchProgressEvent = "started" | "progress" | "completed" | "failed" | "cancelled"
 
 type ResearchProgressMessage = {
   event?: ResearchProgressEvent

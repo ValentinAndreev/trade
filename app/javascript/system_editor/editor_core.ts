@@ -1,6 +1,8 @@
 import type { ResearchDslDiagnostic } from "../research/dsl"
 import type { SystemEditorConfig } from "../types/store"
 import { showToast } from "../services/toast"
+import { highlightYaml } from "./yaml_highlighter"
+import { buildLineNumbers } from "./templates"
 
 export type EditorSnapshot = {
   field: "yaml" | "search" | null
@@ -17,10 +19,31 @@ export class EditorCore {
 
   syncScroll(): void {
     const textarea = this.yamlTextarea()
-    const gutter = this.element.querySelector<HTMLElement>("[data-system-editor-gutter]")
-    if (!textarea || !gutter) return
+    if (!textarea) return
 
-    gutter.style.transform = `translateY(${-textarea.scrollTop}px)`
+    const gutter = this.element.querySelector<HTMLElement>("[data-system-editor-gutter]")
+    if (gutter) {
+      gutter.style.transform = `translateY(${-textarea.scrollTop}px)`
+    }
+
+    const highlightPre = this.element.querySelector<HTMLElement>("[data-system-editor-highlight-pre]")
+    if (highlightPre) {
+      highlightPre.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`
+    }
+  }
+
+  renderYaml(text: string, diagnostics: ResearchDslDiagnostic[]): void {
+    const highlightPre = this.element.querySelector<HTMLElement>("[data-system-editor-highlight-pre]")
+    if (highlightPre) {
+      highlightPre.innerHTML = highlightYaml(text)
+    }
+
+    const gutter = this.element.querySelector<HTMLElement>("[data-system-editor-gutter]")
+    if (gutter) {
+      gutter.innerHTML = buildLineNumbers(text, diagnostics)
+    }
+
+    this.syncScroll()
   }
 
   captureSnapshot(): void {
@@ -115,6 +138,35 @@ export class EditorCore {
     const line = before.split("\n").length - 1
     const lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight || "24")
     return Math.max(0, line * lineHeight - textarea.clientHeight / 3)
+  }
+
+  ensureSelectionVisible(): void {
+    const textarea = this.yamlTextarea()
+    if (!textarea) return
+
+    const styles = window.getComputedStyle(textarea)
+    const before = textarea.value.slice(0, textarea.selectionStart)
+    const line = before.split("\n").length - 1
+    const lineHeight = parseFloat(styles.lineHeight || "24")
+    const paddingTop = parseFloat(styles.paddingTop || "0")
+    const paddingBottom = parseFloat(styles.paddingBottom || "0")
+    const contextPadding = lineHeight * 2
+    const lineTop = paddingTop + line * lineHeight
+    const lineBottom = lineTop + lineHeight
+    const viewportTop = textarea.scrollTop + paddingTop
+    const viewportBottom = textarea.scrollTop + textarea.clientHeight - paddingBottom
+    const maxScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight)
+
+    if (lineBottom > viewportBottom - contextPadding) {
+      textarea.scrollTop = Math.min(
+        maxScrollTop,
+        Math.max(0, lineBottom + contextPadding - (textarea.clientHeight - paddingBottom))
+      )
+    } else if (lineTop < viewportTop + contextPadding) {
+      textarea.scrollTop = Math.max(0, lineTop - paddingTop - contextPadding)
+    }
+
+    this.syncScroll()
   }
 
   indexForLineColumn(text: string, line: number, column: number): number {

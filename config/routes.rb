@@ -33,6 +33,7 @@ Rails.application.routes.draw do
     resources :indicators, only: :index
     post 'indicators/:type/compute', to: 'indicators#compute'
     get 'research/catalog', to: 'research#catalog'
+    get 'research/dictionary', to: 'research#dictionary'
     post 'research/validate', to: 'research#validate'
     post 'research/systems/save', to: 'research#save_system'
     post 'research/systems/rename', to: 'research#rename_system'
@@ -41,6 +42,7 @@ Rails.application.routes.draw do
     post 'research/directories/rename', to: 'research#rename_directory'
     post 'research/directories/delete', to: 'research#delete_directory'
     post 'research/run', to: 'research#run'
+    post 'research/cancel', to: 'research#cancel'
 
     resource :data_table, only: :show do
       post :correlations

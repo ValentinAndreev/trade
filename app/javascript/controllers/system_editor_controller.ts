@@ -2,16 +2,25 @@ import { Controller } from "@hotwired/stimulus"
 import {
   deleteResearchSystem,
   fetchResearchCatalog,
+  fetchResearchDictionary,
   renameResearchSystem,
   saveResearchSystem,
   type ResearchCatalogEntry,
   type ResearchValidationResponse,
 } from "../research/dsl"
+import { setHighlightConfig } from "../system_editor/yaml_highlighter"
+import { YamlAutocomplete } from "../system_editor/autocomplete"
 import { relativeDirname } from "../research/file_manager"
 import { showToast } from "../services/toast"
 import { hydrateSystemEditorState } from "../system_editor/state"
-import { renderSystemEditorHTML } from "../system_editor/templates"
+import {
+  currentFileNameHTML,
+  diagnosticsHTML,
+  renderSystemEditorHTML,
+  statusLabel,
+} from "../system_editor/templates"
 import { EditorCore } from "../system_editor/editor_core"
+import monitor from "../services/connection_monitor"
 import { ValidationModule } from "../system_editor/validation"
 import { FilePickerModule } from "../system_editor/file_picker"
 import type { SystemEditorConfig } from "../types/store"
@@ -33,8 +42,13 @@ export default class extends Controller {
   private editor!: EditorCore
   private validator!: ValidationModule
   private filePicker!: FilePickerModule
+  private autocomplete!: YamlAutocomplete
+
+  private _onConnectionChange = () => { this._renderSafely() }
 
   async connect() {
+    window.addEventListener("connection:change", this._onConnectionChange)
+    this.autocomplete = new YamlAutocomplete()
     this.editor = new EditorCore(this.element as HTMLElement)
     this.validator = new ValidationModule((result, validating, updatedId) => {
       this.validating = validating
@@ -43,7 +57,9 @@ export default class extends Controller {
         this.state.systemId = updatedId
         this._persistState()
       }
-      this._renderSafely()
+      if (!this._refreshDynamicView()) {
+        this._renderSafely()
+      }
     })
     this.filePicker = new FilePickerModule(this.element as HTMLElement, {
       getState: () => this.state,
@@ -58,7 +74,12 @@ export default class extends Controller {
     })
 
     this.element.innerHTML = `<div class="flex items-center justify-center h-full text-gray-500 text-sm animate-pulse">Loading system editor…</div>`
-    const snapshot = await fetchResearchCatalog()
+    const [snapshot, dict] = await Promise.all([fetchResearchCatalog(), fetchResearchDictionary()])
+    if (dict) {
+      const config = { keywords: new Set(dict.keywords), values: new Set(dict.values) }
+      setHighlightConfig(config)
+      this.autocomplete.setConfig(config)
+    }
     this.catalog = snapshot.systems
     this.directories = snapshot.directories
     this.state = hydrateSystemEditorState(this._storedConfig())
@@ -70,6 +91,8 @@ export default class extends Controller {
 
   disconnect() {
     this.validator.cancel()
+    this.autocomplete.destroy()
+    window.removeEventListener("connection:change", this._onConnectionChange)
   }
 
   configValueChanged() {
@@ -171,8 +194,10 @@ export default class extends Controller {
 
     this.state.systemYaml = textarea.value
     this._persistState()
-    this._renderSafely()
-    this.editor.syncScroll()
+    this.autocomplete.handleInput(textarea)
+    if (!this._refreshDynamicView()) {
+      this._renderSafely()
+    }
     void this.validator.run(this.state, false)
   }
 
@@ -186,7 +211,9 @@ export default class extends Controller {
     if (!input) return
     this.state.searchQuery = input.value
     this._persistState()
-    this._renderSafely()
+    if (!this._refreshDynamicView()) {
+      this._renderSafely()
+    }
   }
 
   async validateNow() {
@@ -335,6 +362,57 @@ export default class extends Controller {
     if (e.key === "F3") {
       e.preventDefault()
       this.editor.findMatch(e.shiftKey ? -1 : 1, this.state)
+      return
+    }
+    if (isUndoShortcut(e)) {
+      e.preventDefault()
+      const ta = this.editor.yamlTextarea()
+      if (ta) {
+        applyNativeHistory(ta, "undo")
+        requestAnimationFrame(() => {
+          if (this.state?.systemYaml !== ta.value) this.updateYaml()
+        })
+      }
+      return
+    }
+    if (isRedoShortcut(e)) {
+      e.preventDefault()
+      const ta = this.editor.yamlTextarea()
+      if (ta) {
+        applyNativeHistory(ta, "redo")
+        requestAnimationFrame(() => {
+          if (this.state?.systemYaml !== ta.value) this.updateYaml()
+        })
+      }
+      return
+    }
+
+    // Tab — always prevent focus change; insert 2 spaces when autocomplete is closed
+    if (e.key === "Tab") {
+      e.preventDefault()
+      if (!this.autocomplete.isVisible) {
+        const ta = this.editor.yamlTextarea()
+        if (ta) {
+          editorInsert(ta, "  ")
+          this.editor.ensureSelectionVisible()
+        }
+      }
+      // When visible the autocomplete's keydown listener (fires after this) handles completion
+      return
+    }
+
+    // Enter — always prevent raw newline; auto-indent when autocomplete is closed
+    if (e.key === "Enter") {
+      e.preventDefault()
+      if (!this.autocomplete.isVisible) {
+        const ta = this.editor.yamlTextarea()
+        if (ta) {
+          editorInsert(ta, "\n" + currentLineIndent(ta))
+          this.editor.ensureSelectionVisible()
+        }
+      }
+      // When visible the autocomplete's keydown listener handles completion
+      return
     }
   }
 
@@ -377,6 +455,7 @@ export default class extends Controller {
       filePickerDirectoryPath: this.filePicker.directoryPath,
       filePickerSelectedPath: this.filePicker.selectedPath,
       directories: this.directories,
+      isOnline: monitor.isOnline,
     })
   }
 
@@ -391,6 +470,79 @@ export default class extends Controller {
     }
     this.editor.restoreSnapshot()
     this.editor.syncScroll()
+    this.autocomplete.sync(this.editor.yamlTextarea())
+  }
+
+  private _refreshDynamicView(): boolean {
+    if (!this.state) return false
+
+    const textarea = this.editor.yamlTextarea()
+    if (!textarea) return false
+
+    const diagnostics = this.validation?.diagnostics || []
+    const sourceFileName = this._currentEntry()?.relative_path || null
+    const hasUnsavedChanges = this._hasUnsavedChanges()
+    const searchQuery = this.state.searchQuery.trim()
+
+    this.editor.renderYaml(this.state.systemYaml, diagnostics)
+    this._setRoleHTML("current-file-name", currentFileNameHTML(sourceFileName))
+    this._setRoleHTML("current-file-card-name", currentFileNameHTML(sourceFileName, "mt-2 text-sm text-left"))
+
+    const saveState = this._role<HTMLElement>("save-state")
+    if (saveState) {
+      saveState.className = hasUnsavedChanges ? "text-amber-300" : "text-emerald-300"
+      saveState.textContent = hasUnsavedChanges ? "Unsaved changes" : "Saved"
+    }
+
+    const searchMatchCount = this._role<HTMLElement>("search-match-count")
+    if (searchMatchCount) {
+      searchMatchCount.textContent = `${this.editor.searchMatchCount(this.state)} matches`
+    }
+
+    const validationStatus = this._role<HTMLElement>("validation-status")
+    if (validationStatus) {
+      validationStatus.className = this.validating
+        ? "text-gray-400"
+        : this.validation?.ok
+          ? "text-emerald-300"
+          : diagnostics.length
+            ? "text-red-300"
+            : "text-gray-400"
+      validationStatus.textContent = statusLabel(this.validation, this.validating)
+    }
+
+    const diagnosticsList = this._role<HTMLElement>("diagnostics-list")
+    if (diagnosticsList) {
+      diagnosticsList.innerHTML = diagnosticsHTML(diagnostics)
+    }
+
+    const currentSystemId = this._role<HTMLElement>("current-system-id")
+    if (currentSystemId) {
+      currentSystemId.textContent = this.state.systemId || "No id detected yet"
+    }
+
+    const validateButton = this._role<HTMLButtonElement>("validate-button")
+    if (validateButton) {
+      validateButton.disabled = !monitor.isOnline || this.validating
+      validateButton.textContent = this.validating ? "Validating…" : "Validate"
+    }
+
+    const openInTestButton = this._role<HTMLButtonElement>("open-in-test-button")
+    if (openInTestButton) {
+      openInTestButton.disabled = !monitor.isOnline || !sourceFileName || hasUnsavedChanges
+    }
+
+    const searchPrevButton = this._role<HTMLButtonElement>("search-prev-button")
+    if (searchPrevButton) {
+      searchPrevButton.disabled = !searchQuery
+    }
+
+    const searchNextButton = this._role<HTMLButtonElement>("search-next-button")
+    if (searchNextButton) {
+      searchNextButton.disabled = !searchQuery
+    }
+
+    return true
   }
 
   private _ensureLoadedYaml() {
@@ -466,4 +618,44 @@ export default class extends Controller {
       return null
     }
   }
+
+  private _role<T extends Element>(role: string): T | null {
+    return this.element.querySelector<T>(`[data-role='${role}']`)
+  }
+
+  private _setRoleHTML(role: string, html: string) {
+    const element = this._role<HTMLElement>(role)
+    if (element) {
+      element.innerHTML = html
+    }
+  }
+}
+
+// --- Module-level editor helpers ---
+
+/** Insert `text` at the textarea cursor, update cursor position, and fire input. */
+function editorInsert(ta: HTMLTextAreaElement, text: string): void {
+  ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, "end")
+  ta.dispatchEvent(new Event("input", { bubbles: true }))
+}
+
+/** Return the leading whitespace of the line the cursor is currently on. */
+function currentLineIndent(ta: HTMLTextAreaElement): string {
+  const before    = ta.value.slice(0, ta.selectionStart)
+  const lineStart = before.lastIndexOf("\n") + 1
+  return before.slice(lineStart).match(/^(\s*)/)?.[1] ?? ""
+}
+
+function isUndoShortcut(e: KeyboardEvent): boolean {
+  return !e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z"
+}
+
+function isRedoShortcut(e: KeyboardEvent): boolean {
+  const key = e.key.toLowerCase()
+  return (e.metaKey || e.ctrlKey) && e.shiftKey && key === "z"
+}
+
+function applyNativeHistory(ta: HTMLTextAreaElement, command: "undo" | "redo"): void {
+  ta.focus()
+  document.execCommand(command)
 }

@@ -9,6 +9,7 @@ export type ResearchProgressInfo = {
   statusLabel: string
   elapsedLabel: string
   percent: number
+  cancelling?: boolean
 }
 
 export function buildResearchProgressInfo(

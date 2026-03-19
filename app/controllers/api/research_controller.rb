@@ -8,6 +8,18 @@ class Api::ResearchController < Api::ApplicationController
     }
   end
 
+  def dictionary
+    render json: Research::Dsl::Catalog.highlight_config
+  end
+
+  def cancel
+    run_id = params[:run_id].to_s
+    return render json: { ok: false }, status: :bad_request if run_id.blank?
+
+    Rails.cache.write("research_cancel/#{run_id}", true, expires_in: 2.minutes)
+    render json: { ok: true }
+  end
+
   def validate
     yaml = params[:system_yaml].presence || Research::Dsl::Catalog.load_yaml(params[:system_id], relative_path: params[:system_path])
     return render json: missing_yaml_response, status: :unprocessable_entity if yaml.blank?
@@ -97,6 +109,7 @@ class Api::ResearchController < Api::ApplicationController
       ).call(
         target:   research_request.optimization_target,
         progress: progress,
+        run_id:   research_request.progress_run_id,
         **research_request.optimization_range
       )
     else

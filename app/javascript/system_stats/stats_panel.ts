@@ -15,7 +15,7 @@ export type StatsPanelState = {
 export function buildDefaultStatsPanelState(): StatsPanelState {
   return {
     equityColor: DEFAULT_EQUITY_COLOR,
-    equityType: "line",
+    equityType: "area",
   }
 }
 

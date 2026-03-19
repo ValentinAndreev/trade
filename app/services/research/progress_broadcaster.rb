@@ -44,6 +44,18 @@ module Research
       )
     end
 
+    def cancelled(total_runs:, completed_runs:, elapsed_ms:)
+      return if terminal_event_sent?
+
+      @terminal_event_sent = true
+      broadcast(
+        event: 'cancelled',
+        total_runs: total_runs,
+        completed_runs: completed_runs,
+        elapsed_ms: elapsed_ms.round
+      )
+    end
+
     def failed(message:, total_runs: nil, completed_runs: nil, elapsed_ms: nil)
       return if terminal_event_sent?
 
