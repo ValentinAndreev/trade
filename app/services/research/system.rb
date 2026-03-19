@@ -2,7 +2,7 @@
 
 module Research
   class System
-    BAR_FIELDS = %w[open high low close volume].freeze
+    BAR_FIELDS = Set.new(%w[open high low close volume]).freeze
 
     private attr_reader :payload, :dictionary
 
@@ -100,16 +100,7 @@ module Research
     end
 
     def signals_for(prev_row:, row:, params:)
-      parsed_conditions.to_h do |key, ast|
-        [
-          key.to_sym,
-          Research::Dsl::ConditionExpression::Evaluator.new(ast, resolver: method(:resolve_reference)).call(
-            row: row,
-            prev_row: prev_row,
-            params: params
-          )
-        ]
-      end
+      signal_evaluator.call(prev_row: prev_row, row: row, params: params)
     end
 
     def module_runtime_configs(params)
@@ -125,6 +116,13 @@ module Research
     end
 
     private
+
+    def signal_evaluator
+      @signal_evaluator ||= Research::SignalEvaluator.new(
+        parsed_conditions,
+        resolver: method(:resolve_reference)
+      )
+    end
 
     def parsed_conditions
       @parsed_conditions ||= payload.fetch('conditions').to_h.transform_values do |expression|

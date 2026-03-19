@@ -5,12 +5,13 @@ module Research
     private attr_reader :backtest, :system, :base_params, :mode, :stage
 
     def initialize(backtest:, system:, base_params:, mode: :optimization, stage: :in_sample, progress_interval: 1.0)
-      @backtest = backtest
-      @system = system
-      @base_params = base_params.to_h.symbolize_keys
-      @mode = mode
-      @stage = stage
-      @progress_interval = [ progress_interval.to_f, 0.0 ].max
+      @backtest              = backtest
+      @system                = system
+      @base_params           = base_params.to_h.symbolize_keys
+      @mode                  = mode
+      @stage                 = stage
+      @progress_interval     = [ progress_interval.to_f, 0.0 ].max
+      @next_cancel_check_at  = 0.0
     end
 
     def call(target:, from:, to:, step:, progress: nil, run_id: nil)
@@ -23,7 +24,8 @@ module Research
 
       completed_runs = []
       values.each_with_index do |value, index|
-        if cancelled?(run_id)
+        now = monotonic_now
+        if cancelled?(run_id, now)
           progress&.cancelled(
             total_runs: values.length,
             completed_runs: index,
@@ -32,7 +34,7 @@ module Research
           return completed_runs
         end
 
-        run_started_at = monotonic_now
+        run_started_at = now
         result = backtest.run(
           params: base_params.merge(param_key => value),
           mode: mode,
@@ -71,9 +73,14 @@ module Research
       (finished_at - started_at) * 1000.0
     end
 
-    def cancelled?(run_id)
+    # Throttled to a cache read at most every 2 seconds to avoid a DB hit on
+    # every iteration (Solid Cache = SQL).  The `now` argument is passed in so
+    # the caller can reuse the timestamp already acquired for progress tracking.
+    def cancelled?(run_id, now)
       return false if run_id.blank?
+      return false if now < @next_cancel_check_at
 
+      @next_cancel_check_at = now + 2.0
       if Rails.cache.read("research_cancel/#{run_id}")
         Rails.cache.delete("research_cancel/#{run_id}")
         true

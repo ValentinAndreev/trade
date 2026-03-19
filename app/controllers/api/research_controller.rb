@@ -36,7 +36,7 @@ class Api::ResearchController < Api::ApplicationController
     yaml = params[:system_yaml].to_s
     return render json: missing_yaml_response, status: :unprocessable_entity if yaml.blank?
 
-    entry = Research::Dsl::Catalog.save_system(
+    entry = Research::Dsl::SystemRepository.save_system(
       yaml,
       source_relative_path:    params[:source_path],
       directory_relative_path: params[:directory_path]
@@ -50,7 +50,7 @@ class Api::ResearchController < Api::ApplicationController
     yaml = params[:system_yaml].to_s
     return render json: missing_yaml_response, status: :unprocessable_entity if yaml.blank?
 
-    entry = Research::Dsl::Catalog.rename_entry(
+    entry = Research::Dsl::SystemRepository.rename_entry(
       source_relative_path: params[:source_path],
       target_id:            params[:target_system_id].to_s,
       yaml:                 yaml
@@ -61,14 +61,14 @@ class Api::ResearchController < Api::ApplicationController
   end
 
   def delete_system
-    Research::Dsl::Catalog.delete_entry(source_relative_path: params[:source_path])
+    Research::Dsl::SystemRepository.delete_entry(source_relative_path: params[:source_path])
     render json: { ok: true, diagnostics: [], deleted_system_path: params[:source_path] }
   rescue Research::Dsl::ValidationError => e
     render json: { ok: false, diagnostics: e.diagnostics.map(&:to_h), deleted_system_path: nil }, status: :unprocessable_entity
   end
 
   def create_directory
-    path = Research::Dsl::Catalog.create_directory(
+    path = Research::Dsl::SystemRepository.create_directory(
       parent_relative_path: params[:parent_path],
       directory_name:       params[:directory_name]
     )
@@ -78,7 +78,7 @@ class Api::ResearchController < Api::ApplicationController
   end
 
   def rename_directory
-    path = Research::Dsl::Catalog.rename_directory(
+    path = Research::Dsl::SystemRepository.rename_directory(
       source_relative_path: params[:source_path],
       target_name:          params[:target_name]
     )
@@ -88,7 +88,7 @@ class Api::ResearchController < Api::ApplicationController
   end
 
   def delete_directory
-    Research::Dsl::Catalog.delete_directory(source_relative_path: params[:source_path])
+    Research::Dsl::SystemRepository.delete_directory(source_relative_path: params[:source_path])
     render json: { ok: true, diagnostics: [], deleted_path: params[:source_path] }
   rescue Research::Dsl::ValidationError => e
     render json: { ok: false, diagnostics: e.diagnostics.map(&:to_h), deleted_path: nil }, status: :unprocessable_entity

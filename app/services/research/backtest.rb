@@ -18,9 +18,10 @@ module Research
       @start_time   = start_time
       @end_time     = end_time
       @exchange     = exchange
-      @fee_bps      = fee_bps.to_f
-      @slippage_bps = slippage_bps.to_f
-      @module_cache = {}
+      @fee_bps        = fee_bps.to_f
+      @slippage_bps   = slippage_bps.to_f
+      @module_cache   = {}
+      @module_runners = {}
     end
 
     def run(params:, mode: :normal, stage: :in_sample)
@@ -62,7 +63,6 @@ module Research
     end
 
     def module_runner(module_type)
-      @module_runners ||= {}
       @module_runners[module_type.to_s] ||= begin
         klass = MODULES.fetch(module_type.to_sym) { raise ArgumentError, "Unsupported module: #{module_type}" }
         klass.new(candles:)
