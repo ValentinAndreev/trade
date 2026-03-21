@@ -48,21 +48,8 @@ module Research
           end
         end
 
-        def extract_references(node, refs = [])
-          case node[:type]
-          when :reference
-            refs << node[:value]
-          when :logical, :compare, :arithmetic
-            extract_references(node[:left], refs)
-            extract_references(node[:right], refs)
-          when :unary
-            extract_references(node[:expression], refs)
-          when :call
-            node[:args].each { |arg| extract_references(arg, refs) }
-          when :group
-            extract_references(node[:expression], refs)
-          end
-          refs
+        def extract_references(node)
+          Research::Dsl::ConditionExpression::Ast.references(node)
         end
 
         def validate_condition_reference(value, path)
@@ -82,7 +69,7 @@ module Research
           modules_payload = @payload['modules']
           unless modules_payload.is_a?(Hash) && modules_payload.key?(module_name)
             add_error(message: "Unknown module reference: #{value}", path: path, code: 'condition_reference')
-            return
+            nil
           end
         end
 

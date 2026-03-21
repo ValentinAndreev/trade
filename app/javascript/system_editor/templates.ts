@@ -30,6 +30,28 @@ type SystemEditorTemplateArgs = {
   isOnline: boolean
 }
 
+type HelpSection = {
+  title: string
+  body?: string
+  rows?: string[]
+  columns?: HelpColumn[]
+}
+
+type HelpColumn = {
+  title: string
+  rows: string[]
+}
+
+const SHORTCUTS = [
+  ["Ctrl/Cmd+S", "save"],
+  ["Ctrl/Cmd+Z", "undo"],
+  ["Ctrl/Cmd+Shift+Z", "redo"],
+  ["Ctrl/Cmd+F", "search"],
+  ["F3", "next match"],
+] as const
+
+const ARGUMENT_ORDINALS = ["first", "second", "third"] as const
+
 export function renderSystemEditorHTML({
   state,
   catalog,
@@ -157,22 +179,12 @@ export function renderSystemEditorHTML({
 }
 
 function editorHelpHTML(metadata: ResearchConditionExpressionMetadata | null): string {
+  const sections = buildHelpSections(metadata)
+
   return `
     <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-4 text-xs text-gray-400 leading-5">
       <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Editor help</div>
-
-      <div class="mt-3">
-        <div class="text-gray-300">Shortcuts</div>
-        <div class="mt-1 text-[12px] text-gray-400">
-          <span class="text-white">Ctrl/Cmd+S</span> save,
-          <span class="text-white">Ctrl/Cmd+Z</span> undo,
-          <span class="text-white">Ctrl/Cmd+Shift+Z</span> redo,
-          <span class="text-white">Ctrl/Cmd+F</span> search,
-          <span class="text-white">F3</span> next match.
-        </div>
-      </div>
-
-      ${conditionHelpSectionsHTML(metadata)}
+      ${sections.map((section, index) => renderHelpSection(section, index === 0)).join("")}
 
       <div class="mt-4 border-t border-white/5 pt-4 text-[12px] text-gray-500">
         If a referenced value is missing on early bars, or an arithmetic step fails such as division by zero, the comparison evaluates to false.
@@ -181,86 +193,137 @@ function editorHelpHTML(metadata: ResearchConditionExpressionMetadata | null): s
   `
 }
 
-function conditionHelpSectionsHTML(metadata: ResearchConditionExpressionMetadata | null): string {
-  if (!metadata) {
+function buildHelpSections(metadata: ResearchConditionExpressionMetadata | null): HelpSection[] {
+  return [
+    shortcutHelpSection(),
+    ...(metadata ? conditionHelpSections(metadata) : unavailableMetadataSection()),
+  ]
+}
+
+function shortcutHelpSection(): HelpSection {
+  return {
+    title: "Shortcuts",
+    body: `${SHORTCUTS.map(([key, label]) => `${renderKeyLabel(key)} ${label}`).join(", ")}.`,
+  }
+}
+
+function unavailableMetadataSection(): HelpSection[] {
+  return [
+    {
+      title: "Condition syntax",
+      body: "Editor metadata is unavailable until the metadata endpoint loads.",
+    },
+  ]
+}
+
+function conditionHelpSections(metadata: ResearchConditionExpressionMetadata): HelpSection[] {
+  return [
+    {
+      title: "Condition syntax",
+      body: `${escapeHTML(metadata.root_requirement)}. Wrap each condition in quotes and use comparisons or logical combinations as the top-level expression.`,
+    },
+    {
+      title: "Operators",
+      columns: [
+        buildOperatorColumn("Comparison and crossover", metadata.operators, ["comparison"]),
+        buildOperatorColumn("Logic and math", metadata.operators, ["logical", "arithmetic"]),
+      ],
+    },
+    {
+      title: "Functions",
+      rows: metadata.functions.map(renderFunctionHelp),
+    },
+    {
+      title: "Available references",
+      rows: [
+        `Candle fields: ${renderMono(metadata.references.candle_fields.join(" "))}`,
+        `Module outputs: ${renderMono(metadata.references.module_output)}`,
+        `Params: ${renderMono(metadata.references.params_prefix)}`,
+      ],
+    },
+  ]
+}
+
+function renderHelpSection(section: HelpSection, first = false): string {
+  const spacingClass = first ? "mt-3" : "mt-4 border-t border-white/5 pt-4"
+
+  return `
+    <div class="${spacingClass}">
+      <div class="text-gray-300">${escapeHTML(section.title)}</div>
+      ${renderHelpSectionBody(section)}
+    </div>
+  `
+}
+
+function renderHelpSectionBody(section: HelpSection): string {
+  if (section.columns?.length) {
     return `
-      <div class="mt-4 border-t border-white/5 pt-4">
-        <div class="text-gray-300">Condition syntax</div>
-        <div class="mt-2 text-[12px] text-gray-500">
-          Editor metadata is unavailable until the metadata endpoint loads.
-        </div>
+      <div class="mt-2 grid grid-cols-1 gap-3 text-[12px] md:grid-cols-2">
+        ${section.columns.map(renderHelpColumn).join("")}
       </div>
     `
   }
 
-  return `
-    <div class="mt-4 border-t border-white/5 pt-4">
-      <div class="text-gray-300">Condition syntax</div>
-      <div class="mt-2 text-[12px] text-gray-400">
-        ${escapeHTML(metadata.root_requirement)}. Wrap each condition in quotes and use comparisons or logical combinations as the top-level expression.
-      </div>
-    </div>
-
-    <div class="mt-4 border-t border-white/5 pt-4 grid grid-cols-1 gap-3 text-[12px] md:grid-cols-2">
-      ${operatorCategoryHTML("Comparison and crossover", metadata.operators, ["comparison"])}
-      ${operatorCategoryHTML("Logic and math", metadata.operators, ["logical", "arithmetic"])}
-    </div>
-
-    <div class="mt-4 border-t border-white/5 pt-4">
-      <div class="text-gray-300">Functions</div>
+  if (section.rows?.length) {
+    return `
       <div class="mt-2 space-y-2 text-[12px] text-gray-400">
-        ${metadata.functions.map(renderFunctionHelp).join("")}
+        ${section.rows.map(row => `<div>${row}</div>`).join("")}
       </div>
-    </div>
+    `
+  }
 
-    <div class="mt-4 border-t border-white/5 pt-4">
-      <div class="text-gray-300">Available references</div>
-      <div class="mt-2 text-[12px] text-gray-400">
-        Candle fields: <span class="text-white font-mono">${escapeHTML(metadata.references.candle_fields.join(" "))}</span>
-      </div>
-      <div class="mt-1 text-[12px] text-gray-400">
-        Module outputs: <span class="text-white font-mono">${escapeHTML(metadata.references.module_output)}</span>
-      </div>
-      <div class="mt-1 text-[12px] text-gray-400">
-        Params: <span class="text-white font-mono">${escapeHTML(metadata.references.params_prefix)}</span>
+  return `<div class="mt-2 text-[12px] text-gray-400">${section.body || ""}</div>`
+}
+
+function renderHelpColumn(column: HelpColumn): string {
+  return `
+    <div>
+      <div class="text-gray-300">${escapeHTML(column.title)}</div>
+      <div class="mt-2 space-y-1 text-gray-400">
+        ${column.rows.map(row => `<div>${row}</div>`).join("")}
       </div>
     </div>
   `
 }
 
-function operatorCategoryHTML(
+function buildOperatorColumn(
   title: string,
   operators: ResearchConditionExpressionOperator[],
   categories: string[],
-): string {
-  const categoryOperators = operators.filter(operator => categories.includes(operator.category))
-  if (!categoryOperators.length) return ""
+): HelpColumn {
+  const rows = operators
+    .filter(operator => categories.includes(operator.category))
+    .map(renderOperatorHelp)
 
-  return `
-    <div>
-      <div class="text-gray-300">${escapeHTML(title)}</div>
-      <div class="mt-2 space-y-1 text-gray-400">
-        ${categoryOperators.map(renderOperatorHelp).join("")}
-        ${categories.includes("arithmetic") ? `<div><span class="text-white font-mono">(...)</span> grouping and precedence</div>` : ""}
-      </div>
-    </div>
-  `
+  if (categories.includes("arithmetic")) {
+    rows.push(`${renderMono("(...)")} grouping and precedence`)
+  }
+
+  return { title, rows }
+}
+
+function renderKeyLabel(value: string): string {
+  return `<span class="text-white">${escapeHTML(value)}</span>`
+}
+
+function renderMono(value: string): string {
+  return `<span class="text-white font-mono">${escapeHTML(value)}</span>`
 }
 
 function renderOperatorHelp(operator: ResearchConditionExpressionOperator): string {
-  return `<div><span class="text-white font-mono">${escapeHTML(operator.symbol)}</span> ${escapeHTML(operator.label)}</div>`
+  return `${renderMono(operator.symbol)} ${escapeHTML(operator.label)}`
 }
 
 function renderFunctionHelp(fn: ResearchConditionExpressionFunction): string {
   const details = buildFunctionDetail(fn)
-  return `<div><span class="text-white font-mono">${escapeHTML(fn.signature)}</span> ${escapeHTML(fn.description)}${details}</div>`
+  return `${renderMono(fn.signature)} ${escapeHTML(fn.description)}${details}`
 }
 
 function buildFunctionDetail(fn: ResearchConditionExpressionFunction): string {
   if (!fn.positive_integer_literal_indexes.length) return ""
 
   const positions = fn.positive_integer_literal_indexes
-    .map(index => ["first", "second", "third"][index] || `argument ${index + 1}`)
+    .map(index => ARGUMENT_ORDINALS[index] || `argument ${index + 1}`)
     .join(", ")
 
   return ` (${escapeHTML(positions)} must be a positive integer literal)`

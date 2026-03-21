@@ -4,6 +4,35 @@ module Research
   module Dsl
     module ConditionExpression
       class Evaluator
+        ARITHMETIC_OPERATIONS = {
+          '+' => ->(left, right) { left + right },
+          '-' => ->(left, right) { left - right },
+          '*' => ->(left, right) { left * right },
+          '/' => ->(left, right) { right.zero? ? nil : left / right }
+        }.freeze
+
+        CALL_EVALUATORS = {
+          'abs' => lambda { |node, resolve:, **|
+            value = resolve.call(node[:args].first)
+            value&.abs
+          },
+          'min' => lambda { |node, resolve_arguments:, **|
+            values = resolve_arguments.call(node[:args])
+            values&.min
+          },
+          'max' => lambda { |node, resolve_arguments:, **|
+            values = resolve_arguments.call(node[:args])
+            values&.max
+          },
+          'prev' => lambda { |node, resolve:, row_offset:, **|
+            resolve.call(node[:args].first, row_offset + 1)
+          },
+          'offset' => lambda { |node, resolve:, row_offset:, **|
+            offset = node[:args][1][:value].to_i
+            resolve.call(node[:args].first, row_offset + offset)
+          }
+        }.freeze
+
         def initialize(ast, resolver:)
           @ast = ast
           @resolver = resolver
@@ -23,11 +52,11 @@ module Research
             evaluate_boolean(node[:expression], row:, prev_row:, params:)
           when :logical
             left = evaluate_boolean(node[:left], row:, prev_row:, params:)
-            return false if node[:op] == "&&" && !left
-            return true if node[:op] == "||" && left
+            return false if node[:op] == '&&' && !left
+            return true if node[:op] == '||' && left
 
             right = evaluate_boolean(node[:right], row:, prev_row:, params:)
-            node[:op] == "&&" ? (left && right) : (left || right)
+            node[:op] == '&&' ? (left && right) : (left || right)
           when :compare
             evaluate_comparison(node, row:, prev_row:, params:)
           else
@@ -41,17 +70,17 @@ module Research
           return false if left.nil? || right.nil?
 
           case node[:op]
-          when "<"  then left < right
-          when ">"  then left > right
-          when "<=" then left <= right
-          when ">=" then left >= right
-          when "<<"
+          when '<'  then left < right
+          when '>'  then left > right
+          when '<=' then left <= right
+          when '>=' then left >= right
+          when '<<'
             return false unless prev_row
 
             prev_left = resolve_numeric(node[:left], row: prev_row, params:)
             prev_right = resolve_numeric(node[:right], row: prev_row, params:)
             !prev_left.nil? && !prev_right.nil? && prev_left >= prev_right && left < right
-          when ">>"
+          when '>>'
             return false unless prev_row
 
             prev_left = resolve_numeric(node[:left], row: prev_row, params:)
@@ -86,7 +115,7 @@ module Research
           return nil if value.nil?
 
           case node[:op]
-          when "-"
+          when '-'
             -value
           else
             nil
@@ -98,41 +127,25 @@ module Research
           right = resolve_numeric(node[:right], row:, params:, row_offset:)
           return nil if left.nil? || right.nil?
 
-          case node[:op]
-          when "+"
-            left + right
-          when "-"
-            left - right
-          when "*"
-            left * right
-          when "/"
-            return nil if right.zero?
-
-            left / right
-          else
-            nil
-          end
+          operation = ARITHMETIC_OPERATIONS[node[:op]]
+          operation&.call(left, right)
         end
 
         def evaluate_call(node, row:, params:, row_offset:)
-          case node[:name]
-          when "abs"
-            value = resolve_numeric(node[:args][0], row:, params:, row_offset:)
-            value&.abs
-          when "min"
-            values = node[:args].map { |arg| resolve_numeric(arg, row:, params:, row_offset:) }
-            values.any?(&:nil?) ? nil : values.min
-          when "max"
-            values = node[:args].map { |arg| resolve_numeric(arg, row:, params:, row_offset:) }
-            values.any?(&:nil?) ? nil : values.max
-          when "prev"
-            resolve_numeric(node[:args][0], row:, params:, row_offset: row_offset + 1)
-          when "offset"
-            offset = node[:args][1][:value].to_i
-            resolve_numeric(node[:args][0], row:, params:, row_offset: row_offset + offset)
-          else
-            nil
-          end
+          handler = CALL_EVALUATORS[node[:name]]
+          return nil unless handler
+
+          resolve = ->(target_node, target_row_offset = row_offset) { resolve_numeric(target_node, row:, params:, row_offset: target_row_offset) }
+          resolve_arguments = lambda { |nodes, target_row_offset = row_offset|
+            resolve_numeric_arguments(nodes, row:, params:, row_offset: target_row_offset)
+          }
+
+          handler.call(node, resolve:, resolve_arguments:, row_offset:)
+        end
+
+        def resolve_numeric_arguments(nodes, row:, params:, row_offset:)
+          values = nodes.map { |arg| resolve_numeric(arg, row:, params:, row_offset:) }
+          values.any?(&:nil?) ? nil : values
         end
       end
     end

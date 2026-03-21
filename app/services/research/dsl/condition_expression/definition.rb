@@ -9,18 +9,18 @@ module Research
         PARAMS_REFERENCE = 'params.<key>'
 
         OPERATORS = [
-          { symbol: "&&", category: :logical, label: 'Logical and', precedence: 2, register_in_frontend_parser: false },
-          { symbol: "||", category: :logical, label: 'Logical or', precedence: 1, register_in_frontend_parser: false },
-          { symbol: "<<", category: :comparison, label: 'Cross below', precedence: 6, register_in_frontend_parser: true },
-          { symbol: ">>", category: :comparison, label: 'Cross above', precedence: 6, register_in_frontend_parser: true },
-          { symbol: "<", category: :comparison, label: 'Less than', precedence: 6, register_in_frontend_parser: false },
-          { symbol: ">", category: :comparison, label: 'Greater than', precedence: 6, register_in_frontend_parser: false },
-          { symbol: "<=", category: :comparison, label: 'Less or equal', precedence: 6, register_in_frontend_parser: false },
-          { symbol: ">=", category: :comparison, label: 'Greater or equal', precedence: 6, register_in_frontend_parser: false },
-          { symbol: "+", category: :arithmetic, label: 'Addition', precedence: 9, register_in_frontend_parser: false },
-          { symbol: "-", category: :arithmetic, label: 'Subtraction', precedence: 9, register_in_frontend_parser: false },
-          { symbol: "*", category: :arithmetic, label: 'Multiplication', precedence: 10, register_in_frontend_parser: false },
-          { symbol: "/", category: :arithmetic, label: 'Division', precedence: 10, register_in_frontend_parser: false }
+          { symbol: '&&', category: :logical, label: 'Logical and', precedence: 2, register_in_frontend_parser: false },
+          { symbol: '||', category: :logical, label: 'Logical or', precedence: 1, register_in_frontend_parser: false },
+          { symbol: '<<', category: :comparison, label: 'Cross below', precedence: 6, register_in_frontend_parser: true },
+          { symbol: '>>', category: :comparison, label: 'Cross above', precedence: 6, register_in_frontend_parser: true },
+          { symbol: '<', category: :comparison, label: 'Less than', precedence: 6, register_in_frontend_parser: false },
+          { symbol: '>', category: :comparison, label: 'Greater than', precedence: 6, register_in_frontend_parser: false },
+          { symbol: '<=', category: :comparison, label: 'Less or equal', precedence: 6, register_in_frontend_parser: false },
+          { symbol: '>=', category: :comparison, label: 'Greater or equal', precedence: 6, register_in_frontend_parser: false },
+          { symbol: '+', category: :arithmetic, label: 'Addition', precedence: 9, register_in_frontend_parser: false },
+          { symbol: '-', category: :arithmetic, label: 'Subtraction', precedence: 9, register_in_frontend_parser: false },
+          { symbol: '*', category: :arithmetic, label: 'Multiplication', precedence: 10, register_in_frontend_parser: false },
+          { symbol: '/', category: :arithmetic, label: 'Division', precedence: 10, register_in_frontend_parser: false }
         ].freeze
 
         FUNCTIONS = [

@@ -89,9 +89,9 @@ RSpec.describe Research::Dsl::ConditionExpression do
           @history.fetch(row_offset, {}).fetch(key, nil)
         end
       end.new([
-        { close: 12.0, :'ema.value' => 8.0, :'slow.value' => 11.0 },
-        { close: 10.0, :'ema.value' => 7.0, :'slow.value' => 9.0 },
-        { close: 9.0, :'ema.value' => 6.0, :'slow.value' => 8.0 }
+        { close: 12.0, 'ema.value': 8.0, 'slow.value': 11.0 },
+        { close: 10.0, 'ema.value': 7.0, 'slow.value': 9.0 },
+        { close: 9.0, 'ema.value': 6.0, 'slow.value': 8.0 }
       ])
     end
 
@@ -103,21 +103,21 @@ RSpec.describe Research::Dsl::ConditionExpression do
     it 'evaluates arithmetic on the right side of a comparison' do
       row = {
         close: 215.0,
-        :'ema_fast.value' => 220.0,
-        :'ema_slow.value' => 120.0
+        'ema_fast.value': 220.0,
+        'ema_slow.value': 120.0
       }
 
       expect(evaluate('ema_fast.value > ema_slow.value + 50', row:)).to be(true)
     end
 
     it 'supports unary minus in arithmetic expressions' do
-      row = { close: 2.0, :'ema.value' => 4.0 }
+      row = { close: 2.0, 'ema.value': 4.0 }
 
       expect(evaluate('close > -(ema.value - 5)', row:)).to be(true)
     end
 
     it 'evaluates abs/min/max helper functions' do
-      row = { close: 12.0, :'ema.value' => 8.0, :'slow.value' => 11.0 }
+      row = { close: 12.0, 'ema.value': 8.0, 'slow.value': 11.0 }
 
       expect(evaluate('abs(close - ema.value) >= min(4, max(2, slow.value - ema.value))', row:)).to be(true)
     end
@@ -139,14 +139,14 @@ RSpec.describe Research::Dsl::ConditionExpression do
     end
 
     it 'returns false when arithmetic division hits zero' do
-      row = { close: 10.0, :'ema.value' => 5.0 }
+      row = { close: 10.0, 'ema.value': 5.0 }
 
       expect(evaluate('close > ema.value / 0', row:)).to be(false)
     end
 
     it 'handles crossover comparisons when previous values are zero' do
-      row = { :'ema_fast.value' => 1.0, :'ema_slow.value' => 0.0 }
-      prev_row = { :'ema_fast.value' => 0.0, :'ema_slow.value' => 0.0 }
+      row = { 'ema_fast.value': 1.0, 'ema_slow.value': 0.0 }
+      prev_row = { 'ema_fast.value': 0.0, 'ema_slow.value': 0.0 }
 
       expect(evaluate('ema_fast.value >> ema_slow.value', row:, prev_row:)).to be(true)
     end

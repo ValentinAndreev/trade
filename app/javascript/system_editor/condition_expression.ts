@@ -39,18 +39,8 @@ export function collectConditionExpressionDiagnostics(yaml: string): ResearchDsl
   return extractConditionExpressions(yaml).flatMap(entry => {
     try {
       const ast = jsep(entry.expression)
-      const issue = validateAst(ast, entry.expression)
+      const issue = validateNode(ast, entry.expression) || validateRootBoolean(ast, entry.expression, metadata.root_requirement)
       if (issue) return [buildDiagnostic(entry, issue.message, issue.offset, issue.length)]
-      if (expressionKind(ast) !== "boolean") {
-        return [
-          buildDiagnostic(
-            entry,
-            metadata.root_requirement,
-            0,
-            Math.max(entry.expression.length, 1),
-          ),
-        ]
-      }
       return []
     } catch (error) {
       const parseError = error as Error & { index?: number; description?: string }
@@ -78,6 +68,8 @@ type AstValidationIssue = {
   offset: number
   length: number
 }
+
+const ARGUMENT_ORDINALS = ["first", "second", "third"] as const
 
 function configureParser(): void {
   if (configured) return
@@ -163,66 +155,78 @@ function findClosingQuote(value: string, quote: string): number {
   return -1
 }
 
-function validateAst(node: jsep.Expression, expression: string): AstValidationIssue | null {
+function validateNode(node: jsep.Expression, expression: string): AstValidationIssue | null {
   if (!activeConditionExpressionIndex) return null
 
   switch (node.type) {
     case "BinaryExpression":
-      if (!activeConditionExpressionIndex.allowedBinaryOperators.has(node.operator)) {
-        return {
-          message: `Unsupported operator: ${node.operator}`,
-          offset: findOffset(expression, node.operator),
-          length: node.operator.length,
-        }
-      }
-      return validateAst(node.left, expression) || validateAst(node.right, expression)
+      return validateBinary(node, expression)
     case "UnaryExpression":
-      if (node.operator !== "-") {
-        return {
-          message: `Unsupported operator: ${node.operator}`,
-          offset: findOffset(expression, node.operator),
-          length: node.operator.length,
-        }
-      }
-      return validateAst(node.argument, expression)
+      return validateUnary(node, expression)
     case "CallExpression":
-      return validateCallExpression(node, expression)
+      return validateCall(node, expression)
     case "Identifier":
       return null
     case "Literal":
-      return typeof node.value === "number"
-        ? null
-        : {
-            message: "Only numeric literals are supported",
-            offset: findOffset(expression, String(node.raw ?? node.value ?? "")),
-            length: String(node.raw ?? node.value ?? "").length || 1,
-          }
+      return validateLiteral(node, expression)
     case "MemberExpression":
-      if (node.computed || node.object.type !== "Identifier" || node.property.type !== "Identifier") {
-        return {
-          message: "Only dotted references are supported",
-          offset: findOffset(expression, renderMember(node)),
-          length: Math.max(renderMember(node).length, 1),
-        }
-      }
-      return null
-    default:
+      return validateMember(node, expression)
+    default: {
+      const token = extractNodeToken(node)
       return {
         message: `Unsupported syntax: ${node.type}`,
-        offset: findOffset(expression, extractNodeToken(node)),
-        length: Math.max(extractNodeToken(node).length, 1),
+        offset: findOffset(expression, token),
+        length: Math.max(token.length, 1),
       }
+    }
   }
 }
 
-function validateCallExpression(node: jsep.CallExpression, expression: string): AstValidationIssue | null {
+function validateRootBoolean(
+  node: jsep.Expression,
+  expression: string,
+  rootRequirement: string,
+): AstValidationIssue | null {
+  return expressionKind(node) === "boolean"
+    ? null
+    : { message: rootRequirement, offset: 0, length: Math.max(expression.length, 1) }
+}
+
+function validateBinary(node: jsep.BinaryExpression, expression: string): AstValidationIssue | null {
+  if (!activeConditionExpressionIndex) return null
+
+  if (!activeConditionExpressionIndex.allowedBinaryOperators.has(node.operator)) {
+    return {
+      message: `Unsupported operator: ${node.operator}`,
+      offset: findOffset(expression, node.operator),
+      length: node.operator.length,
+    }
+  }
+
+  return validateNode(node.left, expression) || validateNode(node.right, expression)
+}
+
+function validateUnary(node: jsep.UnaryExpression, expression: string): AstValidationIssue | null {
+  if (node.operator !== "-") {
+    return {
+      message: `Unsupported operator: ${node.operator}`,
+      offset: findOffset(expression, node.operator),
+      length: node.operator.length,
+    }
+  }
+
+  return validateNode(node.argument, expression)
+}
+
+function validateCall(node: jsep.CallExpression, expression: string): AstValidationIssue | null {
   if (!activeConditionExpressionIndex) return null
 
   if (node.callee.type !== "Identifier") {
+    const token = extractNodeToken(node)
     return {
       message: "Only simple function calls are supported",
-      offset: findOffset(expression, extractNodeToken(node)),
-      length: Math.max(extractNodeToken(node).length, 1),
+      offset: findOffset(expression, token),
+      length: Math.max(token.length, 1),
     }
   }
 
@@ -236,7 +240,7 @@ function validateCallExpression(node: jsep.CallExpression, expression: string): 
     }
   }
 
-  const nestedIssue = node.arguments.map(argument => validateAst(argument, expression)).find(Boolean)
+  const nestedIssue = node.arguments.map(argument => validateNode(argument, expression)).find(Boolean)
   if (nestedIssue) return nestedIssue
 
   if (!hasValidArity(node.arguments.length, functionDefinition)) {
@@ -255,6 +259,28 @@ function validateCallExpression(node: jsep.CallExpression, expression: string): 
     offset: findOffset(expression, functionName),
     length: functionName.length,
   }
+}
+
+function validateLiteral(node: jsep.Literal, expression: string): AstValidationIssue | null {
+  return typeof node.value === "number"
+    ? null
+    : {
+        message: "Only numeric literals are supported",
+        offset: findOffset(expression, String(node.raw ?? node.value ?? "")),
+        length: String(node.raw ?? node.value ?? "").length || 1,
+      }
+}
+
+function validateMember(node: jsep.MemberExpression, expression: string): AstValidationIssue | null {
+  if (node.computed || node.object.type !== "Identifier" || node.property.type !== "Identifier") {
+    return {
+      message: "Only dotted references are supported",
+      offset: findOffset(expression, renderMember(node)),
+      length: Math.max(renderMember(node).length, 1),
+    }
+  }
+
+  return null
 }
 
 function expressionKind(node: jsep.Expression): ExpressionKind | null {
@@ -368,6 +394,6 @@ function arityErrorMessage(fn: ResearchConditionExpressionFunction): string {
 }
 
 function positiveIntegerLiteralErrorMessage(fn: ResearchConditionExpressionFunction, index: number): string {
-  const ordinal = ["first", "second", "third"][index] || `argument ${index + 1}`
+  const ordinal = ARGUMENT_ORDINALS[index] || `argument ${index + 1}`
   return `${fn.name}() expects a positive integer literal as the ${ordinal} argument`
 }
