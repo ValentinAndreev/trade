@@ -168,6 +168,18 @@ describe("frontend/backend parser parity", () => {
     expect(rejects("close > offset(close, ema.value)")).toBe(true)
   })
 
+  it("rejects logical expressions with numeric branches", () => {
+    expect(rejects("close > ema.value && close")).toBe(true)
+  })
+
+  it("rejects arithmetic expressions with boolean sub-expressions", () => {
+    expect(rejects("close > ema.value + (rsi.value > 50)")).toBe(true)
+  })
+
+  it("rejects numeric helper functions called with boolean arguments", () => {
+    expect(rejects("close > abs((rsi.value > 50))")).toBe(true)
+  })
+
   it("reports an error for a quoted empty expression", () => {
     // The frontend extractor picks up the empty string inside quotes and jsep
     // raises a parse error; the backend Validator rejects an empty condition

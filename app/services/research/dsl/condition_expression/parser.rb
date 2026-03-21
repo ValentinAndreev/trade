@@ -31,7 +31,7 @@ module Research
           node = parse_or
           token = current_token
           raise ParseError.new("Unexpected token: #{token.value}", offset: token.offset, length: token.length) if token
-          raise ParseError.new('Condition expression must evaluate to a boolean comparison', offset: 0, length: text.length) unless boolean_expression?(node)
+          raise ParseError.new('Condition expression must evaluate to a boolean comparison', offset: 0, length: text.length) unless expression_kind(node) == :boolean
 
           node
         end
@@ -229,19 +229,48 @@ module Research
           tokens[index - 1]
         end
 
-        def boolean_expression?(node)
+        def expression_kind(node)
           case node[:type]
-          when :compare, :logical
-            true
           when :group
-            boolean_expression?(node[:expression])
+            expression_kind(node[:expression])
+          when :logical
+            left_kind = expression_kind(node[:left])
+            right_kind = expression_kind(node[:right])
+            left_kind == :boolean && right_kind == :boolean ? :boolean : nil
+          when :compare
+            left_kind = expression_kind(node[:left])
+            right_kind = expression_kind(node[:right])
+            left_kind == :numeric && right_kind == :numeric ? :boolean : nil
+          when :number, :reference
+            :numeric
+          when :unary
+            expression_kind(node[:expression]) == :numeric ? :numeric : nil
+          when :arithmetic
+            left_kind = expression_kind(node[:left])
+            right_kind = expression_kind(node[:right])
+            left_kind == :numeric && right_kind == :numeric ? :numeric : nil
+          when :call
+            call_expression_kind(node)
           else
-            false
+            nil
           end
         end
 
         def positive_integer_literal?(node)
           node[:type] == :number && node[:value].positive? && node[:value].to_i == node[:value]
+        end
+
+        def call_expression_kind(node)
+          case node[:name]
+          when "abs", "prev"
+            expression_kind(node[:args][0]) == :numeric ? :numeric : nil
+          when "min", "max"
+            node[:args].all? { |arg| expression_kind(arg) == :numeric } ? :numeric : nil
+          when "offset"
+            expression_kind(node[:args][0]) == :numeric && expression_kind(node[:args][1]) == :numeric ? :numeric : nil
+          else
+            nil
+          end
         end
       end
     end

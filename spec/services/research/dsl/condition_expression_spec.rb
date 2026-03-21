@@ -37,6 +37,33 @@ RSpec.describe Research::Dsl::ConditionExpression do
         'offset() expects a positive integer literal as the second argument'
       )
     end
+
+    it 'rejects logical expressions with numeric branches' do
+      expect do
+        described_class.new('close > ema.value && close').parse
+      end.to raise_error(
+        Research::Dsl::ConditionExpression::ParseError,
+        'Condition expression must evaluate to a boolean comparison'
+      )
+    end
+
+    it 'rejects arithmetic expressions with boolean sub-expressions' do
+      expect do
+        described_class.new('close > ema.value + (rsi.value > 50)').parse
+      end.to raise_error(
+        Research::Dsl::ConditionExpression::ParseError,
+        'Condition expression must evaluate to a boolean comparison'
+      )
+    end
+
+    it 'rejects numeric helper functions called with boolean arguments' do
+      expect do
+        described_class.new('close > abs((rsi.value > 50))').parse
+      end.to raise_error(
+        Research::Dsl::ConditionExpression::ParseError,
+        'Condition expression must evaluate to a boolean comparison'
+      )
+    end
   end
 
   describe Research::Dsl::ConditionExpression::Evaluator do

@@ -116,5 +116,25 @@ RSpec.describe Research::Dsl::Validator do
       expect(result).to be_invalid
       expect(result.diagnostics.map(&:message)).to include('Unknown module reference: missing.value')
     end
+
+    it 'rejects condition expressions with non-boolean logical branches' do
+      yaml = <<~YAML
+        id: bad
+        name: Broken
+        modules:
+          ema_fast:
+            type: ema
+            period: 10
+        params:
+          position_mode: long_short
+        conditions:
+          long_entry: "close > ema_fast.value && close"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:message)).to include('Condition expression must evaluate to a boolean comparison')
+    end
   end
 end

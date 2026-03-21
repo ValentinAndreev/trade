@@ -1,8 +1,14 @@
 import jsep from "jsep"
 import type { ResearchDslDiagnostic } from "../research/dsl"
 
-const ALLOWED_BINARY_OPERATORS = new Set(["&&", "||", "<<", ">>", "<", ">", "<=", ">=", "+", "-", "*", "/"])
-const BOOLEAN_BINARY_OPERATORS = new Set(["&&", "||", "<<", ">>", "<", ">", "<=", ">="])
+const LOGICAL_BINARY_OPERATORS = new Set(["&&", "||"])
+const COMPARISON_BINARY_OPERATORS = new Set(["<<", ">>", "<", ">", "<=", ">="])
+const ARITHMETIC_BINARY_OPERATORS = new Set(["+", "-", "*", "/"])
+const ALLOWED_BINARY_OPERATORS = new Set([
+  ...LOGICAL_BINARY_OPERATORS,
+  ...COMPARISON_BINARY_OPERATORS,
+  ...ARITHMETIC_BINARY_OPERATORS,
+])
 const ALLOWED_FUNCTIONS = new Set(["abs", "min", "max", "prev", "offset"])
 const CONDITIONS_HEADER_RE = /^(\s*)conditions:\s*(?:#.*)?$/
 const CONDITION_LINE_RE = /^(\s*)([a-z_][a-z0-9_]*)\s*:\s*(.+?)\s*$/i
@@ -19,7 +25,7 @@ export function collectConditionExpressionDiagnostics(yaml: string): ResearchDsl
       const ast = jsep(entry.expression)
       const issue = validateAst(ast, entry.expression)
       if (issue) return [buildDiagnostic(entry, issue.message, issue.offset, issue.length)]
-      if (!isBooleanConditionAst(ast)) {
+      if (expressionKind(ast) !== "boolean") {
         return [
           buildDiagnostic(
             entry,
@@ -246,9 +252,59 @@ function validateCallExpression(node: jsep.CallExpression, expression: string): 
   }
 }
 
-function isBooleanConditionAst(node: jsep.Expression): boolean {
-  if (node.type !== "BinaryExpression") return false
-  return BOOLEAN_BINARY_OPERATORS.has(node.operator)
+function expressionKind(node: jsep.Expression): "boolean" | "numeric" | null {
+  switch (node.type) {
+    case "BinaryExpression":
+      return binaryExpressionKind(node)
+    case "UnaryExpression":
+      return node.operator === "-" && expressionKind(node.argument) === "numeric" ? "numeric" : null
+    case "CallExpression":
+      return callExpressionKind(node)
+    case "Identifier":
+      return "numeric"
+    case "Literal":
+      return typeof node.value === "number" ? "numeric" : null
+    case "MemberExpression":
+      return node.computed || node.object.type !== "Identifier" || node.property.type !== "Identifier" ? null : "numeric"
+    default:
+      return null
+  }
+}
+
+function binaryExpressionKind(node: jsep.BinaryExpression): "boolean" | "numeric" | null {
+  const leftKind = expressionKind(node.left)
+  const rightKind = expressionKind(node.right)
+
+  if (LOGICAL_BINARY_OPERATORS.has(node.operator)) {
+    return leftKind === "boolean" && rightKind === "boolean" ? "boolean" : null
+  }
+
+  if (COMPARISON_BINARY_OPERATORS.has(node.operator)) {
+    return leftKind === "numeric" && rightKind === "numeric" ? "boolean" : null
+  }
+
+  if (ARITHMETIC_BINARY_OPERATORS.has(node.operator)) {
+    return leftKind === "numeric" && rightKind === "numeric" ? "numeric" : null
+  }
+
+  return null
+}
+
+function callExpressionKind(node: jsep.CallExpression): "numeric" | null {
+  if (node.callee.type !== "Identifier") return null
+
+  switch (node.callee.name) {
+    case "abs":
+    case "prev":
+      return expressionKind(node.arguments[0]) === "numeric" ? "numeric" : null
+    case "min":
+    case "max":
+      return node.arguments.every(argument => expressionKind(argument) === "numeric") ? "numeric" : null
+    case "offset":
+      return expressionKind(node.arguments[0]) === "numeric" && isPositiveIntegerLiteral(node.arguments[1]) ? "numeric" : null
+    default:
+      return null
+  }
 }
 
 function isPositiveIntegerLiteral(node: jsep.Expression): boolean {
