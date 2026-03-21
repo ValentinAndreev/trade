@@ -16,7 +16,8 @@ module Research
       class Parser
         Token = Struct.new(:type, :value, :offset, :length, keyword_init: true)
 
-        OPERATORS = %w[&& || << >> <= >= < > ( )].freeze
+        OPERATORS = %w[&& || << >> <= >= + - * / < > ( ) ,].freeze
+        FUNCTIONS = %w[abs min max prev offset].freeze
 
         def initialize(text)
           @text = text.to_s
@@ -30,6 +31,7 @@ module Research
           node = parse_or
           token = current_token
           raise ParseError.new("Unexpected token: #{token.value}", offset: token.offset, length: token.length) if token
+          raise ParseError.new('Condition expression must evaluate to a boolean comparison', offset: 0, length: text.length) unless boolean_expression?(node)
 
           node
         end
@@ -60,12 +62,38 @@ module Research
         end
 
         def parse_comparison
-          left = parse_primary
+          left = parse_additive
           return left unless match?(:operator, "<<", ">>", "<", ">", "<=", ">=")
 
           op = previous_token
-          right = parse_primary
+          right = parse_additive
           { type: :compare, op: op.value, left: left, right: right }
+        end
+
+        def parse_additive
+          left = parse_multiplicative
+          while match?(:operator, "+", "-")
+            op = previous_token
+            right = parse_multiplicative
+            left = { type: :arithmetic, op: op.value, left: left, right: right }
+          end
+          left
+        end
+
+        def parse_multiplicative
+          left = parse_unary
+          while match?(:operator, "*", "/")
+            op = previous_token
+            right = parse_unary
+            left = { type: :arithmetic, op: op.value, left: left, right: right }
+          end
+          left
+        end
+
+        def parse_unary
+          return parse_primary unless match?(:operator, "-")
+
+          { type: :unary, op: previous_token.value, expression: parse_unary }
         end
 
         def parse_primary
@@ -84,11 +112,58 @@ module Research
             return { type: :number, value: previous_token.value.to_f }
           end
 
-          if match?(:reference)
-            return { type: :reference, value: previous_token.value }
+          if token.type == :reference
+            return parse_reference_or_call
           end
 
           raise ParseError.new("Unexpected token: #{token.value}", offset: token.offset, length: token.length)
+        end
+
+        def parse_reference_or_call
+          token = current_token
+          advance_token
+
+          return { type: :reference, value: token.value } unless current_token&.type == :operator && current_token.value == "("
+
+          raise ParseError.new("Unsupported function: #{token.value}", offset: token.offset, length: token.length) unless FUNCTIONS.include?(token.value)
+
+          advance_token
+          args = parse_call_arguments
+          validate_call!(token, args)
+
+          { type: :call, name: token.value, args: args }
+        end
+
+        def parse_call_arguments
+          args = []
+          return args if match?(:operator, ")")
+
+          loop do
+            args << parse_additive
+            return args if match?(:operator, ")")
+
+            token = current_token
+            raise ParseError.new('Expected comma or closing parenthesis', offset: text.length) unless match?(:operator, ",")
+            raise ParseError.new('Expected expression after comma', offset: token.offset, length: token.length) unless current_token
+          end
+        end
+
+        def validate_call!(token, args)
+          case token.value
+          when "abs", "prev"
+            return if args.length == 1
+
+            raise ParseError.new("#{token.value}() expects exactly 1 argument", offset: token.offset, length: token.length)
+          when "min", "max"
+            return if args.length >= 2
+
+            raise ParseError.new("#{token.value}() expects at least 2 arguments", offset: token.offset, length: token.length)
+          when "offset"
+            raise ParseError.new('offset() expects exactly 2 arguments', offset: token.offset, length: token.length) unless args.length == 2
+            return if positive_integer_literal?(args[1])
+
+            raise ParseError.new('offset() expects a positive integer literal as the second argument', offset: token.offset, length: token.length)
+          end
         end
 
         def tokenize
@@ -110,7 +185,7 @@ module Research
               next
             end
 
-            number_match = text[pos..].match(/\A-?\d+(?:\.\d+)?/)
+            number_match = text[pos..].match(/\A\d+(?:\.\d+)?/)
             if number_match
               value = number_match[0]
               tokens << Token.new(type: :number, value: value, offset: pos, length: value.length)
@@ -152,6 +227,21 @@ module Research
 
         def previous_token
           tokens[index - 1]
+        end
+
+        def boolean_expression?(node)
+          case node[:type]
+          when :compare, :logical
+            true
+          when :group
+            boolean_expression?(node[:expression])
+          else
+            false
+          end
+        end
+
+        def positive_integer_literal?(node)
+          node[:type] == :number && node[:value].positive? && node[:value].to_i == node[:value]
         end
       end
     end

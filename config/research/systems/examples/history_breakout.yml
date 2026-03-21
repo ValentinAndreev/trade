@@ -1,0 +1,20 @@
+id: history_breakout
+name: History Breakout
+
+modules:
+  ema:
+    type: ema
+    period: 20
+
+params:
+  position_mode: long_short
+
+conditions:
+  long_entry: "(close > max(prev(close), offset(close, 2))) && (close > ema.value)"
+  long_exit: "(close < prev(close)) || (close < ema.value)"
+  short_entry: "(close < min(prev(close), offset(close, 2))) && (close < ema.value)"
+  short_exit: "(close > prev(close)) || (close > ema.value)"
+
+optimization:
+  targets:
+    - ema.period

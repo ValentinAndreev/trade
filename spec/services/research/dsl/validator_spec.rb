@@ -76,5 +76,45 @@ RSpec.describe Research::Dsl::Validator do
       expect(result).to be_invalid
       expect(result.diagnostics.map(&:message)).to include('Missing required key: type')
     end
+
+    it 'validates references nested inside arithmetic expressions' do
+      yaml = <<~YAML
+        id: bad
+        name: Broken
+        modules:
+          ema_fast:
+            type: ema
+            period: 10
+        params:
+          position_mode: long_short
+        conditions:
+          long_entry: "close > ema_fast.value + missing.value"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:message)).to include('Unknown module reference: missing.value')
+    end
+
+    it 'validates references nested inside helper function calls' do
+      yaml = <<~YAML
+        id: bad
+        name: Broken
+        modules:
+          ema_fast:
+            type: ema
+            period: 10
+        params:
+          position_mode: long_short
+        conditions:
+          long_entry: "abs(offset(missing.value, 2) - ema_fast.value) > 5"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:message)).to include('Unknown module reference: missing.value')
+    end
   end
 end

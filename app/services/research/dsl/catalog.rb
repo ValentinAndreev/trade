@@ -77,7 +77,7 @@ module Research
         #   keywords ← items in arrays named: root_keys, keys, rule_keys
         #              keys of hashes named:  params
         #   values   ← items in arrays named: fields, module, values
-        #              keys of hashes named:  types, operators
+        #              keys of hashes named:  types, operators, functions
         def collect_highlight_tokens(node, keywords, values, parent_key = nil)
           case node
           when Array
@@ -87,7 +87,7 @@ module Research
             end
           when Hash
             keywords.concat(node.keys) if parent_key == 'params'
-            values.concat(node.keys)   if %w[types operators].include?(parent_key)
+            values.concat(node.keys)   if %w[types operators functions].include?(parent_key)
             node.each { |key, child| collect_highlight_tokens(child, keywords, values, key) }
           end
         end

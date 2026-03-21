@@ -119,15 +119,15 @@ module Research
       end
     end
 
-    def resolve_reference(ref, row:, params:)
+    def resolve_reference(ref, row:, params:, row_offset: 0)
       reference = ref.to_s
-      return to_f_or_nil(row.dig(:bar, reference.to_sym)) if BAR_FIELDS.include?(reference)
+      return to_f_or_nil(resolve_row_value(row, row_offset, :bar, reference.to_sym)) if BAR_FIELDS.include?(reference)
       return to_f_or_nil(params[reference.delete_prefix('params.').to_sym]) if reference.start_with?('params.')
 
       module_name, attribute = reference.split('.', 2)
       return nil unless attribute == 'value'
 
-      to_f_or_nil(row.dig(:result, module_name.to_sym, :value))
+      to_f_or_nil(resolve_row_value(row, row_offset, :result, module_name.to_sym, :value))
     end
 
     def target_label(target)
@@ -180,6 +180,14 @@ module Research
       f = Float(value)
       f.finite? ? f : nil
     rescue ArgumentError, TypeError
+      nil
+    end
+
+    def resolve_row_value(row, row_offset, *path)
+      offset = row_offset.to_i
+      return row.dig(*path) if offset.zero?
+      return row.dig_at(offset, *path) if row.respond_to?(:dig_at)
+
       nil
     end
 

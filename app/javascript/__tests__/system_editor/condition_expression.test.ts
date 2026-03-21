@@ -30,7 +30,7 @@ describe("system editor condition expression diagnostics", () => {
     ])
   })
 
-  it("reports unsupported operators immediately", () => {
+  it("rejects arithmetic expressions that do not produce a boolean condition", () => {
     const yaml = [
       "conditions:",
       '  long_entry: "close + ema.value"',
@@ -38,9 +38,9 @@ describe("system editor condition expression diagnostics", () => {
 
     expect(collectConditionExpressionDiagnostics(yaml)).toEqual([
       expect.objectContaining({
-        message: "Unsupported operator: +",
+        message: "Condition expression must evaluate to a boolean comparison",
         line: 2,
-        column: 22,
+        column: 16,
         code: "condition_expression_syntax",
       }),
     ])
@@ -114,21 +114,41 @@ describe("frontend/backend parser parity", () => {
     expect(accepts("(a.value >> b.value) && (c.value < 100) || (d.value > 0)")).toBe(true)
   })
 
+  it("accepts arithmetic on the right side of a comparison", () => {
+    expect(accepts("ema_fast.value >> ema_slow.value - 100")).toBe(true)
+  })
+
+  it("accepts arithmetic precedence with parentheses", () => {
+    expect(accepts("close > (ema_fast.value + ema_slow.value) / 2")).toBe(true)
+  })
+
+  it("accepts unary minus inside arithmetic expressions", () => {
+    expect(accepts("close > -(ema.value - 5)")).toBe(true)
+  })
+
+  it("accepts abs/min/max helper functions", () => {
+    expect(accepts("abs(close - ema.value) >= min(4, max(2, slow.value - ema.value))")).toBe(true)
+  })
+
+  it("accepts prev and offset helper functions", () => {
+    expect(accepts("close > max(prev(close), offset(close, 2))")).toBe(true)
+  })
+
   // --- Expressions that BOTH parsers must reject ---
 
-  it("rejects unsupported arithmetic operator +", () => {
+  it("rejects bare arithmetic expression +", () => {
     expect(rejects("close + ema.value")).toBe(true)
   })
 
-  it("rejects unsupported arithmetic operator -", () => {
+  it("rejects bare arithmetic expression -", () => {
     expect(rejects("close - ema.value")).toBe(true)
   })
 
-  it("rejects unsupported arithmetic operator *", () => {
+  it("rejects bare arithmetic expression *", () => {
     expect(rejects("close * ema.value")).toBe(true)
   })
 
-  it("rejects unsupported arithmetic operator /", () => {
+  it("rejects bare arithmetic expression /", () => {
     expect(rejects("close / ema.value")).toBe(true)
   })
 
@@ -138,6 +158,14 @@ describe("frontend/backend parser parity", () => {
 
   it("rejects syntax error: unmatched parenthesis", () => {
     expect(rejects("(close >> ema.value")).toBe(true)
+  })
+
+  it("rejects unsupported helper functions", () => {
+    expect(rejects("close > foo(close)")).toBe(true)
+  })
+
+  it("rejects offset with a dynamic second argument", () => {
+    expect(rejects("close > offset(close, ema.value)")).toBe(true)
   })
 
   it("reports an error for a quoted empty expression", () => {

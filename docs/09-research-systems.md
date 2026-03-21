@@ -155,7 +155,9 @@ params:
 - ссылки на модули: `<alias>.value`;
 - ссылки на параметры: `params.<key>`;
 - числа;
-- операторы `>>`, `<<`, `>`, `>=`, `<`, `<=`, `&&`, `||`.
+- операторы `>>`, `<<`, `>`, `>=`, `<`, `<=`, `&&`, `||`, `+`, `-`, `*`, `/`;
+- функции `abs()`, `min()`, `max()`, `prev()`, `offset()`;
+- круглые скобки для группировки.
 
 Пример:
 
@@ -165,12 +167,53 @@ conditions:
   long_exit: "ema_fast.value << ema_slow.value"
 ```
 
+Пример с арифметикой и history helpers:
+
+```yaml
+conditions:
+  long_entry: "close > max(prev(close), offset(close, 2))"
+  long_exit: "abs(close - ema_fast.value) < 20"
+  short_entry: "ema_fast.value < min(prev(ema_fast.value), ema_slow.value)"
+  short_exit: "close > prev(close)"
+```
+
 Семантика операторов:
 
 - `>>` — cross above;
 - `<<` — cross below;
 - `&&` — логическое И;
 - `||` — логическое ИЛИ.
+
+Арифметика:
+
+- `+`, `-`, `*`, `/` работают внутри числовых выражений;
+- приоритет стандартный: сначала unary `-`, затем `*`/`/`, затем `+`/`-`, затем сравнения, затем `&&`/`||`;
+- корень условия должен быть boolean-выражением, например `close > ema.value + 10`, а не просто `close + ema.value`.
+
+Функции:
+
+| Функция | Аргументы | Описание |
+| --- | --- | --- |
+| `abs(x)` | 1 | Модуль значения |
+| `min(a, b, ...)` | 2+ | Минимум из аргументов |
+| `max(a, b, ...)` | 2+ | Максимум из аргументов |
+| `prev(x)` | 1 | Значение выражения на 1 бар назад |
+| `offset(x, n)` | 2 | Значение выражения на `n` баров назад, где `n` — положительный integer literal |
+
+Полезные примеры:
+
+- `ema_fast.value >> ema_slow.value - 100`
+- `abs(close - ema.value) > 50`
+- `close > prev(close)`
+- `close > max(prev(close), offset(close, 2))`
+- `rsi_filter.value < min(params.upper_threshold, 25)`
+
+Ограничения и поведение:
+
+- `prev()` и `offset()` работают только по прошлым барам, вперёд смотреть нельзя;
+- если на ранних барах история ещё недоступна, выражение даёт `nil`, а итоговое сравнение становится `false`;
+- деление на ноль не выбрасывает exception, а приводит к `false` на уровне сравнения;
+- `offset()` принимает только literal вроде `offset(close, 3)`, а не динамическое `offset(close, params.lookback)`.
 
 ### optimization
 

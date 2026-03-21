@@ -1,0 +1,32 @@
+id: midpoint_filter
+name: Midpoint Filter
+
+modules:
+  ema_fast:
+    type: ema
+    period: 10
+  ema_slow:
+    type: ema
+    period: 30
+  rsi:
+    type: rsi
+    period: 14
+
+params:
+  position_mode: long_short
+  lower_threshold: 35
+  upper_threshold: 65
+
+conditions:
+  long_entry: "(close > (ema_fast.value + ema_slow.value) / 2) && (rsi.value < min(params.upper_threshold, 60))"
+  long_exit: "close < (ema_fast.value + ema_slow.value) / 2"
+  short_entry: "(close < (ema_fast.value + ema_slow.value) / 2) && (rsi.value > max(params.lower_threshold, 40))"
+  short_exit: "close > (ema_fast.value + ema_slow.value) / 2"
+
+optimization:
+  targets:
+    - ema_fast.period
+    - ema_slow.period
+    - rsi.period
+    - params.lower_threshold
+    - params.upper_threshold

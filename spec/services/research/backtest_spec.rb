@@ -65,6 +65,24 @@ RSpec.describe Research::Backtest do
     YAML
   end
 
+  let(:history_helper_system) do
+    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+      id: history_helper_system
+      name: History Helper System
+      modules:
+        ema:
+          type: ema
+          period: 3
+      params:
+        position_mode: long_short
+      conditions:
+        long_entry: "close > max(prev(close), offset(close, 2))"
+        long_exit: "close < prev(close)"
+        short_entry: "close < min(prev(close), offset(close, 2))"
+        short_exit: "close > prev(close)"
+    YAML
+  end
+
   before do
     Rails.cache.clear
 
@@ -128,6 +146,17 @@ RSpec.describe Research::Backtest do
         position_mode: 'long_short',
         ema_slow_period: 5
       )
+      expect(result[:trades]).to be_an(Array)
+      expect(result[:trades]).not_to be_empty
+    end
+
+    it 'supports prev and offset helper functions in signal conditions' do
+      result = described_class.new(
+        system: history_helper_system, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      ).run(params: { ema_period: 3, position_mode: 'long_short' })
+
+      expect(result[:params]).to include(ema_period: 3, position_mode: 'long_short')
       expect(result[:trades]).to be_an(Array)
       expect(result[:trades]).not_to be_empty
     end

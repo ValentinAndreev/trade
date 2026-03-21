@@ -35,14 +35,41 @@ module Research
         end
       end
 
+      def dig_at(offset, *keys)
+        return nil if keys.empty?
+
+        target_index = index - offset.to_i
+        return nil if target_index.negative?
+
+        case keys.first
+        when :time
+          keys.length == 1 ? candle_at(target_index)[:time] : nil
+        when :bar
+          dig_value(candle_at(target_index), keys.drop(1))
+        when :result
+          module_name = keys[1]
+          dig_value(module_result_at(module_name, target_index), keys.drop(2))
+        else
+          nil
+        end
+      end
+
       private
 
       def candle
         candles[index] || EMPTY_HASH
       end
 
+      def candle_at(target_index)
+        candles[target_index] || EMPTY_HASH
+      end
+
       def module_result(module_name)
         (module_series[module_name.to_sym] || EMPTY_SERIES)[index] || EMPTY_HASH
+      end
+
+      def module_result_at(module_name, target_index)
+        (module_series[module_name.to_sym] || EMPTY_SERIES)[target_index] || EMPTY_HASH
       end
 
       def current_results

@@ -52,9 +52,13 @@ module Research
           case node[:type]
           when :reference
             refs << node[:value]
-          when :logical, :compare
+          when :logical, :compare, :arithmetic
             extract_references(node[:left], refs)
             extract_references(node[:right], refs)
+          when :unary
+            extract_references(node[:expression], refs)
+          when :call
+            node[:args].each { |arg| extract_references(arg, refs) }
           when :group
             extract_references(node[:expression], refs)
           end

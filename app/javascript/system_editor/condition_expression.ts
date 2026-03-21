@@ -1,7 +1,9 @@
 import jsep from "jsep"
 import type { ResearchDslDiagnostic } from "../research/dsl"
 
-const ALLOWED_BINARY_OPERATORS = new Set(["&&", "||", "<<", ">>", "<", ">", "<=", ">="])
+const ALLOWED_BINARY_OPERATORS = new Set(["&&", "||", "<<", ">>", "<", ">", "<=", ">=", "+", "-", "*", "/"])
+const BOOLEAN_BINARY_OPERATORS = new Set(["&&", "||", "<<", ">>", "<", ">", "<=", ">="])
+const ALLOWED_FUNCTIONS = new Set(["abs", "min", "max", "prev", "offset"])
 const CONDITIONS_HEADER_RE = /^(\s*)conditions:\s*(?:#.*)?$/
 const CONDITION_LINE_RE = /^(\s*)([a-z_][a-z0-9_]*)\s*:\s*(.+?)\s*$/i
 
@@ -16,7 +18,18 @@ export function collectConditionExpressionDiagnostics(yaml: string): ResearchDsl
     try {
       const ast = jsep(entry.expression)
       const issue = validateAst(ast, entry.expression)
-      return issue ? [buildDiagnostic(entry, issue.message, issue.offset, issue.length)] : []
+      if (issue) return [buildDiagnostic(entry, issue.message, issue.offset, issue.length)]
+      if (!isBooleanConditionAst(ast)) {
+        return [
+          buildDiagnostic(
+            entry,
+            "Condition expression must evaluate to a boolean comparison",
+            0,
+            Math.max(entry.expression.length, 1),
+          ),
+        ]
+      }
+      return []
     } catch (error) {
       const parseError = error as Error & { index?: number; description?: string }
       return [
@@ -137,6 +150,17 @@ function validateAst(node: jsep.Expression, expression: string): AstValidationIs
         }
       }
       return validateAst(node.left, expression) || validateAst(node.right, expression)
+    case "UnaryExpression":
+      if (node.operator !== "-") {
+        return {
+          message: `Unsupported operator: ${node.operator}`,
+          offset: findOffset(expression, node.operator),
+          length: node.operator.length,
+        }
+      }
+      return validateAst(node.argument, expression)
+    case "CallExpression":
+      return validateCallExpression(node, expression)
     case "Identifier":
       return null
     case "Literal":
@@ -165,6 +189,72 @@ function validateAst(node: jsep.Expression, expression: string): AstValidationIs
   }
 }
 
+function validateCallExpression(node: jsep.CallExpression, expression: string): AstValidationIssue | null {
+  if (node.callee.type !== "Identifier") {
+    return {
+      message: "Only simple function calls are supported",
+      offset: findOffset(expression, extractNodeToken(node)),
+      length: Math.max(extractNodeToken(node).length, 1),
+    }
+  }
+
+  const functionName = node.callee.name
+  if (!ALLOWED_FUNCTIONS.has(functionName)) {
+    return {
+      message: `Unsupported function: ${functionName}`,
+      offset: findOffset(expression, functionName),
+      length: functionName.length,
+    }
+  }
+
+  const nestedIssue = node.arguments.map(argument => validateAst(argument, expression)).find(Boolean)
+  if (nestedIssue) return nestedIssue
+
+  switch (functionName) {
+    case "abs":
+    case "prev":
+      if (node.arguments.length === 1) return null
+      return {
+        message: `${functionName}() expects exactly 1 argument`,
+        offset: findOffset(expression, functionName),
+        length: functionName.length,
+      }
+    case "min":
+    case "max":
+      if (node.arguments.length >= 2) return null
+      return {
+        message: `${functionName}() expects at least 2 arguments`,
+        offset: findOffset(expression, functionName),
+        length: functionName.length,
+      }
+    case "offset":
+      if (node.arguments.length !== 2) {
+        return {
+          message: "offset() expects exactly 2 arguments",
+          offset: findOffset(expression, functionName),
+          length: functionName.length,
+        }
+      }
+      if (isPositiveIntegerLiteral(node.arguments[1])) return null
+      return {
+        message: "offset() expects a positive integer literal as the second argument",
+        offset: findOffset(expression, functionName),
+        length: functionName.length,
+      }
+    default:
+      return null
+  }
+}
+
+function isBooleanConditionAst(node: jsep.Expression): boolean {
+  if (node.type !== "BinaryExpression") return false
+  return BOOLEAN_BINARY_OPERATORS.has(node.operator)
+}
+
+function isPositiveIntegerLiteral(node: jsep.Expression): boolean {
+  return node.type === "Literal" && typeof node.value === "number" && Number.isInteger(node.value) && node.value > 0
+}
+
 function renderMember(node: jsep.MemberExpression): string {
   if (node.object.type !== "Identifier" || node.property.type !== "Identifier") return ""
   return `${node.object.name}.${node.property.name}`
@@ -174,6 +264,7 @@ function extractNodeToken(node: jsep.Expression): string {
   if ("operator" in node && typeof node.operator === "string") return node.operator
   if ("name" in node && typeof node.name === "string") return node.name
   if ("raw" in node && typeof node.raw === "string") return node.raw
+  if (node.type === "CallExpression" && node.callee.type === "Identifier") return node.callee.name
   if (node.type === "MemberExpression") return renderMember(node)
   return ""
 }

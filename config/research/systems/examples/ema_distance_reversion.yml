@@ -1,0 +1,24 @@
+id: ema_distance_reversion
+name: EMA Distance Reversion
+
+modules:
+  ema:
+    type: ema
+    period: 34
+
+params:
+  position_mode: long_short
+  lower_threshold: 10
+  upper_threshold: 30
+
+conditions:
+  long_entry: "(close < ema.value) && (abs(close - ema.value) > params.upper_threshold)"
+  long_exit: "abs(close - ema.value) < params.lower_threshold"
+  short_entry: "(close > ema.value) && (abs(close - ema.value) > params.upper_threshold)"
+  short_exit: "abs(close - ema.value) < params.lower_threshold"
+
+optimization:
+  targets:
+    - ema.period
+    - params.lower_threshold
+    - params.upper_threshold

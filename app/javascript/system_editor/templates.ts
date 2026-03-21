@@ -80,7 +80,7 @@ export function renderSystemEditorHTML({
         >${statusLabel(validation, validating)}</div>
       </div>
 
-      <div class="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_22rem]">
+      <div class="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_28rem]">
         <div class="min-w-0 min-h-0 p-4">
           <div class="h-full min-h-0 rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] overflow-hidden shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
             <div class="border-b border-[${BORDER_COLOR}] px-4 py-2 text-xs uppercase tracking-[0.18em] text-gray-500">
@@ -119,11 +119,83 @@ export function renderSystemEditorHTML({
             </div>
           </div>
 
-          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3 text-xs text-gray-400 leading-5">
-            <div><span class="text-gray-300">Shortcuts:</span> <span class="text-white">Ctrl/Cmd+S</span> save, <span class="text-white">Ctrl/Cmd+Z</span> undo, <span class="text-white">Ctrl/Cmd+Shift+Z</span> redo, <span class="text-white">Ctrl/Cmd+F</span> search, <span class="text-white">F3</span> next match.</div>
-            <div class="mt-2 border-t border-white/5 pt-2 text-[11px] leading-5 text-gray-500">
-              <span class="text-gray-300">Target condition syntax:</span>
-              <span class="text-gray-400"> Use quoted expressions like <span class="text-white">"(ema.value &lt;&lt; close) &amp;&amp; ((sentiment.value &lt; 100) || (rsi.value &gt; 90))"</span> where <span class="text-white">&lt;&lt;</span>/<span class="text-white">&gt;&gt;</span> = cross_below/cross_above, <span class="text-white">&lt;</span>/<span class="text-white">&gt;</span> = compare, <span class="text-white">&amp;&amp;</span>/<span class="text-white">||</span> = and/or.</span>
+          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-4 text-xs text-gray-400 leading-5">
+            <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Editor help</div>
+
+            <div class="mt-3">
+              <div class="text-gray-300">Shortcuts</div>
+              <div class="mt-1 text-[12px] text-gray-400">
+                <span class="text-white">Ctrl/Cmd+S</span> save,
+                <span class="text-white">Ctrl/Cmd+Z</span> undo,
+                <span class="text-white">Ctrl/Cmd+Shift+Z</span> redo,
+                <span class="text-white">Ctrl/Cmd+F</span> search,
+                <span class="text-white">F3</span> next match.
+              </div>
+            </div>
+
+            <div class="mt-4 border-t border-white/5 pt-4">
+              <div class="text-gray-300">Condition syntax</div>
+              <div class="mt-2 text-[12px] text-gray-400">
+                Conditions must be quoted boolean expressions. The root expression has to be a comparison or a logical combination of comparisons.
+              </div>
+              <div class="mt-2 rounded-lg border border-white/5 bg-[${BG_INPUT}] px-3 py-2 font-mono text-[12px] leading-5 text-gray-200">
+                long_entry: "close &gt; max(prev(close), offset(close, 2))"
+              </div>
+            </div>
+
+            <div class="mt-4 border-t border-white/5 pt-4 grid grid-cols-2 gap-3 text-[12px]">
+              <div>
+                <div class="text-gray-300">Comparison</div>
+                <div class="mt-1 text-gray-400">
+                  <span class="text-white">&gt; &gt;= &lt; &lt;=</span> numeric compare
+                </div>
+                <div class="mt-1 text-gray-400">
+                  <span class="text-white">&gt;&gt;</span> cross above
+                </div>
+                <div class="mt-1 text-gray-400">
+                  <span class="text-white">&lt;&lt;</span> cross below
+                </div>
+              </div>
+              <div>
+                <div class="text-gray-300">Logic and math</div>
+                <div class="mt-1 text-gray-400">
+                  <span class="text-white">&amp;&amp; ||</span> and / or
+                </div>
+                <div class="mt-1 text-gray-400">
+                  <span class="text-white">+ - * /</span> arithmetic
+                </div>
+                <div class="mt-1 text-gray-400">
+                  <span class="text-white">(...)</span> grouping
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 border-t border-white/5 pt-4">
+              <div class="text-gray-300">Functions</div>
+              <div class="mt-2 space-y-2 text-[12px] text-gray-400">
+                <div><span class="text-white font-mono">abs(x)</span> absolute value</div>
+                <div><span class="text-white font-mono">min(a, b, ...)</span> smallest value</div>
+                <div><span class="text-white font-mono">max(a, b, ...)</span> largest value</div>
+                <div><span class="text-white font-mono">prev(x)</span> value from 1 bar ago</div>
+                <div><span class="text-white font-mono">offset(x, n)</span> value from <span class="text-white">n</span> bars ago, where <span class="text-white">n</span> is a positive integer literal</div>
+              </div>
+            </div>
+
+            <div class="mt-4 border-t border-white/5 pt-4">
+              <div class="text-gray-300">Available references</div>
+              <div class="mt-2 text-[12px] text-gray-400">
+                Candle fields: <span class="text-white font-mono">open high low close volume</span>
+              </div>
+              <div class="mt-1 text-[12px] text-gray-400">
+                Module outputs: <span class="text-white font-mono">&lt;module&gt;.value</span>
+              </div>
+              <div class="mt-1 text-[12px] text-gray-400">
+                Params: <span class="text-white font-mono">params.&lt;key&gt;</span>
+              </div>
+            </div>
+
+            <div class="mt-4 border-t border-white/5 pt-4 text-[12px] text-gray-500">
+              If a referenced value is missing on early bars, or an arithmetic step fails such as division by zero, the comparison evaluates to false.
             </div>
           </div>
         </aside>

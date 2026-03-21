@@ -64,6 +64,17 @@ conditions:
       label: Logical and
     "||":
       label: Logical or
+  functions:
+    abs:
+      label: Absolute value
+    min:
+      label: Minimum
+    max:
+      label: Maximum
+    prev:
+      label: Previous bar value
+    offset:
+      label: Value N bars back
 
 references:
   fields:
