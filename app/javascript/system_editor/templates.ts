@@ -1,9 +1,17 @@
 import { BG_HOVER, BG_PRIMARY, BORDER_COLOR, BG_MODAL, BG_SURFACE, BG_TOOLBAR, BG_INPUT } from "../config/theme"
 import { escapeHTML } from "../utils/dom"
 import { highlightYaml } from "./yaml_highlighter"
-import type { ResearchCatalogEntry, ResearchDslDiagnostic, ResearchValidationResponse } from "../research/dsl"
+import type {
+  ResearchCatalogEntry,
+  ResearchConditionExpressionFunction,
+  ResearchConditionExpressionMetadata,
+  ResearchConditionExpressionOperator,
+  ResearchDslDiagnostic,
+  ResearchValidationResponse,
+} from "../research/dsl"
 import type { SystemEditorConfig } from "../types/store"
 import { renderFileManagerModal } from "../research/file_manager"
+import { getConditionExpressionMetadata } from "./condition_expression"
 
 type SystemEditorTemplateArgs = {
   state: SystemEditorConfig
@@ -41,6 +49,7 @@ export function renderSystemEditorHTML({
   const diagnostics = validation?.diagnostics || []
   const valid = validation?.ok === true
   const offline = !isOnline
+  const conditionExpressionMetadata = getConditionExpressionMetadata()
 
   return `
     <div class="flex h-full min-h-0 flex-col overflow-hidden text-white bg-[${BG_PRIMARY}]">
@@ -119,85 +128,7 @@ export function renderSystemEditorHTML({
             </div>
           </div>
 
-          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-4 text-xs text-gray-400 leading-5">
-            <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Editor help</div>
-
-            <div class="mt-3">
-              <div class="text-gray-300">Shortcuts</div>
-              <div class="mt-1 text-[12px] text-gray-400">
-                <span class="text-white">Ctrl/Cmd+S</span> save,
-                <span class="text-white">Ctrl/Cmd+Z</span> undo,
-                <span class="text-white">Ctrl/Cmd+Shift+Z</span> redo,
-                <span class="text-white">Ctrl/Cmd+F</span> search,
-                <span class="text-white">F3</span> next match.
-              </div>
-            </div>
-
-            <div class="mt-4 border-t border-white/5 pt-4">
-              <div class="text-gray-300">Condition syntax</div>
-              <div class="mt-2 text-[12px] text-gray-400">
-                Conditions must be quoted boolean expressions. The root expression has to be a comparison or a logical combination of comparisons.
-              </div>
-              <div class="mt-2 rounded-lg border border-white/5 bg-[${BG_INPUT}] px-3 py-2 font-mono text-[12px] leading-5 text-gray-200">
-                long_entry: "close &gt; max(prev(close), offset(close, 2))"
-              </div>
-            </div>
-
-            <div class="mt-4 border-t border-white/5 pt-4 grid grid-cols-2 gap-3 text-[12px]">
-              <div>
-                <div class="text-gray-300">Comparison</div>
-                <div class="mt-1 text-gray-400">
-                  <span class="text-white">&gt; &gt;= &lt; &lt;=</span> numeric compare
-                </div>
-                <div class="mt-1 text-gray-400">
-                  <span class="text-white">&gt;&gt;</span> cross above
-                </div>
-                <div class="mt-1 text-gray-400">
-                  <span class="text-white">&lt;&lt;</span> cross below
-                </div>
-              </div>
-              <div>
-                <div class="text-gray-300">Logic and math</div>
-                <div class="mt-1 text-gray-400">
-                  <span class="text-white">&amp;&amp; ||</span> and / or
-                </div>
-                <div class="mt-1 text-gray-400">
-                  <span class="text-white">+ - * /</span> arithmetic
-                </div>
-                <div class="mt-1 text-gray-400">
-                  <span class="text-white">(...)</span> grouping
-                </div>
-              </div>
-            </div>
-
-            <div class="mt-4 border-t border-white/5 pt-4">
-              <div class="text-gray-300">Functions</div>
-              <div class="mt-2 space-y-2 text-[12px] text-gray-400">
-                <div><span class="text-white font-mono">abs(x)</span> absolute value</div>
-                <div><span class="text-white font-mono">min(a, b, ...)</span> smallest value</div>
-                <div><span class="text-white font-mono">max(a, b, ...)</span> largest value</div>
-                <div><span class="text-white font-mono">prev(x)</span> value from 1 bar ago</div>
-                <div><span class="text-white font-mono">offset(x, n)</span> value from <span class="text-white">n</span> bars ago, where <span class="text-white">n</span> is a positive integer literal</div>
-              </div>
-            </div>
-
-            <div class="mt-4 border-t border-white/5 pt-4">
-              <div class="text-gray-300">Available references</div>
-              <div class="mt-2 text-[12px] text-gray-400">
-                Candle fields: <span class="text-white font-mono">open high low close volume</span>
-              </div>
-              <div class="mt-1 text-[12px] text-gray-400">
-                Module outputs: <span class="text-white font-mono">&lt;module&gt;.value</span>
-              </div>
-              <div class="mt-1 text-[12px] text-gray-400">
-                Params: <span class="text-white font-mono">params.&lt;key&gt;</span>
-              </div>
-            </div>
-
-            <div class="mt-4 border-t border-white/5 pt-4 text-[12px] text-gray-500">
-              If a referenced value is missing on early bars, or an arithmetic step fails such as division by zero, the comparison evaluates to false.
-            </div>
-          </div>
+          ${editorHelpHTML(conditionExpressionMetadata)}
         </aside>
       </div>
 
@@ -223,6 +154,116 @@ export function renderSystemEditorHTML({
       }) : ""}
     </div>
   `
+}
+
+function editorHelpHTML(metadata: ResearchConditionExpressionMetadata | null): string {
+  return `
+    <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-4 text-xs text-gray-400 leading-5">
+      <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Editor help</div>
+
+      <div class="mt-3">
+        <div class="text-gray-300">Shortcuts</div>
+        <div class="mt-1 text-[12px] text-gray-400">
+          <span class="text-white">Ctrl/Cmd+S</span> save,
+          <span class="text-white">Ctrl/Cmd+Z</span> undo,
+          <span class="text-white">Ctrl/Cmd+Shift+Z</span> redo,
+          <span class="text-white">Ctrl/Cmd+F</span> search,
+          <span class="text-white">F3</span> next match.
+        </div>
+      </div>
+
+      ${conditionHelpSectionsHTML(metadata)}
+
+      <div class="mt-4 border-t border-white/5 pt-4 text-[12px] text-gray-500">
+        If a referenced value is missing on early bars, or an arithmetic step fails such as division by zero, the comparison evaluates to false.
+      </div>
+    </div>
+  `
+}
+
+function conditionHelpSectionsHTML(metadata: ResearchConditionExpressionMetadata | null): string {
+  if (!metadata) {
+    return `
+      <div class="mt-4 border-t border-white/5 pt-4">
+        <div class="text-gray-300">Condition syntax</div>
+        <div class="mt-2 text-[12px] text-gray-500">
+          Editor metadata is unavailable until the metadata endpoint loads.
+        </div>
+      </div>
+    `
+  }
+
+  return `
+    <div class="mt-4 border-t border-white/5 pt-4">
+      <div class="text-gray-300">Condition syntax</div>
+      <div class="mt-2 text-[12px] text-gray-400">
+        ${escapeHTML(metadata.root_requirement)}. Wrap each condition in quotes and use comparisons or logical combinations as the top-level expression.
+      </div>
+    </div>
+
+    <div class="mt-4 border-t border-white/5 pt-4 grid grid-cols-1 gap-3 text-[12px] md:grid-cols-2">
+      ${operatorCategoryHTML("Comparison and crossover", metadata.operators, ["comparison"])}
+      ${operatorCategoryHTML("Logic and math", metadata.operators, ["logical", "arithmetic"])}
+    </div>
+
+    <div class="mt-4 border-t border-white/5 pt-4">
+      <div class="text-gray-300">Functions</div>
+      <div class="mt-2 space-y-2 text-[12px] text-gray-400">
+        ${metadata.functions.map(renderFunctionHelp).join("")}
+      </div>
+    </div>
+
+    <div class="mt-4 border-t border-white/5 pt-4">
+      <div class="text-gray-300">Available references</div>
+      <div class="mt-2 text-[12px] text-gray-400">
+        Candle fields: <span class="text-white font-mono">${escapeHTML(metadata.references.candle_fields.join(" "))}</span>
+      </div>
+      <div class="mt-1 text-[12px] text-gray-400">
+        Module outputs: <span class="text-white font-mono">${escapeHTML(metadata.references.module_output)}</span>
+      </div>
+      <div class="mt-1 text-[12px] text-gray-400">
+        Params: <span class="text-white font-mono">${escapeHTML(metadata.references.params_prefix)}</span>
+      </div>
+    </div>
+  `
+}
+
+function operatorCategoryHTML(
+  title: string,
+  operators: ResearchConditionExpressionOperator[],
+  categories: string[],
+): string {
+  const categoryOperators = operators.filter(operator => categories.includes(operator.category))
+  if (!categoryOperators.length) return ""
+
+  return `
+    <div>
+      <div class="text-gray-300">${escapeHTML(title)}</div>
+      <div class="mt-2 space-y-1 text-gray-400">
+        ${categoryOperators.map(renderOperatorHelp).join("")}
+        ${categories.includes("arithmetic") ? `<div><span class="text-white font-mono">(...)</span> grouping and precedence</div>` : ""}
+      </div>
+    </div>
+  `
+}
+
+function renderOperatorHelp(operator: ResearchConditionExpressionOperator): string {
+  return `<div><span class="text-white font-mono">${escapeHTML(operator.symbol)}</span> ${escapeHTML(operator.label)}</div>`
+}
+
+function renderFunctionHelp(fn: ResearchConditionExpressionFunction): string {
+  const details = buildFunctionDetail(fn)
+  return `<div><span class="text-white font-mono">${escapeHTML(fn.signature)}</span> ${escapeHTML(fn.description)}${details}</div>`
+}
+
+function buildFunctionDetail(fn: ResearchConditionExpressionFunction): string {
+  if (!fn.positive_integer_literal_indexes.length) return ""
+
+  const positions = fn.positive_integer_literal_indexes
+    .map(index => ["first", "second", "third"][index] || `argument ${index + 1}`)
+    .join(", ")
+
+  return ` (${escapeHTML(positions)} must be a positive integer literal)`
 }
 
 function toolbarButton(label: string, action: string, disabled = false, extraClass = "", extraAttrs = ""): string {

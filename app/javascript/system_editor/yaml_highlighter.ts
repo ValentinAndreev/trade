@@ -1,6 +1,6 @@
 // YAML syntax highlighter for the system editor.
-// - Keywords (YAML keys from dictionary): dark red
-// - Valid values (known enum values, module types, references): dark blue
+// - Keywords (YAML keys from schema metadata): dark red
+// - Valid values (known enum values, module types, references, condition DSL tokens): dark blue
 // - Numbers: amber
 // - Comments: muted gray
 
@@ -9,7 +9,7 @@ export type HighlightConfig = {
   values: Set<string>
 }
 
-// Empty until loaded from the backend dictionary endpoint (/api/research/dictionary).
+// Empty until loaded from the backend metadata endpoint (/api/research/editor_metadata).
 // No fallback hardcodes — the backend is the single source of truth.
 let activeConfig: HighlightConfig = { keywords: new Set(), values: new Set() }
 

@@ -14,10 +14,10 @@ module Research
       class << self
         include PathHelpers
 
-        # --- Dictionary ---
+        # --- Schema and Editor Metadata ---
 
-        def dictionary
-          @dictionary ||= YAML.safe_load(
+        def schema
+          @schema ||= YAML.safe_load(
             File.read(Rails.root.join('config/research/dictionary.yml')),
             aliases: false
           )
@@ -25,8 +25,18 @@ module Research
 
         def highlight_config
           keywords, values = [], []
-          collect_highlight_tokens(dictionary, keywords, values)
+          collect_highlight_tokens(schema, keywords, values)
+          collect_highlight_tokens(ConditionExpression::Definition.highlight_fragment, keywords, values)
           { keywords: keywords.uniq, values: values.uniq }
+        end
+
+        def editor_metadata_response
+          {
+            highlight: highlight_config,
+            condition_expression: ConditionExpression::Definition.frontend_metadata(
+              reference_fields: schema.dig('references', 'fields')
+            )
+          }
         end
 
         # --- Catalog reading ---
@@ -70,10 +80,10 @@ module Research
 
         private
 
-        # Recursively traverses the dictionary and collects tokens for the editor
+        # Recursively traverses a schema/metadata fragment and collects tokens for the editor
         # highlighter without hardcoding any structure paths.
         #
-        # Rules (driven entirely by key names in the dictionary):
+        # Rules (driven entirely by key names in the fragment):
         #   keywords ← items in arrays named: root_keys, keys, rule_keys
         #              keys of hashes named:  params
         #   values   ← items in arrays named: fields, module, values

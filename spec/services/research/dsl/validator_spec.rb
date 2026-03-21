@@ -134,7 +134,7 @@ RSpec.describe Research::Dsl::Validator do
       result = described_class.new(yaml).call
 
       expect(result).to be_invalid
-      expect(result.diagnostics.map(&:message)).to include('Condition expression must evaluate to a boolean comparison')
+      expect(result.diagnostics.map(&:message)).to include('Condition expressions must evaluate to a boolean comparison')
     end
   end
 end

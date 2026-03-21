@@ -8,8 +8,8 @@ class Api::ResearchController < Api::ApplicationController
     }
   end
 
-  def dictionary
-    render json: Research::Dsl::Catalog.highlight_config
+  def editor_metadata
+    render json: Research::Dsl::Catalog.editor_metadata_response
   end
 
   def cancel

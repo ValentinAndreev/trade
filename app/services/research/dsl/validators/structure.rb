@@ -9,7 +9,7 @@ module Research
         private
 
         def validate_structure
-          validate_unknown_keys([], @payload.keys, @dictionary.fetch('root_keys'))
+          validate_unknown_keys([], @payload.keys, @schema.fetch('root_keys'))
 
           REQUIRED_ROOT_KEYS.each do |key|
             add_error(message: "Missing required key: #{key}", path: [ key ], code: 'missing_key') unless @payload.key?(key)
@@ -46,7 +46,7 @@ module Research
             return
           end
 
-          module_dict = @dictionary.dig('modules', 'types', module_type)
+          module_dict = @schema.dig('modules', 'types', module_type)
           unless module_dict
             add_error(message: "Unsupported module type: #{module_type}", path: path + [ 'type' ], code: 'module_type')
             return
@@ -67,8 +67,8 @@ module Research
             return
           end
 
-          validate_unknown_keys([ 'params' ], params_payload.keys, @dictionary.fetch('params').keys)
-          @dictionary.fetch('params').each do |key, rule|
+          validate_unknown_keys([ 'params' ], params_payload.keys, @schema.fetch('params').keys)
+          @schema.fetch('params').each do |key, rule|
             validate_scalar(rule, params_payload[key], [ 'params', key ]) if params_payload.key?(key)
           end
         end

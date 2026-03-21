@@ -68,6 +68,36 @@ RSpec.describe 'Api::Research' do
       expect(response.parsed_body.fetch('directories')).to be_a(Array)
     end
 
+    it 'returns editor metadata for highlighting and condition expressions' do
+      get '/api/research/editor_metadata'
+
+      expect(response).to have_http_status(:ok)
+
+      json = response.parsed_body
+      expect(json.dig('highlight', 'keywords')).to include('conditions', 'modules')
+      expect(json.dig('highlight', 'values')).to include('>>', 'offset')
+      expect(json.dig('condition_expression', 'root_requirement')).to eq(
+        'Condition expressions must evaluate to a boolean comparison'
+      )
+      expect(json.dig('condition_expression', 'operators')).to include(
+        a_hash_including(
+          'symbol' => '>>',
+          'category' => 'comparison',
+          'register_in_frontend_parser' => true
+        )
+      )
+      expect(json.dig('condition_expression', 'functions')).to include(
+        a_hash_including(
+          'name' => 'offset',
+          'signature' => 'offset(x, n)',
+          'positive_integer_literal_indexes' => [ 1 ]
+        )
+      )
+      expect(json.dig('condition_expression', 'references', 'candle_fields')).to include('close')
+      expect(json.dig('condition_expression', 'references', 'module_output')).to eq('<module>.value')
+      expect(json.dig('condition_expression', 'references', 'params_prefix')).to eq('params.<key>')
+    end
+
     it 'lists files and directories without validating unopened yaml files' do
       Dir.mktmpdir do |dir|
         allow(Research::Dsl::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))

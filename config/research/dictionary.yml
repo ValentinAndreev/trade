@@ -47,34 +47,6 @@ conditions:
     - long_exit
     - short_entry
     - short_exit
-  operators:
-    ">>":
-      label: Cross above
-    "<<":
-      label: Cross below
-    ">":
-      label: Greater than
-    ">=":
-      label: Greater or equal
-    "<":
-      label: Less than
-    "<=":
-      label: Less or equal
-    "&&":
-      label: Logical and
-    "||":
-      label: Logical or
-  functions:
-    abs:
-      label: Absolute value
-    min:
-      label: Minimum
-    max:
-      label: Maximum
-    prev:
-      label: Previous bar value
-    offset:
-      label: Value N bars back
 
 references:
   fields:

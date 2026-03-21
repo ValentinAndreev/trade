@@ -15,7 +15,7 @@ module Research
             return
           end
 
-          validate_unknown_keys([ 'optimization' ], optimization_payload.keys, @dictionary.dig('optimization', 'keys'))
+          validate_unknown_keys([ 'optimization' ], optimization_payload.keys, @schema.dig('optimization', 'keys'))
 
           targets = optimization_payload['targets']
           return if targets.nil?
@@ -50,7 +50,7 @@ module Research
           end
 
           module_type = module_payload['type']&.to_s
-          module_param_rule = @dictionary.dig('modules', 'types', module_type, 'params', param_key)
+          module_param_rule = @schema.dig('modules', 'types', module_type, 'params', param_key)
           unless module_param_rule
             add_error(message: "Unknown optimization target: #{value}", path: path, code: 'optimization_target')
             return
@@ -63,7 +63,7 @@ module Research
 
         def validate_param_target(value, path)
           param_key = value.delete_prefix('params.')
-          unless @dictionary.fetch('params').key?(param_key)
+          unless @schema.fetch('params').key?(param_key)
             add_error(message: "Unknown optimization target: #{value}", path: path, code: 'optimization_target')
             return
           end

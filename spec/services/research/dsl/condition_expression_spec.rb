@@ -25,7 +25,7 @@ RSpec.describe Research::Dsl::ConditionExpression do
         described_class.new('close + ema.value').parse
       end.to raise_error(
         Research::Dsl::ConditionExpression::ParseError,
-        'Condition expression must evaluate to a boolean comparison'
+        'Condition expressions must evaluate to a boolean comparison'
       )
     end
 
@@ -43,7 +43,7 @@ RSpec.describe Research::Dsl::ConditionExpression do
         described_class.new('close > ema.value && close').parse
       end.to raise_error(
         Research::Dsl::ConditionExpression::ParseError,
-        'Condition expression must evaluate to a boolean comparison'
+        'Condition expressions must evaluate to a boolean comparison'
       )
     end
 
@@ -52,7 +52,7 @@ RSpec.describe Research::Dsl::ConditionExpression do
         described_class.new('close > ema.value + (rsi.value > 50)').parse
       end.to raise_error(
         Research::Dsl::ConditionExpression::ParseError,
-        'Condition expression must evaluate to a boolean comparison'
+        'Condition expressions must evaluate to a boolean comparison'
       )
     end
 
@@ -61,7 +61,7 @@ RSpec.describe Research::Dsl::ConditionExpression do
         described_class.new('close > abs((rsi.value > 50))').parse
       end.to raise_error(
         Research::Dsl::ConditionExpression::ParseError,
-        'Condition expression must evaluate to a boolean comparison'
+        'Condition expressions must evaluate to a boolean comparison'
       )
     end
   end

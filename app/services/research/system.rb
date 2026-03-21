@@ -4,11 +4,11 @@ module Research
   class System
     BAR_FIELDS = Set.new(%w[open high low close volume]).freeze
 
-    private attr_reader :payload, :dictionary
+    private attr_reader :payload, :schema
 
-    def initialize(payload, dictionary:)
-      @payload    = payload
-      @dictionary = dictionary
+    def initialize(payload, schema:)
+      @payload = payload
+      @schema = schema
     end
 
     def id           = payload['id'].to_s
@@ -131,7 +131,7 @@ module Research
     end
 
     def target_label(target)
-      return dictionary.dig('params', target.delete_prefix('params.'), 'label') if target.start_with?('params.')
+      return schema.dig('params', target.delete_prefix('params.'), 'label') if target.start_with?('params.')
 
       module_name, param_key = target.split('.', 2)
       return humanize_token(param_key) unless modules.key?(module_name)

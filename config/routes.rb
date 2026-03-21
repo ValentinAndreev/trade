@@ -33,7 +33,7 @@ Rails.application.routes.draw do
     resources :indicators, only: :index
     post 'indicators/:type/compute', to: 'indicators#compute'
     get 'research/catalog', to: 'research#catalog'
-    get 'research/dictionary', to: 'research#dictionary'
+    get 'research/editor_metadata', to: 'research#editor_metadata'
     post 'research/validate', to: 'research#validate'
     post 'research/systems/save', to: 'research#save_system'
     post 'research/systems/rename', to: 'research#rename_system'

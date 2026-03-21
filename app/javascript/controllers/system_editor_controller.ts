@@ -2,7 +2,7 @@ import { Controller } from "@hotwired/stimulus"
 import {
   deleteResearchSystem,
   fetchResearchCatalog,
-  fetchResearchDictionary,
+  fetchResearchEditorMetadata,
   renameResearchSystem,
   saveResearchSystem,
   type ResearchCatalogEntry,
@@ -24,7 +24,10 @@ import { EditorCore } from "../system_editor/editor_core"
 import monitor from "../services/connection_monitor"
 import { ValidationModule } from "../system_editor/validation"
 import { FilePickerModule } from "../system_editor/file_picker"
-import { collectConditionExpressionDiagnostics } from "../system_editor/condition_expression"
+import {
+  collectConditionExpressionDiagnostics,
+  setConditionExpressionMetadata,
+} from "../system_editor/condition_expression"
 import type { SystemEditorConfig } from "../types/store"
 import { buildStarterSystemYaml } from "../system_editor/state"
 
@@ -77,12 +80,13 @@ export default class extends Controller {
     })
 
     this.element.innerHTML = `<div class="flex items-center justify-center h-full text-gray-500 text-sm animate-pulse">Loading system editor…</div>`
-    const [snapshot, dict] = await Promise.all([fetchResearchCatalog(), fetchResearchDictionary()])
-    if (dict) {
-      const config = { keywords: new Set(dict.keywords), values: new Set(dict.values) }
-      setHighlightConfig(config)
-      this.autocomplete.setConfig(config)
-    }
+    const [snapshot, editorMetadata] = await Promise.all([fetchResearchCatalog(), fetchResearchEditorMetadata()])
+    const config = editorMetadata
+      ? { keywords: new Set(editorMetadata.highlight.keywords), values: new Set(editorMetadata.highlight.values) }
+      : { keywords: new Set<string>(), values: new Set<string>() }
+    setHighlightConfig(config)
+    this.autocomplete.setConfig(config)
+    setConditionExpressionMetadata(editorMetadata?.condition_expression ?? null)
     this.catalog = snapshot.systems
     this.directories = snapshot.directories
     this.state = hydrateSystemEditorState(this._storedConfig())

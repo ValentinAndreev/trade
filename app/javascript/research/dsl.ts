@@ -72,10 +72,46 @@ export interface ResearchHighlightConfig {
   values: string[]
 }
 
-export async function fetchResearchDictionary(): Promise<ResearchHighlightConfig | null> {
-  const response = await apiFetch("/api/research/dictionary", {}, { silent: true })
+export interface ResearchConditionExpressionOperator {
+  symbol: string
+  category: string
+  label: string
+  precedence: number
+  register_in_frontend_parser: boolean
+}
+
+export interface ResearchConditionExpressionFunction {
+  name: string
+  label: string
+  signature: string
+  description: string
+  min_args: number
+  max_args: number | null
+  return_kind: string
+  numeric_arguments: boolean
+  positive_integer_literal_indexes: number[]
+}
+
+export interface ResearchConditionExpressionMetadata {
+  root_requirement: string
+  operators: ResearchConditionExpressionOperator[]
+  functions: ResearchConditionExpressionFunction[]
+  references: {
+    candle_fields: string[]
+    module_output: string
+    params_prefix: string
+  }
+}
+
+export interface ResearchEditorMetadataResponse {
+  highlight: ResearchHighlightConfig
+  condition_expression: ResearchConditionExpressionMetadata
+}
+
+export async function fetchResearchEditorMetadata(): Promise<ResearchEditorMetadataResponse | null> {
+  const response = await apiFetch("/api/research/editor_metadata", {}, { silent: true })
   if (!response?.ok) return null
-  return await response.json() as ResearchHighlightConfig
+  return await response.json() as ResearchEditorMetadataResponse
 }
 
 export async function cancelResearch(runId: string): Promise<void> {

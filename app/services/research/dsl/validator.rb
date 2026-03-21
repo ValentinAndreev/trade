@@ -16,13 +16,13 @@ module Research
         return ValidationResult.new(diagnostics: @diagnostics) unless parse_document
         return ValidationResult.new(diagnostics: @diagnostics) unless parse_payload
 
-        @dictionary = Catalog.dictionary
+        @schema = Catalog.schema
 
         validate_structure
         validate_conditions
         validate_optimization
 
-        compiled = Research::System.new(@payload, dictionary: @dictionary) if @diagnostics.empty?
+        compiled = Research::System.new(@payload, schema: @schema) if @diagnostics.empty?
         ValidationResult.new(compiled: compiled, diagnostics: @diagnostics)
       end
 

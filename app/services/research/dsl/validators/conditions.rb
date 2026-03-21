@@ -15,7 +15,7 @@ module Research
             return
           end
 
-          validate_unknown_keys([ 'conditions' ], conditions_payload.keys, @dictionary.dig('conditions', 'keys'))
+          validate_unknown_keys([ 'conditions' ], conditions_payload.keys, @schema.dig('conditions', 'keys'))
           conditions_payload.each { |name, rule_payload| validate_condition_rule(name, rule_payload) }
 
           return if conditions_payload.keys.any? { |k| ENTRY_KEYS.include?(k.to_s) }
@@ -66,7 +66,7 @@ module Research
         end
 
         def validate_condition_reference(value, path)
-          return if @dictionary.dig('references', 'fields').include?(value)
+          return if @schema.dig('references', 'fields').include?(value)
 
           if value.start_with?('params.')
             validate_param_reference(value, path)
@@ -88,7 +88,7 @@ module Research
 
         def validate_param_reference(value, path)
           param_key = value.delete_prefix('params.')
-          unless @dictionary.fetch('params').key?(param_key)
+          unless @schema.fetch('params').key?(param_key)
             add_error(message: "Unknown params reference: #{value}", path: path, code: 'condition_reference')
             return
           end

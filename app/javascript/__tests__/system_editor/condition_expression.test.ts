@@ -1,5 +1,93 @@
-import { describe, expect, it } from "vitest"
-import { collectConditionExpressionDiagnostics } from "../../system_editor/condition_expression"
+import { beforeAll, describe, expect, it } from "vitest"
+import type { ResearchConditionExpressionMetadata } from "../../research/dsl"
+import {
+  collectConditionExpressionDiagnostics,
+  setConditionExpressionMetadata,
+} from "../../system_editor/condition_expression"
+
+const TEST_CONDITION_EXPRESSION_METADATA: ResearchConditionExpressionMetadata = {
+  root_requirement: "Condition expressions must evaluate to a boolean comparison",
+  operators: [
+    { symbol: "&&", category: "logical", label: "Logical and", precedence: 2, register_in_frontend_parser: false },
+    { symbol: "||", category: "logical", label: "Logical or", precedence: 1, register_in_frontend_parser: false },
+    { symbol: "<<", category: "comparison", label: "Cross below", precedence: 6, register_in_frontend_parser: true },
+    { symbol: ">>", category: "comparison", label: "Cross above", precedence: 6, register_in_frontend_parser: true },
+    { symbol: "<", category: "comparison", label: "Less than", precedence: 6, register_in_frontend_parser: false },
+    { symbol: ">", category: "comparison", label: "Greater than", precedence: 6, register_in_frontend_parser: false },
+    { symbol: "<=", category: "comparison", label: "Less or equal", precedence: 6, register_in_frontend_parser: false },
+    { symbol: ">=", category: "comparison", label: "Greater or equal", precedence: 6, register_in_frontend_parser: false },
+    { symbol: "+", category: "arithmetic", label: "Addition", precedence: 9, register_in_frontend_parser: false },
+    { symbol: "-", category: "arithmetic", label: "Subtraction", precedence: 9, register_in_frontend_parser: false },
+    { symbol: "*", category: "arithmetic", label: "Multiplication", precedence: 10, register_in_frontend_parser: false },
+    { symbol: "/", category: "arithmetic", label: "Division", precedence: 10, register_in_frontend_parser: false },
+  ],
+  functions: [
+    {
+      name: "abs",
+      label: "Absolute value",
+      signature: "abs(x)",
+      description: "Absolute value",
+      min_args: 1,
+      max_args: 1,
+      return_kind: "numeric",
+      numeric_arguments: true,
+      positive_integer_literal_indexes: [],
+    },
+    {
+      name: "min",
+      label: "Minimum",
+      signature: "min(a, b, ...)",
+      description: "Smallest value",
+      min_args: 2,
+      max_args: null,
+      return_kind: "numeric",
+      numeric_arguments: true,
+      positive_integer_literal_indexes: [],
+    },
+    {
+      name: "max",
+      label: "Maximum",
+      signature: "max(a, b, ...)",
+      description: "Largest value",
+      min_args: 2,
+      max_args: null,
+      return_kind: "numeric",
+      numeric_arguments: true,
+      positive_integer_literal_indexes: [],
+    },
+    {
+      name: "prev",
+      label: "Previous bar value",
+      signature: "prev(x)",
+      description: "Value from 1 bar ago",
+      min_args: 1,
+      max_args: 1,
+      return_kind: "numeric",
+      numeric_arguments: true,
+      positive_integer_literal_indexes: [],
+    },
+    {
+      name: "offset",
+      label: "Value N bars back",
+      signature: "offset(x, n)",
+      description: "Value from n bars ago",
+      min_args: 2,
+      max_args: 2,
+      return_kind: "numeric",
+      numeric_arguments: true,
+      positive_integer_literal_indexes: [1],
+    },
+  ],
+  references: {
+    candle_fields: ["open", "high", "low", "close", "volume"],
+    module_output: "<module>.value",
+    params_prefix: "params.<key>",
+  },
+}
+
+beforeAll(() => {
+  setConditionExpressionMetadata(TEST_CONDITION_EXPRESSION_METADATA)
+})
 
 // ---------------------------------------------------------------------------
 // Basic diagnostics
@@ -38,7 +126,7 @@ describe("system editor condition expression diagnostics", () => {
 
     expect(collectConditionExpressionDiagnostics(yaml)).toEqual([
       expect.objectContaining({
-        message: "Condition expression must evaluate to a boolean comparison",
+        message: "Condition expressions must evaluate to a boolean comparison",
         line: 2,
         column: 16,
         code: "condition_expression_syntax",

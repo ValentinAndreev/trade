@@ -1,22 +1,38 @@
 import jsep from "jsep"
-import type { ResearchDslDiagnostic } from "../research/dsl"
+import type {
+  ResearchConditionExpressionFunction,
+  ResearchConditionExpressionMetadata,
+  ResearchDslDiagnostic,
+} from "../research/dsl"
 
-const LOGICAL_BINARY_OPERATORS = new Set(["&&", "||"])
-const COMPARISON_BINARY_OPERATORS = new Set(["<<", ">>", "<", ">", "<=", ">="])
-const ARITHMETIC_BINARY_OPERATORS = new Set(["+", "-", "*", "/"])
-const ALLOWED_BINARY_OPERATORS = new Set([
-  ...LOGICAL_BINARY_OPERATORS,
-  ...COMPARISON_BINARY_OPERATORS,
-  ...ARITHMETIC_BINARY_OPERATORS,
-])
-const ALLOWED_FUNCTIONS = new Set(["abs", "min", "max", "prev", "offset"])
 const CONDITIONS_HEADER_RE = /^(\s*)conditions:\s*(?:#.*)?$/
 const CONDITION_LINE_RE = /^(\s*)([a-z_][a-z0-9_]*)\s*:\s*(.+?)\s*$/i
 
+type ExpressionKind = "boolean" | "numeric"
+type ConditionExpressionMetadataIndex = {
+  operatorCategories: Map<string, string>
+  allowedBinaryOperators: Set<string>
+  functionsByName: Map<string, ResearchConditionExpressionFunction>
+}
+
 let configured = false
+let activeConditionExpressionMetadata: ResearchConditionExpressionMetadata | null = null
+let activeConditionExpressionIndex: ConditionExpressionMetadataIndex | null = null
+
+export function setConditionExpressionMetadata(metadata: ResearchConditionExpressionMetadata | null): void {
+  activeConditionExpressionMetadata = metadata
+  activeConditionExpressionIndex = metadata ? buildMetadataIndex(metadata) : null
+  configured = false
+}
+
+export function getConditionExpressionMetadata(): ResearchConditionExpressionMetadata | null {
+  return activeConditionExpressionMetadata
+}
 
 export function collectConditionExpressionDiagnostics(yaml: string): ResearchDslDiagnostic[] {
   if (!yaml.trim()) return []
+  const metadata = activeConditionExpressionMetadata
+  if (!metadata || !activeConditionExpressionIndex) return []
 
   configureParser()
 
@@ -29,7 +45,7 @@ export function collectConditionExpressionDiagnostics(yaml: string): ResearchDsl
         return [
           buildDiagnostic(
             entry,
-            "Condition expression must evaluate to a boolean comparison",
+            metadata.root_requirement,
             0,
             Math.max(entry.expression.length, 1),
           ),
@@ -66,8 +82,10 @@ type AstValidationIssue = {
 function configureParser(): void {
   if (configured) return
 
-  jsep.addBinaryOp("<<", 7)
-  jsep.addBinaryOp(">>", 7)
+  activeConditionExpressionMetadata?.operators
+    .filter(operator => operator.register_in_frontend_parser)
+    .forEach(operator => jsep.addBinaryOp(operator.symbol, operator.precedence))
+
   configured = true
 }
 
@@ -146,9 +164,11 @@ function findClosingQuote(value: string, quote: string): number {
 }
 
 function validateAst(node: jsep.Expression, expression: string): AstValidationIssue | null {
+  if (!activeConditionExpressionIndex) return null
+
   switch (node.type) {
     case "BinaryExpression":
-      if (!ALLOWED_BINARY_OPERATORS.has(node.operator)) {
+      if (!activeConditionExpressionIndex.allowedBinaryOperators.has(node.operator)) {
         return {
           message: `Unsupported operator: ${node.operator}`,
           offset: findOffset(expression, node.operator),
@@ -196,6 +216,8 @@ function validateAst(node: jsep.Expression, expression: string): AstValidationIs
 }
 
 function validateCallExpression(node: jsep.CallExpression, expression: string): AstValidationIssue | null {
+  if (!activeConditionExpressionIndex) return null
+
   if (node.callee.type !== "Identifier") {
     return {
       message: "Only simple function calls are supported",
@@ -205,7 +227,8 @@ function validateCallExpression(node: jsep.CallExpression, expression: string): 
   }
 
   const functionName = node.callee.name
-  if (!ALLOWED_FUNCTIONS.has(functionName)) {
+  const functionDefinition = activeConditionExpressionIndex.functionsByName.get(functionName)
+  if (!functionDefinition) {
     return {
       message: `Unsupported function: ${functionName}`,
       offset: findOffset(expression, functionName),
@@ -216,43 +239,25 @@ function validateCallExpression(node: jsep.CallExpression, expression: string): 
   const nestedIssue = node.arguments.map(argument => validateAst(argument, expression)).find(Boolean)
   if (nestedIssue) return nestedIssue
 
-  switch (functionName) {
-    case "abs":
-    case "prev":
-      if (node.arguments.length === 1) return null
-      return {
-        message: `${functionName}() expects exactly 1 argument`,
-        offset: findOffset(expression, functionName),
-        length: functionName.length,
-      }
-    case "min":
-    case "max":
-      if (node.arguments.length >= 2) return null
-      return {
-        message: `${functionName}() expects at least 2 arguments`,
-        offset: findOffset(expression, functionName),
-        length: functionName.length,
-      }
-    case "offset":
-      if (node.arguments.length !== 2) {
-        return {
-          message: "offset() expects exactly 2 arguments",
-          offset: findOffset(expression, functionName),
-          length: functionName.length,
-        }
-      }
-      if (isPositiveIntegerLiteral(node.arguments[1])) return null
-      return {
-        message: "offset() expects a positive integer literal as the second argument",
-        offset: findOffset(expression, functionName),
-        length: functionName.length,
-      }
-    default:
-      return null
+  if (!hasValidArity(node.arguments.length, functionDefinition)) {
+    return {
+      message: arityErrorMessage(functionDefinition),
+      offset: findOffset(expression, functionName),
+      length: functionName.length,
+    }
+  }
+
+  const literalIndex = functionDefinition.positive_integer_literal_indexes.find(index => !isPositiveIntegerLiteral(node.arguments[index]))
+  if (literalIndex === undefined) return null
+
+  return {
+    message: positiveIntegerLiteralErrorMessage(functionDefinition, literalIndex),
+    offset: findOffset(expression, functionName),
+    length: functionName.length,
   }
 }
 
-function expressionKind(node: jsep.Expression): "boolean" | "numeric" | null {
+function expressionKind(node: jsep.Expression): ExpressionKind | null {
   switch (node.type) {
     case "BinaryExpression":
       return binaryExpressionKind(node)
@@ -271,40 +276,35 @@ function expressionKind(node: jsep.Expression): "boolean" | "numeric" | null {
   }
 }
 
-function binaryExpressionKind(node: jsep.BinaryExpression): "boolean" | "numeric" | null {
+function binaryExpressionKind(node: jsep.BinaryExpression): ExpressionKind | null {
+  if (!activeConditionExpressionIndex) return null
+
   const leftKind = expressionKind(node.left)
   const rightKind = expressionKind(node.right)
 
-  if (LOGICAL_BINARY_OPERATORS.has(node.operator)) {
-    return leftKind === "boolean" && rightKind === "boolean" ? "boolean" : null
-  }
-
-  if (COMPARISON_BINARY_OPERATORS.has(node.operator)) {
-    return leftKind === "numeric" && rightKind === "numeric" ? "boolean" : null
-  }
-
-  if (ARITHMETIC_BINARY_OPERATORS.has(node.operator)) {
-    return leftKind === "numeric" && rightKind === "numeric" ? "numeric" : null
-  }
-
-  return null
-}
-
-function callExpressionKind(node: jsep.CallExpression): "numeric" | null {
-  if (node.callee.type !== "Identifier") return null
-
-  switch (node.callee.name) {
-    case "abs":
-    case "prev":
-      return expressionKind(node.arguments[0]) === "numeric" ? "numeric" : null
-    case "min":
-    case "max":
-      return node.arguments.every(argument => expressionKind(argument) === "numeric") ? "numeric" : null
-    case "offset":
-      return expressionKind(node.arguments[0]) === "numeric" && isPositiveIntegerLiteral(node.arguments[1]) ? "numeric" : null
+  switch (activeConditionExpressionIndex.operatorCategories.get(node.operator)) {
+    case "logical":
+      return leftKind === "boolean" && rightKind === "boolean" ? "boolean" : null
+    case "comparison":
+      return leftKind === "numeric" && rightKind === "numeric" ? "boolean" : null
+    case "arithmetic":
+      return leftKind === "numeric" && rightKind === "numeric" ? "numeric" : null
     default:
       return null
   }
+}
+
+function callExpressionKind(node: jsep.CallExpression): ExpressionKind | null {
+  if (!activeConditionExpressionIndex || node.callee.type !== "Identifier") return null
+
+  const functionDefinition = activeConditionExpressionIndex.functionsByName.get(node.callee.name)
+  if (!functionDefinition || !hasValidArity(node.arguments.length, functionDefinition)) return null
+  if (functionDefinition.numeric_arguments && node.arguments.some(argument => expressionKind(argument) !== "numeric")) return null
+  if (functionDefinition.positive_integer_literal_indexes.some(index => !isPositiveIntegerLiteral(node.arguments[index]))) return null
+
+  return functionDefinition.return_kind === "boolean" || functionDefinition.return_kind === "numeric"
+    ? functionDefinition.return_kind
+    : null
 }
 
 function isPositiveIntegerLiteral(node: jsep.Expression): boolean {
@@ -345,4 +345,29 @@ function buildDiagnostic(
     path: `conditions.${entry.name}`,
     code: "condition_expression_syntax",
   }
+}
+
+function buildMetadataIndex(metadata: ResearchConditionExpressionMetadata): ConditionExpressionMetadataIndex {
+  return {
+    operatorCategories: new Map(metadata.operators.map(operator => [operator.symbol, operator.category])),
+    allowedBinaryOperators: new Set(metadata.operators.map(operator => operator.symbol)),
+    functionsByName: new Map(metadata.functions.map(fn => [fn.name, fn])),
+  }
+}
+
+function hasValidArity(argumentCount: number, fn: ResearchConditionExpressionFunction): boolean {
+  return argumentCount >= fn.min_args && (fn.max_args == null || argumentCount <= fn.max_args)
+}
+
+function arityErrorMessage(fn: ResearchConditionExpressionFunction): string {
+  if (fn.min_args === fn.max_args) {
+    return `${fn.name}() expects exactly ${fn.min_args} argument${fn.min_args === 1 ? "" : "s"}`
+  }
+
+  return `${fn.name}() expects at least ${fn.min_args} arguments`
+}
+
+function positiveIntegerLiteralErrorMessage(fn: ResearchConditionExpressionFunction, index: number): string {
+  const ordinal = ["first", "second", "third"][index] || `argument ${index + 1}`
+  return `${fn.name}() expects a positive integer literal as the ${ordinal} argument`
 }

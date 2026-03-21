@@ -16,8 +16,8 @@ module Research
       class Parser
         Token = Struct.new(:type, :value, :offset, :length, keyword_init: true)
 
-        OPERATORS = %w[&& || << >> <= >= + - * / < > ( ) ,].freeze
-        FUNCTIONS = %w[abs min max prev offset].freeze
+        OPERATORS = (Definition.binary_operator_symbols.sort_by { |operator| -operator.length } + %w[( ) ,]).freeze
+        FUNCTIONS = Definition.function_names
 
         def initialize(text)
           @text = text.to_s
@@ -31,7 +31,7 @@ module Research
           node = parse_or
           token = current_token
           raise ParseError.new("Unexpected token: #{token.value}", offset: token.offset, length: token.length) if token
-          raise ParseError.new('Condition expression must evaluate to a boolean comparison', offset: 0, length: text.length) unless expression_kind(node) == :boolean
+          raise ParseError.new(Definition::ROOT_REQUIREMENT, offset: 0, length: text.length) unless expression_kind(node) == :boolean
 
           node
         end
@@ -149,21 +149,23 @@ module Research
         end
 
         def validate_call!(token, args)
-          case token.value
-          when "abs", "prev"
-            return if args.length == 1
+          function = Definition.function_definition(token.value)
+          return unless function
 
-            raise ParseError.new("#{token.value}() expects exactly 1 argument", offset: token.offset, length: token.length)
-          when "min", "max"
-            return if args.length >= 2
-
-            raise ParseError.new("#{token.value}() expects at least 2 arguments", offset: token.offset, length: token.length)
-          when "offset"
-            raise ParseError.new('offset() expects exactly 2 arguments', offset: token.offset, length: token.length) unless args.length == 2
-            return if positive_integer_literal?(args[1])
-
-            raise ParseError.new('offset() expects a positive integer literal as the second argument', offset: token.offset, length: token.length)
+          min_args = function.fetch(:min_args)
+          max_args = function.fetch(:max_args)
+          unless args.length >= min_args && (max_args.nil? || args.length <= max_args)
+            raise ParseError.new(Definition.arity_error_message(function), offset: token.offset, length: token.length)
           end
+
+          positive_integer_literal_indexes = function.fetch(:positive_integer_literal_indexes)
+          return if positive_integer_literal_indexes.all? { |index| positive_integer_literal?(args[index]) }
+
+          raise ParseError.new(
+            Definition.positive_integer_literal_error_message(function, positive_integer_literal_indexes.first),
+            offset: token.offset,
+            length: token.length
+          )
         end
 
         def tokenize
@@ -261,16 +263,11 @@ module Research
         end
 
         def call_expression_kind(node)
-          case node[:name]
-          when "abs", "prev"
-            expression_kind(node[:args][0]) == :numeric ? :numeric : nil
-          when "min", "max"
-            node[:args].all? { |arg| expression_kind(arg) == :numeric } ? :numeric : nil
-          when "offset"
-            expression_kind(node[:args][0]) == :numeric && expression_kind(node[:args][1]) == :numeric ? :numeric : nil
-          else
-            nil
-          end
+          function = Definition.function_definition(node[:name])
+          return unless function&.fetch(:numeric_arguments)
+          return unless node[:args].all? { |arg| expression_kind(arg) == :numeric }
+
+          function.fetch(:return_kind)
         end
       end
     end
