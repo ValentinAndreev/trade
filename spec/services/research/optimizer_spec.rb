@@ -15,6 +15,7 @@ RSpec.describe Research::Optimizer do
       name: Price / EMA Cross
       modules:
         ema:
+          type: ema
           period: 20
       params:
         position_mode: long_short
@@ -35,6 +36,7 @@ RSpec.describe Research::Optimizer do
       name: RSI Threshold
       modules:
         rsi:
+          type: rsi
           period: 14
       params:
         position_mode: long_short

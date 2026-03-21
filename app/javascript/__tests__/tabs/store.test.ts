@@ -206,7 +206,7 @@ describe("TabStore", () => {
       const ok = store.updateResearchResult(tab.id, {
         runs: [
           {
-            params: { module_period: 20 },
+            params: { ema_period: 20 },
             trades: [],
           },
         ],

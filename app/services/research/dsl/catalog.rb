@@ -82,7 +82,7 @@ module Research
           case node
           when Array
             case parent_key
-            when 'root_keys', 'keys', 'rule_keys' then keywords.concat(node.grep(String))
+            when 'root_keys', 'keys', 'rule_keys', 'module_keys' then keywords.concat(node.grep(String))
             when 'fields', 'module', 'values'     then values.concat(node.grep(String))
             end
           when Hash

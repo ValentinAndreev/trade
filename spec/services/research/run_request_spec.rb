@@ -9,6 +9,7 @@ RSpec.describe Research::RunRequest do
       name: RSI Threshold Reversal
       modules:
         rsi:
+          type: rsi
           period: 14
       params:
         position_mode: long_short
@@ -55,8 +56,6 @@ RSpec.describe Research::RunRequest do
       expect(request.system).to be_a(Research::System)
       expect(request.runtime_params).to eq({
         rsi_period: 14.0,
-        module_type: 'rsi',
-        module_period: 14.0,
         position_mode: 'long_short',
         lower_threshold: 30.0,
         upper_threshold: 70.0
@@ -71,8 +70,9 @@ RSpec.describe Research::RunRequest do
       payload = request.response_payload(runs: [ { params: { rsi_period: 14 }, trades: [] } ])
 
       expect(payload[:strategy]).to eq('rsi_threshold')
-      expect(payload.dig(:system, :type)).to eq('rsi_threshold')
-      expect(payload.dig(:module, :name)).to eq('rsi')
+      expect(payload.dig(:system, :id)).to eq('rsi_threshold')
+      expect(payload.dig(:system, :name)).to eq('RSI Threshold Reversal')
+      expect(payload.dig(:modules, 'rsi', 'type')).to eq('rsi')
       expect(payload.dig(:modules, 'rsi', 'period')).to eq(14)
       expect(payload.dig(:optimization, :param)).to eq('params.lower_threshold')
     end

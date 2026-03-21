@@ -51,10 +51,10 @@ module Research
       {
         strategy: system.strategy_key,
         system: {
-          type: system.id,
+          id: system.id,
+          name: system.name,
           params: system.system_params.transform_keys(&:to_s)
         },
-        module: system.primary_module,
         modules: system.modules.transform_values(&:dup),
         dataset: dataset.except(:exchange),
         optimization: optimization_payload,

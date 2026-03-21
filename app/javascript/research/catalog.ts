@@ -49,7 +49,7 @@ export function optimizationTargetLabel(target: ResearchOptimizationTarget): str
   }
   const [moduleName, ...rest] = target.split(".")
   if (moduleName && rest.length) {
-    return `${moduleName.toUpperCase()} ${humanizeToken(rest.join("."))}`
+    return `${humanizeToken(moduleName)} ${humanizeToken(rest.join("."))}`
   }
   return humanizeToken(target)
 }

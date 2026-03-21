@@ -22,17 +22,13 @@ module Research
     def runtime_params
       @runtime_params ||= begin
         result = {}
-        modules.each do |module_name, module_params|
-          module_params.each do |param_key, value|
+        modules.each do |module_name, module_config|
+          module_params(module_config).each do |param_key, value|
             result[module_param_key(module_name, param_key)] = to_numeric(value)
           end
         end
         (payload['params'] || {}).each { |key, val| result[key.to_sym] = to_numeric(val) }
         result[:position_mode] = result[:position_mode].presence || 'long_short'
-        if (primary_period = primary_module_params['period'])
-          result[:module_period] = to_numeric(primary_period)
-        end
-        result[:module_type] = primary_module_name if primary_module_name.present?
         result
       end
     end
@@ -53,7 +49,6 @@ module Research
       {
         id: id,
         name: name,
-        module: { name: primary_module_name, params: primary_module_params },
         modules: modules.transform_values(&:dup),
         params: system_params,
         conditions: payload['conditions'].keys,
@@ -66,12 +61,10 @@ module Research
       result = {
         system_id: id,
         system_name: name,
-        module_type: primary_module_name,
         position_mode: p[:position_mode].presence || 'long_short'
       }
-      result[:module_period] = to_numeric(p[module_param_key(primary_module_name, 'period')]) if primary_module_name && p.key?(module_param_key(primary_module_name, 'period'))
-      modules.each do |module_name, module_params|
-        module_params.each_key do |param_key|
+      modules.each do |module_name, module_config|
+        module_params(module_config).each_key do |param_key|
           flat_key = module_param_key(module_name, param_key)
           result[flat_key] = to_numeric(p.fetch(flat_key))
         end
@@ -84,11 +77,7 @@ module Research
     end
 
     def system_params
-      runtime_params.except(:module_period, :module_type, *module_param_keys)
-    end
-
-    def primary_module
-      { name: primary_module_name, params: primary_module_params }
+      runtime_params.except(*module_param_keys)
     end
 
     def optimization_param_key(target)
@@ -105,10 +94,10 @@ module Research
 
     def module_runtime_configs(params)
       p = params.to_h.symbolize_keys
-      modules.each_with_object({}) do |(module_name, module_params), result|
+      modules.each_with_object({}) do |(module_name, module_config), result|
         result[module_name] = {
-          type: module_name,
-          params: module_params.each_with_object({}) do |(param_key, default_value), acc|
+          type: module_type(module_config),
+          params: module_params(module_config).each_with_object({}) do |(param_key, default_value), acc|
             acc[param_key.to_sym] = to_numeric(p.fetch(module_param_key(module_name, param_key), default_value))
           end
         }
@@ -145,22 +134,9 @@ module Research
       return dictionary.dig('params', target.delete_prefix('params.'), 'label') if target.start_with?('params.')
 
       module_name, param_key = target.split('.', 2)
-      param_label = dictionary.dig('modules', 'types', module_name, 'params', param_key, 'label')
-      param_label || param_key
-    end
+      return humanize_token(param_key) unless modules.key?(module_name)
 
-    def primary_module_name
-      modules.keys.first
-    end
-
-    def primary_module_params
-      modules[primary_module_name] || {}
-    end
-
-    def default_module_target
-      module_name = primary_module_name
-      param_key = primary_module_params.keys.first
-      module_name && param_key ? "#{module_name}.#{param_key}" : nil
+      "#{humanize_token(module_name)} #{humanize_token(param_key)}"
     end
 
     def module_param_key(module_name, param_key)
@@ -168,8 +144,8 @@ module Research
     end
 
     def module_param_keys
-      @module_param_keys ||= modules.flat_map do |module_name, module_params|
-        module_params.keys.map { |param_key| module_param_key(module_name, param_key) }
+      @module_param_keys ||= modules.flat_map do |module_name, module_config|
+        module_params(module_config).keys.map { |param_key| module_param_key(module_name, param_key) }
       end
     end
 
@@ -177,6 +153,27 @@ module Research
       raw_modules.each_with_object({}) do |(module_name, module_payload), result|
         result[module_name.to_s] = module_payload.to_h.transform_keys(&:to_s)
       end
+    end
+
+    def module_type(module_config)
+      module_config.to_h['type'].to_s
+    end
+
+    def module_params(module_config)
+      module_config.to_h.except('type')
+    end
+
+    def default_module_target
+      modules.each do |module_name, module_config|
+        param_key = module_params(module_config).keys.first
+        return "#{module_name}.#{param_key}" if param_key
+      end
+
+      nil
+    end
+
+    def humanize_token(value)
+      value.to_s.tr('_', ' ').split.map(&:capitalize).join(' ')
     end
 
     def to_f_or_nil(value)

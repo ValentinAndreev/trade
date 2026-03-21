@@ -40,13 +40,19 @@ module Research
             return
           end
 
-          module_dict = @dictionary.dig('modules', 'types', module_name)
-          unless module_dict
-            add_error(message: "Unsupported module: #{module_name}", path: path, key_path: [ 'modules' ], code: 'module_type')
+          module_type = module_payload['type']&.to_s
+          if module_type.blank?
+            add_error(message: 'Missing required key: type', path: path + [ 'type' ], code: 'missing_key')
             return
           end
 
-          validate_unknown_keys(path, module_payload.keys, module_dict.fetch('params').keys)
+          module_dict = @dictionary.dig('modules', 'types', module_type)
+          unless module_dict
+            add_error(message: "Unsupported module type: #{module_type}", path: path + [ 'type' ], code: 'module_type')
+            return
+          end
+
+          validate_unknown_keys(path, module_payload.keys, [ 'type', *module_dict.fetch('params').keys ])
           module_dict.fetch('params').each do |key, rule|
             validate_scalar(rule, module_payload[key], path + [ key ]) if module_payload.key?(key)
           end

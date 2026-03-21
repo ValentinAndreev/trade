@@ -9,7 +9,7 @@ describe("research results helpers", () => {
 
   it("serializes processed runs back to storable shape", () => {
     const runs: ProcessedResearchRun[] = [{
-      params: { module_period: 20 },
+      params: { ema_period: 20 },
       trades: [],
       stats: {
         totalTrades: 0,
@@ -43,7 +43,7 @@ describe("research results helpers", () => {
 
     expect(serializeResearchResult(runs, 0)).toEqual({
       runs: [{
-        params: { module_period: 20 },
+        params: { ema_period: 20 },
         trades: [],
       }],
       selectedRunIndex: 0,
@@ -52,7 +52,7 @@ describe("research results helpers", () => {
 
   it("recomputes stats when processing stored runs", () => {
     const processed = processResearchRuns([{
-      params: { module_period: 20 },
+      params: { ema_period: 20 },
       trades: [],
     }])
 

@@ -188,12 +188,14 @@ function systemSummaryHTML(system: ResearchCatalogEntry | null, metadata: Resear
   }
 
   const modules = Object.entries(metadata.modules || {})
-    .map(([moduleName, moduleParamsPayload]) => {
-      const moduleParams = Object.entries(moduleParamsPayload)
+    .map(([moduleName, moduleConfig]) => {
+      const moduleType = typeof moduleConfig.type === "string" ? moduleConfig.type.toUpperCase() : "UNKNOWN"
+      const moduleParams = Object.entries(moduleConfig)
+        .filter(([key]) => key !== "type")
         .map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`)
         .join(", ")
       const suffix = moduleParams ? ` <span class="text-gray-400">${escapeHTML(moduleParams)}</span>` : ""
-      return `<div><span class="text-white">${escapeHTML(moduleName.toUpperCase())}</span>${suffix}</div>`
+      return `<div><span class="text-white">${escapeHTML(moduleName)}</span> <span class="text-blue-200">${escapeHTML(moduleType)}</span>${suffix}</div>`
     })
     .join("")
   const runtimeParams = Object.entries(metadata.params).map(([key, value]) => `${escapeHTML(key)}=${escapeHTML(String(value))}`).join(", ")

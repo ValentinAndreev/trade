@@ -14,14 +14,15 @@ export interface ResearchOptimizationTargetOption {
   label: string
 }
 
+export interface ResearchModuleConfig {
+  type: string
+  [key: string]: number | string | boolean
+}
+
 export interface ResearchValidatedSystem {
   id: string
   name: string
-  module: {
-    name: string | null
-    params: Record<string, number | string | boolean>
-  }
-  modules: Record<string, Record<string, number | string | boolean>>
+  modules: Record<string, ResearchModuleConfig>
   params: Record<string, number | string | boolean>
   conditions: string[]
   optimization_targets: ResearchOptimizationTargetOption[]

@@ -1,13 +1,13 @@
 import type { ResearchResult, ResearchRunPayload, SystemStats } from "../types/store"
 
 export type { ResearchResult, ResearchRunPayload }
-
-export interface ResearchSystemPayload {
-  type: string | null
-  params: Record<string, number | string | boolean>
+export interface ResearchModuleConfigPayload {
+  type: string
+  [key: string]: number | string | boolean
 }
 
-export interface ResearchModulePayload {
+export interface ResearchSystemPayload {
+  id: string | null
   name: string | null
   params: Record<string, number | string | boolean>
 }
@@ -30,8 +30,7 @@ export interface ResearchOptimizationPayload {
 export interface ResearchApiResponse {
   strategy: string
   system: ResearchSystemPayload
-  module: ResearchModulePayload
-  modules: Record<string, Record<string, number | string | boolean>>
+  modules: Record<string, ResearchModuleConfigPayload>
   dataset: ResearchDatasetPayload
   optimization: ResearchOptimizationPayload
   runs: ResearchRunPayload[]

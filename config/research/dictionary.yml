@@ -6,6 +6,9 @@ root_keys:
   - conditions
   - optimization
 
+module_keys:
+  - type
+
 modules:
   types:
     ema:

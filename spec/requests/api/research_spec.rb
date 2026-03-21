@@ -9,6 +9,7 @@ RSpec.describe 'Api::Research' do
       name: Price / EMA Cross
       modules:
         ema:
+          type: ema
           period: 3
       params:
         position_mode: long_short
@@ -94,7 +95,7 @@ RSpec.describe 'Api::Research' do
 
       json = response.parsed_body
       expect(json['ok']).to eq(true)
-      expect(json.dig('system', 'module', 'name')).to eq('ema')
+      expect(json.dig('system', 'modules', 'ema', 'type')).to eq('ema')
       expect(json.dig('system', 'modules', 'ema', 'period')).to eq(3)
       expect(json.dig('system', 'optimization_targets')).to include(
         a_hash_including('value' => 'ema.period')
@@ -223,16 +224,15 @@ RSpec.describe 'Api::Research' do
 
       json = response.parsed_body
       expect(json['strategy']).to eq('price_ema_cross')
-      expect(json.dig('system', 'type')).to eq('price_ema_cross')
-      expect(json.dig('module', 'name')).to eq('ema')
+      expect(json.dig('system', 'id')).to eq('price_ema_cross')
+      expect(json.dig('system', 'name')).to eq('Price / EMA Cross')
       expect(json.dig('system', 'params')).to eq({
         'position_mode' => 'long_short'
       })
       expect(json['runs']).to have_attributes(length: 1)
       expect(json['runs'].first['params']).to include(
         'system_id' => 'price_ema_cross',
-        'module_type' => 'ema',
-        'module_period' => 3.0,
+        'system_name' => 'Price / EMA Cross',
         'ema_period' => 3.0
       )
     end
@@ -264,6 +264,7 @@ RSpec.describe 'Api::Research' do
         name: RSI Threshold Reversal
         modules:
           rsi:
+            type: rsi
             period: 3
         params:
           position_mode: long_short
@@ -296,8 +297,8 @@ RSpec.describe 'Api::Research' do
 
       json = response.parsed_body
       expect(json['strategy']).to eq('rsi_threshold')
-      expect(json.dig('system', 'type')).to eq('rsi_threshold')
-      expect(json.dig('module', 'name')).to eq('rsi')
+      expect(json.dig('system', 'id')).to eq('rsi_threshold')
+      expect(json.dig('system', 'name')).to eq('RSI Threshold Reversal')
       expect(json.dig('optimization', 'param')).to eq('params.lower_threshold')
       expect(json['runs'].map { |run| run.dig('params', 'lower_threshold') }).to eq([ 30.0, 35.0, 40.0 ])
     end

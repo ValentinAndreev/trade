@@ -1,0 +1,24 @@
+id: ema_fast_slow_cross
+name: EMA Fast / Slow Cross
+
+modules:
+  ema_fast:
+    type: ema
+    period: 20
+  ema_slow:
+    type: ema
+    period: 50
+
+params:
+  position_mode: long_short
+
+conditions:
+  long_entry: "ema_fast.value >> ema_slow.value"
+  long_exit: "ema_fast.value << ema_slow.value"
+  short_entry: "ema_fast.value << ema_slow.value"
+  short_exit: "ema_fast.value >> ema_slow.value"
+
+optimization:
+  targets:
+    - ema_fast.period
+    - ema_slow.period

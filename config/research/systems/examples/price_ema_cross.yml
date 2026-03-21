@@ -3,6 +3,7 @@ name: Price / EMA Cross
 
 modules:
   ema:
+    type: ema
     period: 20
 
 params:

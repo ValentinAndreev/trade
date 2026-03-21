@@ -49,7 +49,8 @@ module Research
             return
           end
 
-          module_param_rule = @dictionary.dig('modules', 'types', module_name, 'params', param_key)
+          module_type = module_payload['type']&.to_s
+          module_param_rule = @dictionary.dig('modules', 'types', module_type, 'params', param_key)
           unless module_param_rule
             add_error(message: "Unknown optimization target: #{value}", path: path, code: 'optimization_target')
             return

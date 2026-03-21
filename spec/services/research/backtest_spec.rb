@@ -27,8 +27,10 @@ RSpec.describe Research::Backtest do
       name: EMA + RSI Combo
       modules:
         ema:
+          type: ema
           period: 20
         rsi:
+          type: rsi
           period: 14
       params:
         position_mode: long_short
@@ -39,6 +41,27 @@ RSpec.describe Research::Backtest do
         long_exit: "(close << ema.value) || (rsi.value > params.upper_threshold)"
         short_entry: "(close << ema.value) && (rsi.value > params.upper_threshold)"
         short_exit: "(close >> ema.value) || (rsi.value < params.lower_threshold)"
+    YAML
+  end
+
+  let(:ema_pair_system) do
+    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+      id: ema_fast_slow_cross
+      name: EMA Fast / Slow Cross
+      modules:
+        ema_fast:
+          type: ema
+          period: 10
+        ema_slow:
+          type: ema
+          period: 20
+      params:
+        position_mode: long_short
+      conditions:
+        long_entry: "ema_fast.value >> ema_slow.value"
+        long_exit: "ema_fast.value << ema_slow.value"
+        short_entry: "ema_fast.value << ema_slow.value"
+        short_exit: "ema_fast.value >> ema_slow.value"
     YAML
   end
 
@@ -65,7 +88,7 @@ RSpec.describe Research::Backtest do
 
       expect(result[:mode]).to eq('normal')
       expect(result[:stage]).to eq('in_sample')
-      expect(result[:params]).to include(module_period: 3, ema_period: 3)
+      expect(result[:params]).to include(ema_period: 3, position_mode: 'long_short')
       expect(result[:trades]).to be_an(Array)
       expect(result[:trades]).not_to be_empty
       expect(result[:trades].first).to include(:entryTime, :entryPrice, :direction, :pnl)
@@ -77,7 +100,7 @@ RSpec.describe Research::Backtest do
         start_time: start_time.iso8601, end_time: end_time.iso8601
       ).run(params: { ema_period: 3, position_mode: 'long_only' })
 
-      expect(result[:params]).to include(module_period: 3, ema_period: 3, position_mode: 'long_only')
+      expect(result[:params]).to include(ema_period: 3, position_mode: 'long_only')
       expect(result[:trades].map { |t| t[:direction] }.uniq).to eq([ 'long' ])
     end
 
@@ -88,10 +111,25 @@ RSpec.describe Research::Backtest do
       ).run(params: { rsi_period: 3, position_mode: 'long_short', lower_threshold: 35, upper_threshold: 65 })
 
       expect(result[:params]).to include(
-        module_period: 3, rsi_period: 3, position_mode: 'long_short',
+        rsi_period: 3, position_mode: 'long_short',
         lower_threshold: 35.0, upper_threshold: 65.0
       )
       expect(result[:trades]).to be_an(Array)
+    end
+
+    it 'runs multiple EMA instances and evaluates their crossover' do
+      result = described_class.new(
+        system: ema_pair_system, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      ).run(params: { ema_fast_period: 3, ema_slow_period: 5, position_mode: 'long_short' })
+
+      expect(result[:params]).to include(
+        ema_fast_period: 3,
+        position_mode: 'long_short',
+        ema_slow_period: 5
+      )
+      expect(result[:trades]).to be_an(Array)
+      expect(result[:trades]).not_to be_empty
     end
 
     it 'reuses unchanged module results across runs' do

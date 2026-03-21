@@ -3,6 +3,7 @@ name: RSI Threshold Reversal
 
 modules:
   rsi:
+    type: rsi
     period: 14
 
 params:

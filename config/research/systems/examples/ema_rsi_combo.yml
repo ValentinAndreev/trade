@@ -3,8 +3,10 @@ name: EMA + RSI Combo
 
 modules:
   ema:
+    type: ema
     period: 20
   rsi:
+    type: rsi
     period: 14
 
 params:

@@ -6,8 +6,6 @@ describe("research summary helpers", () => {
   const run: ProcessedResearchRun = {
     params: {
       system_name: "RSI Threshold Reversal",
-      module_type: "rsi",
-      module_period: 14,
       rsi_period: 14,
       lower_threshold: 30,
       upper_threshold: 70,
@@ -52,7 +50,23 @@ describe("research summary helpers", () => {
 
   it("builds readable run summary", () => {
     expect(runSummary(run)).toContain("RSI Threshold Reversal")
-    expect(runSummary(run)).toContain("RSI Period 14.00")
+    expect(runSummary(run)).toContain("Rsi Period 14.00")
     expect(runSummary(run)).toContain("Lower Threshold 30.00")
+  })
+
+  it("builds readable run summary for aliased module params", () => {
+    const emaRun: ProcessedResearchRun = {
+      ...run,
+      params: {
+        system_name: "EMA Fast / Slow Cross",
+        ema_fast_period: 10,
+        ema_slow_period: 20,
+        position_mode: "long_short",
+      },
+    }
+
+    expect(runSummary(emaRun)).toContain("EMA Fast / Slow Cross")
+    expect(runSummary(emaRun)).toContain("Ema Fast Period 10.00")
+    expect(runSummary(emaRun)).toContain("Ema Slow Period 20.00")
   })
 })

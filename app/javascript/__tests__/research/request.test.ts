@@ -3,7 +3,7 @@ import { buildResearchRequest } from "../../research/request"
 import type { ResearchState } from "../../research/state"
 
 describe("buildResearchRequest", () => {
-  it("builds payload with system, module, execution and optimization blocks", () => {
+  it("builds payload with system, execution and optimization blocks", () => {
     const state: ResearchState = {
       symbol: "BTCUSD",
       timeframe: "1h",
@@ -16,6 +16,7 @@ describe("buildResearchRequest", () => {
         "name: RSI Threshold Reversal",
         "modules:",
         "  rsi:",
+        "    type: rsi",
         "    period: 14",
       ].join("\n"),
       feeBps: 4,

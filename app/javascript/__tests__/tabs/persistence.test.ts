@@ -152,7 +152,7 @@ describe("persistence", () => {
           resultsSplitRatio: 0.38,
         },
         researchResult: {
-          runs: [{ params: { module_period: 20 }, trades: [] }],
+          runs: [{ params: { ema_period: 20 }, trades: [] }],
           selectedRunIndex: 0,
         },
       }]

@@ -20,6 +20,7 @@ RSpec.describe Research::Dsl::Validator do
         name: Broken
         modules:
           ema:
+            type: ema
             period: 20
         params:
           position_mode: long_short
@@ -33,26 +34,47 @@ RSpec.describe Research::Dsl::Validator do
       expect(result).to be_invalid
       expect(result.diagnostics.first.to_h).to include(
         message: 'Unknown key: unexpected',
-        line: 10,
+        line: 11,
         column: 1
       )
     end
 
-    it 'rejects unsupported module keys' do
+    it 'rejects unsupported module types' do
       yaml = <<~YAML
         id: bad
         name: Broken
         modules:
           fast:
+            type: wave
             period: 20
         conditions:
-          long_entry: "close >> ema.value"
+          long_entry: "close >> fast.value"
       YAML
 
       result = described_class.new(yaml).call
 
       expect(result).to be_invalid
-      expect(result.diagnostics.map(&:message)).to include('Unsupported module: fast')
+      expect(result.diagnostics.map(&:message)).to include('Unsupported module type: wave')
+    end
+
+    it 'requires type for every module alias' do
+      yaml = <<~YAML
+        id: bad
+        name: Broken
+        modules:
+          ema_fast:
+            period: 10
+          ema_slow:
+            type: ema
+            period: 20
+        conditions:
+          long_entry: "ema_fast.value >> ema_slow.value"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:message)).to include('Missing required key: type')
     end
   end
 end
