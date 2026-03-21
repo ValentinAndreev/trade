@@ -53,7 +53,7 @@ RSpec.describe Research::RunRequest do
     it 'builds runtime params from yaml dsl' do
       request = described_class.new(dsl_params)
 
-      expect(request.system).to be_a(Research::System)
+      expect(request.system).to be_a(Research::Systems::Definition)
       expect(request.runtime_params).to eq({
         rsi_period: 14.0,
         position_mode: 'long_short',

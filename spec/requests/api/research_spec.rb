@@ -54,7 +54,7 @@ RSpec.describe 'Api::Research' do
       get '/api/research/catalog'
 
       expect(response).to have_http_status(:ok)
-      expected_systems = Research::Dsl::Catalog.entries.map do |entry|
+      expected_systems = Research::Systems::Catalog.entries.map do |entry|
         {
           'id' => entry.id,
           'file_name' => entry.file_name,
@@ -100,7 +100,7 @@ RSpec.describe 'Api::Research' do
 
     it 'lists files and directories without validating unopened yaml files' do
       Dir.mktmpdir do |dir|
-        allow(Research::Dsl::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
+        allow(Research::Systems::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
         FileUtils.mkdir_p(File.join(dir, 'examples'))
         File.write(File.join(dir, 'examples', 'price_ema_cross.yml'), yaml_system)
         File.write(File.join(dir, 'my_sysyte.yml'), '')
@@ -134,7 +134,7 @@ RSpec.describe 'Api::Research' do
 
     it 'saves yaml systems as files' do
       Dir.mktmpdir do |dir|
-        allow(Research::Dsl::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
+        allow(Research::Systems::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
 
         post '/api/research/systems/save', params: {
           system_yaml: yaml_system
@@ -149,7 +149,7 @@ RSpec.describe 'Api::Research' do
 
     it 'saves yaml systems into the selected directory' do
       Dir.mktmpdir do |dir|
-        allow(Research::Dsl::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
+        allow(Research::Systems::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
         FileUtils.mkdir_p(File.join(dir, 'trend'))
 
         post '/api/research/systems/save', params: {
@@ -165,7 +165,7 @@ RSpec.describe 'Api::Research' do
 
     it 'renames a yaml system file inside its directory and updates root id' do
       Dir.mktmpdir do |dir|
-        allow(Research::Dsl::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
+        allow(Research::Systems::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
         FileUtils.mkdir_p(File.join(dir, 'trend'))
         File.write(File.join(dir, 'trend/price_ema_cross.yml'), yaml_system)
 
@@ -187,7 +187,7 @@ RSpec.describe 'Api::Research' do
 
     it 'deletes a yaml system file' do
       Dir.mktmpdir do |dir|
-        allow(Research::Dsl::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
+        allow(Research::Systems::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
         FileUtils.mkdir_p(File.join(dir, 'trend'))
         File.write(File.join(dir, 'trend/price_ema_cross.yml'), yaml_system)
 
@@ -204,7 +204,7 @@ RSpec.describe 'Api::Research' do
 
     it 'creates, renames and deletes directories' do
       Dir.mktmpdir do |dir|
-        allow(Research::Dsl::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
+        allow(Research::Systems::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
 
         post '/api/research/directories/create', params: {
           parent_path: nil,

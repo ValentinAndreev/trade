@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Research
-  module Dsl
+  module Systems
     module ConditionExpression
       module Definition
         ROOT_REQUIREMENT = 'Condition expressions must evaluate to a boolean comparison'

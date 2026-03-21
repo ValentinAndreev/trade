@@ -7,9 +7,9 @@ module Research
     def initialize(raw_params)
       @raw_params = raw_params.deep_symbolize_keys
       yaml = requested_yaml
-      raise Research::Dsl::ValidationError.new([ Research::Dsl::Diagnostic.yaml_missing ]) if yaml.blank?
+      raise Research::Systems::Validation::Error.new([ Research::Systems::Validation::Diagnostic.yaml_missing ]) if yaml.blank?
 
-      validation = Research::Dsl::Catalog.validate(yaml)
+      validation = Research::Systems::Validation::Validator.new(yaml).call
       validation.raise_if_invalid!
       @system = validation.compiled
     end
@@ -71,7 +71,7 @@ module Research
     attr_reader :raw_params
 
     def requested_yaml
-      raw_params[:system_yaml].presence || Research::Dsl::Catalog.load_yaml(raw_params[:system_id], relative_path: raw_params[:system_path])
+      raw_params[:system_yaml].presence || Research::Systems::Catalog.load_yaml(raw_params[:system_id], relative_path: raw_params[:system_path])
     end
 
     def dataset

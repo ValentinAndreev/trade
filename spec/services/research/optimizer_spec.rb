@@ -10,7 +10,7 @@ RSpec.describe Research::Optimizer do
   end
 
   let(:ema_system) do
-    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+    Research::Systems::Validation::Validator.new(<<~YAML).call.raise_if_invalid!.compiled
       id: price_ema_cross
       name: Price / EMA Cross
       modules:
@@ -31,7 +31,7 @@ RSpec.describe Research::Optimizer do
   end
 
   let(:rsi_system) do
-    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+    Research::Systems::Validation::Validator.new(<<~YAML).call.raise_if_invalid!.compiled
       id: rsi_threshold
       name: RSI Threshold
       modules:

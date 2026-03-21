@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Research
-  module Dsl
+  module Systems
     module ConditionExpression
       class Evaluator
         ARITHMETIC_OPERATIONS = {

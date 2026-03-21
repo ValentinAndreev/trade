@@ -3,13 +3,13 @@
 class Api::ResearchController < Api::ApplicationController
   def catalog
     render json: {
-      systems:     Research::Dsl::Catalog.entries.map(&:to_h),
-      directories: Research::Dsl::Catalog.directory_paths
+      systems:     Research::Systems::Catalog.entries.map(&:to_h),
+      directories: Research::Systems::Catalog.directory_paths
     }
   end
 
   def editor_metadata
-    render json: Research::Dsl::Catalog.editor_metadata_response
+    render json: Research::Systems::EditorMetadata.response
   end
 
   def cancel
@@ -21,10 +21,10 @@ class Api::ResearchController < Api::ApplicationController
   end
 
   def validate
-    yaml = params[:system_yaml].presence || Research::Dsl::Catalog.load_yaml(params[:system_id], relative_path: params[:system_path])
+    yaml = params[:system_yaml].presence || Research::Systems::Catalog.load_yaml(params[:system_id], relative_path: params[:system_path])
     return render json: missing_yaml_response, status: :unprocessable_entity if yaml.blank?
 
-    validation = Research::Dsl::Catalog.validate(yaml)
+    validation = Research::Systems::Validation::Validator.new(yaml).call
     render json: {
       ok:          validation.valid?,
       diagnostics: validation.diagnostics.map(&:to_h),
@@ -36,13 +36,13 @@ class Api::ResearchController < Api::ApplicationController
     yaml = params[:system_yaml].to_s
     return render json: missing_yaml_response, status: :unprocessable_entity if yaml.blank?
 
-    entry = Research::Dsl::SystemRepository.save_system(
+    entry = Research::Systems::Repository.save_system(
       yaml,
       source_relative_path:    params[:source_path],
       directory_relative_path: params[:directory_path]
     )
     render json: { ok: true, diagnostics: [], system: entry.to_h }
-  rescue Research::Dsl::ValidationError => e
+  rescue Research::Systems::Validation::Error => e
     render json: { ok: false, diagnostics: e.diagnostics.map(&:to_h), system: nil }, status: :unprocessable_entity
   end
 
@@ -50,47 +50,47 @@ class Api::ResearchController < Api::ApplicationController
     yaml = params[:system_yaml].to_s
     return render json: missing_yaml_response, status: :unprocessable_entity if yaml.blank?
 
-    entry = Research::Dsl::SystemRepository.rename_entry(
+    entry = Research::Systems::Repository.rename_entry(
       source_relative_path: params[:source_path],
       target_id:            params[:target_system_id].to_s,
       yaml:                 yaml
     )
     render json: { ok: true, diagnostics: [], system: entry.to_h }
-  rescue Research::Dsl::ValidationError => e
+  rescue Research::Systems::Validation::Error => e
     render json: { ok: false, diagnostics: e.diagnostics.map(&:to_h), system: nil }, status: :unprocessable_entity
   end
 
   def delete_system
-    Research::Dsl::SystemRepository.delete_entry(source_relative_path: params[:source_path])
+    Research::Systems::Repository.delete_entry(source_relative_path: params[:source_path])
     render json: { ok: true, diagnostics: [], deleted_system_path: params[:source_path] }
-  rescue Research::Dsl::ValidationError => e
+  rescue Research::Systems::Validation::Error => e
     render json: { ok: false, diagnostics: e.diagnostics.map(&:to_h), deleted_system_path: nil }, status: :unprocessable_entity
   end
 
   def create_directory
-    path = Research::Dsl::SystemRepository.create_directory(
+    path = Research::Systems::Repository.create_directory(
       parent_relative_path: params[:parent_path],
       directory_name:       params[:directory_name]
     )
     render json: { ok: true, diagnostics: [], path: path }
-  rescue Research::Dsl::ValidationError => e
+  rescue Research::Systems::Validation::Error => e
     render json: { ok: false, diagnostics: e.diagnostics.map(&:to_h), path: nil }, status: :unprocessable_entity
   end
 
   def rename_directory
-    path = Research::Dsl::SystemRepository.rename_directory(
+    path = Research::Systems::Repository.rename_directory(
       source_relative_path: params[:source_path],
       target_name:          params[:target_name]
     )
     render json: { ok: true, diagnostics: [], path: path }
-  rescue Research::Dsl::ValidationError => e
+  rescue Research::Systems::Validation::Error => e
     render json: { ok: false, diagnostics: e.diagnostics.map(&:to_h), path: nil }, status: :unprocessable_entity
   end
 
   def delete_directory
-    Research::Dsl::SystemRepository.delete_directory(source_relative_path: params[:source_path])
+    Research::Systems::Repository.delete_directory(source_relative_path: params[:source_path])
     render json: { ok: true, diagnostics: [], deleted_path: params[:source_path] }
-  rescue Research::Dsl::ValidationError => e
+  rescue Research::Systems::Validation::Error => e
     render json: { ok: false, diagnostics: e.diagnostics.map(&:to_h), deleted_path: nil }, status: :unprocessable_entity
   end
 
@@ -137,7 +137,7 @@ class Api::ResearchController < Api::ApplicationController
     )
 
     render json: research_request.response_payload(runs:)
-  rescue Research::Dsl::ValidationError => e
+  rescue Research::Systems::Validation::Error => e
     progress&.failed(message: e.message, elapsed_ms: request_started_at ? elapsed_ms(request_started_at) : nil)
     render json: { error: e.message, diagnostics: e.diagnostics.map(&:to_h) }, status: :unprocessable_entity
   rescue TechnicalAnalysis::Validation::ValidationError => e
@@ -163,6 +163,6 @@ class Api::ResearchController < Api::ApplicationController
   end
 
   def missing_yaml_response
-    { ok: false, diagnostics: [ Research::Dsl::Diagnostic.yaml_missing.to_h ], system: nil }
+    { ok: false, diagnostics: [ Research::Systems::Validation::Diagnostic.yaml_missing.to_h ], system: nil }
   end
 end

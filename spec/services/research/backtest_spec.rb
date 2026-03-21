@@ -8,21 +8,21 @@ RSpec.describe Research::Backtest do
   let(:close_values) { [ 100, 101, 102, 101, 99, 97, 98, 100, 103, 104, 102, 99, 96, 97, 100, 104 ] }
 
   let(:ema_system) do
-    entry = Research::Dsl::Catalog.find('price_ema_cross')
+    entry = Research::Systems::Catalog.find('price_ema_cross')
     raise 'ema system not found' unless entry
 
-    Research::Dsl::Catalog.validate(entry.yaml).raise_if_invalid!.compiled
+    Research::Systems::Validation::Validator.new(entry.yaml).call.raise_if_invalid!.compiled
   end
 
   let(:rsi_system) do
-    entry = Research::Dsl::Catalog.find('rsi_threshold')
+    entry = Research::Systems::Catalog.find('rsi_threshold')
     raise 'rsi system not found' unless entry
 
-    Research::Dsl::Catalog.validate(entry.yaml).raise_if_invalid!.compiled
+    Research::Systems::Validation::Validator.new(entry.yaml).call.raise_if_invalid!.compiled
   end
 
   let(:ema_rsi_system) do
-    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+    Research::Systems::Validation::Validator.new(<<~YAML).call.raise_if_invalid!.compiled
       id: ema_rsi_combo
       name: EMA + RSI Combo
       modules:
@@ -45,7 +45,7 @@ RSpec.describe Research::Backtest do
   end
 
   let(:ema_pair_system) do
-    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+    Research::Systems::Validation::Validator.new(<<~YAML).call.raise_if_invalid!.compiled
       id: ema_fast_slow_cross
       name: EMA Fast / Slow Cross
       modules:
@@ -66,7 +66,7 @@ RSpec.describe Research::Backtest do
   end
 
   let(:history_helper_system) do
-    Research::Dsl::Catalog.validate(<<~YAML).raise_if_invalid!.compiled
+    Research::Systems::Validation::Validator.new(<<~YAML).call.raise_if_invalid!.compiled
       id: history_helper_system
       name: History Helper System
       modules:
@@ -189,7 +189,7 @@ RSpec.describe Research::Backtest do
 
     it 'evaluates only the signals needed for the current position state' do
       signal_calls = []
-      system = instance_double(Research::System)
+      system = instance_double(Research::Systems::Definition)
 
       allow(system).to receive(:module_runtime_configs).and_return({})
       allow(system).to receive(:run_params) { |params| params }

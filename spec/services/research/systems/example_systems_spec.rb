@@ -10,7 +10,7 @@ RSpec.describe 'Research example systems' do
   it 'keeps all example YAML systems valid' do
     aggregate_failures do
       example_paths.each do |path|
-        validation = Research::Dsl::Catalog.validate(File.read(path))
+        validation = Research::Systems::Validation::Validator.new(File.read(path)).call
 
         expect(validation).to be_valid, "#{File.basename(path)} diagnostics: #{validation.diagnostics.map(&:message).join(', ')}"
       end

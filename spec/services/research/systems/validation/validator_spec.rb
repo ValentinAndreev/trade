@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe Research::Dsl::Validator do
+RSpec.describe Research::Systems::Validation::Validator do
   describe '#call' do
     it 'treats empty yaml as invalid' do
       result = described_class.new('').call
