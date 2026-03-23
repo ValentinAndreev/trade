@@ -37,7 +37,8 @@ module Research
         result = backtest.run(
           params: base_params.merge(param_key => value),
           mode: mode,
-          stage: stage
+          stage: stage,
+          cancel_check: -> { cancelled?(run_id, monotonic_now) }
         )
         completed_runs << result
         now = monotonic_now
@@ -54,6 +55,13 @@ module Research
       end
 
       progress&.finished(total_runs: values.length, elapsed_ms: elapsed_ms(started_at))
+      completed_runs
+    rescue Research::Backtest::Cancelled
+      progress&.cancelled(
+        total_runs: values.length,
+        completed_runs: completed_runs.length,
+        elapsed_ms: elapsed_ms(started_at)
+      )
       completed_runs
     rescue StandardError => e
       progress&.failed(message: e.message, total_runs: values&.length, elapsed_ms: elapsed_ms(started_at))

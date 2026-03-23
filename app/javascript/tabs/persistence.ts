@@ -15,8 +15,11 @@ export function loadTabs(): Tab[] {
           if (tab.type === "data" && tab.dataConfig && !Array.isArray(tab.dataConfig.systems)) {
             tab.dataConfig.systems = []
           }
-          if (tab.type === "research" && !tab.researchConfig) {
-            tab.researchConfig = buildDefaultResearchState(null)
+          if (tab.type === "research") {
+            tab.researchConfig = {
+              ...buildDefaultResearchState(null),
+              ...(tab.researchConfig || {}),
+            }
           }
           if (tab.type === "research" && !tab.researchResult) {
             tab.researchResult = { runs: [], selectedRunIndex: 0 }

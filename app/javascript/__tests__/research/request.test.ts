@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest"
 import { buildResearchRequest } from "../../research/request"
-import type { ResearchState } from "../../research/state"
+import type { ResearchConfig } from "../../types/store"
 
 describe("buildResearchRequest", () => {
   it("builds payload with system, execution and optimization blocks", () => {
-    const state: ResearchState = {
+    const state: ResearchConfig = {
       symbol: "BTCUSD",
       timeframe: "1h",
-      startTime: "2026-03-01T00:00",
-      endTime: "2026-03-10T00:00",
+      startTime: "2026-03-01T00:00:00.000Z",
+      endTime: "2026-03-10T23:59:59.000Z",
       systemId: "rsi_threshold",
       systemPath: "momentum/rsi_threshold.yml",
       systemYaml: [
@@ -28,14 +28,15 @@ describe("buildResearchRequest", () => {
       optimizationStep: 5,
       selectedMetric: "sharpeRatio",
       resultsSplitRatio: 0.38,
+      topPaneExpanded: null,
     }
 
     expect(buildResearchRequest(state, "run-123")).toEqual({
       run_id: "run-123",
       symbol: "BTCUSD",
       timeframe: "1h",
-      start_time: new Date("2026-03-01T00:00").toISOString(),
-      end_time: new Date("2026-03-10T00:00").toISOString(),
+      start_time: "2026-03-01T00:00:00.000Z",
+      end_time: "2026-03-10T23:59:59.000Z",
       system_id: "rsi_threshold",
       system_path: "momentum/rsi_threshold.yml",
       system_yaml: state.systemYaml,

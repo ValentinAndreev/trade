@@ -16,7 +16,11 @@ export default class PanelRenderer {
   render(tabs: Tab[], activeTabId: string | null, selectedPanelId: string | null): void {
     this._ensureWrappers(tabs, activeTabId, (tab, wrapper, isActive) => {
       if (!isActive || tab.type === "data") return
-      this._syncPanels(wrapper, tab.panels, selectedPanelId)
+      const maximizedPanels = tab.maximizedPanelId
+        ? tab.panels.filter(panel => panel.id === tab.maximizedPanelId)
+        : []
+      const visiblePanels = maximizedPanels.length ? maximizedPanels : tab.panels
+      this._syncPanels(wrapper, visiblePanels, selectedPanelId, maximizedPanels[0]?.id || null)
     })
   }
 
@@ -102,7 +106,7 @@ export default class PanelRenderer {
     })
   }
 
-  _syncPanels(wrapper: HTMLElement, panels: Panel[], selectedPanelId: string | null): void {
+  _syncPanels(wrapper: HTMLElement, panels: Panel[], selectedPanelId: string | null, maximizedPanelId: string | null): void {
     const existing = new Map<string, HTMLElement>()
     wrapper.querySelectorAll<HTMLElement>(":scope > [data-panel-id]").forEach(el => {
       existing.set(el.dataset.panelId ?? "", el)
@@ -116,7 +120,7 @@ export default class PanelRenderer {
     const removed = this._removeStale(existing, savedFlex, panels)
     if (removed) this._normalizeFlex(existing, savedFlex)
 
-    this._reconcilePanels(wrapper, panels, existing, savedFlex, selectedPanelId)
+    this._reconcilePanels(wrapper, panels, existing, savedFlex, selectedPanelId, maximizedPanelId)
     this._applyCssOrder(wrapper, panels)
     this._syncDividers(wrapper, panels)
   }
@@ -153,22 +157,39 @@ export default class PanelRenderer {
     }
   }
 
-  _reconcilePanels(wrapper: HTMLElement, panels: Panel[], existing: Map<string, HTMLElement>, savedFlex: Map<string, string>, selectedPanelId: string | null): void {
+  _reconcilePanels(
+    wrapper: HTMLElement,
+    panels: Panel[],
+    existing: Map<string, HTMLElement>,
+    savedFlex: Map<string, string>,
+    selectedPanelId: string | null,
+    maximizedPanelId: string | null,
+  ): void {
     panels.forEach((panel, panelIdx) => {
       const el = existing.get(panel.id)
       const isFirst = panelIdx === 0
       const isLast = panelIdx === panels.length - 1
+      const isExpanded = panel.id === maximizedPanelId
 
       if (el) {
-        this._updateExistingPanel(el, panel, existing, savedFlex, selectedPanelId, isFirst, isLast)
+        this._updateExistingPanel(el, panel, existing, savedFlex, selectedPanelId, isFirst, isLast, isExpanded)
         return
       }
 
-      wrapper.insertAdjacentHTML("beforeend", this._buildPanelHTML(panel, selectedPanelId, isFirst, isLast))
+      wrapper.insertAdjacentHTML("beforeend", this._buildPanelHTML(panel, selectedPanelId, isFirst, isLast, isExpanded))
     })
   }
 
-  _updateExistingPanel(el: HTMLElement, panel: Panel, existing: Map<string, HTMLElement>, savedFlex: Map<string, string>, selectedPanelId: string | null, isFirst: boolean, isLast: boolean): void {
+  _updateExistingPanel(
+    el: HTMLElement,
+    panel: Panel,
+    existing: Map<string, HTMLElement>,
+    savedFlex: Map<string, string>,
+    selectedPanelId: string | null,
+    isFirst: boolean,
+    isLast: boolean,
+    isExpanded: boolean,
+  ): void {
     const chartEl = el.querySelector<HTMLElement>("[data-controller='chart']")
     const hasChart = !!chartEl
     const needsChart = panel.overlays.some(o => o.symbol)
@@ -193,7 +214,7 @@ export default class PanelRenderer {
 
     if (needsRecreate || hasChart !== needsChart) {
       const placeholder = document.createElement("template")
-      placeholder.innerHTML = this._buildPanelHTML(panel, selectedPanelId, isFirst, isLast)
+      placeholder.innerHTML = this._buildPanelHTML(panel, selectedPanelId, isFirst, isLast, isExpanded)
       const newEl = placeholder.content.firstElementChild as HTMLElement | null
       if (newEl) {
         if (savedFlex.has(panel.id)) newEl.style.flex = savedFlex.get(panel.id) ?? ""
@@ -202,7 +223,7 @@ export default class PanelRenderer {
       existing.delete(panel.id)
     } else {
       this._updatePanelBorder(el, panel.id === selectedPanelId)
-      this._updateMoveButtons(el, panel.id, isFirst, isLast)
+      this._updateMoveButtons(el, panel.id, isFirst, isLast, isExpanded)
     }
   }
 
@@ -272,16 +293,16 @@ export default class PanelRenderer {
       .join("|")
   }
 
-  _updateMoveButtons(el: HTMLElement, panelId: string, isFirst: boolean, isLast: boolean): void {
+  _updateMoveButtons(el: HTMLElement, panelId: string, isFirst: boolean, isLast: boolean, isExpanded: boolean): void {
     el.querySelectorAll(":scope > .absolute.top-1.right-1").forEach(c => c.remove())
-    el.insertAdjacentHTML("afterbegin", controlButtonsHTML(this.ctrl, panelId, isFirst, isLast))
+    el.insertAdjacentHTML("afterbegin", controlButtonsHTML(this.ctrl, panelId, isFirst, isLast, isExpanded))
   }
 
-  _buildPanelHTML(panel: Panel, selectedPanelId: string | null, isFirst: boolean, isLast: boolean): string {
+  _buildPanelHTML(panel: Panel, selectedPanelId: string | null, isFirst: boolean, isLast: boolean, isExpanded: boolean): string {
     const selected = panel.id === selectedPanelId
     const borderClass = selected ? "border-blue-500/50" : "border-[#2a2a3e]"
     const hasSymbols = panel.overlays.some(o => o.symbol)
-    const buttons = controlButtonsHTML(this.ctrl, panel.id, isFirst, isLast)
+    const buttons = controlButtonsHTML(this.ctrl, panel.id, isFirst, isLast, isExpanded)
 
     if (!hasSymbols) {
       return emptyPanelHTML(this.ctrl, panel.id, borderClass, buttons)

@@ -1,6 +1,6 @@
 import { optimizationTargetLabel } from "./catalog"
 import type { ResearchProgressSnapshot } from "./progress_subscription"
-import type { ResearchState } from "./state"
+import type { ResearchConfig } from "../types/store"
 
 export type ResearchProgressInfo = {
   title: string
@@ -13,7 +13,7 @@ export type ResearchProgressInfo = {
 }
 
 export function buildResearchProgressInfo(
-  state: ResearchState,
+  state: ResearchConfig,
   elapsedSeconds: number,
   snapshot: ResearchProgressSnapshot | null = null,
 ): ResearchProgressInfo {
@@ -53,7 +53,7 @@ export function buildResearchProgressInfo(
   }
 }
 
-export function estimateOptimizationRuns(state: ResearchState): number {
+export function estimateOptimizationRuns(state: ResearchConfig): number {
   const from = Number(state.optimizationFrom)
   const to = Number(state.optimizationTo)
   const step = Number(state.optimizationStep)

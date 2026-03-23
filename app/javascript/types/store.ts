@@ -19,6 +19,7 @@ export type ResearchMetricKey =
 
 export type ResearchPositionMode = "long_short" | "long_only" | "short_only"
 export type ResearchOptimizationTarget = string
+export type ResearchTopPaneKey = "equity" | "optimization_chart" | "optimization_table"
 
 export interface ResearchConfig {
   symbol: string
@@ -37,6 +38,7 @@ export interface ResearchConfig {
   optimizationStep: number
   selectedMetric: ResearchMetricKey
   resultsSplitRatio: number
+  topPaneExpanded: ResearchTopPaneKey | null
 }
 
 export interface SystemEditorConfig {
@@ -63,6 +65,7 @@ export interface Tab {
   name: string | null;
   type: TabType;
   panels: Panel[];
+  maximizedPanelId?: string | null;
   dataConfig?: DataConfig;
   researchConfig?: ResearchConfig;
   researchResult?: ResearchResult;

@@ -2,6 +2,8 @@
 
 module Research
   class Backtest
+    class Cancelled < StandardError; end
+
     MODULES = {
       ema: Research::Modules::Ema,
       rsi: Research::Modules::Rsi
@@ -24,14 +26,16 @@ module Research
       @module_runners = {}
     end
 
-    def run(params:, mode: :normal, stage: :in_sample)
+    def run(params:, mode: :normal, stage: :in_sample, cancel_check: nil)
+      cancelled!(cancel_check)
       p = params.to_h.symbolize_keys
-      module_series = module_results_for(system.module_runtime_configs(p))
+      module_series = module_results_for(system.module_runtime_configs(p), cancel_check: cancel_check)
+      cancelled!(cancel_check)
       {
         mode:   mode.to_s,
         stage:  stage.to_s,
         params: system.run_params(p),
-        trades: simulate(candles, module_series, p)
+        trades: simulate(candles, module_series, p, cancel_check: cancel_check)
       }
     end
 
@@ -39,22 +43,25 @@ module Research
 
     # --- Data loading ---
 
-    def module_results_for(module_configs)
+    def module_results_for(module_configs, cancel_check: nil)
       module_configs.each_with_object({}) do |(module_name, config), acc|
-        acc[module_name.to_sym] = cached_module_results(config[:type], config[:params])
+        cancelled!(cancel_check)
+        acc[module_name.to_sym] = cached_module_results(config[:type], config[:params], cancel_check: cancel_check)
       end
     end
 
-    def cached_module_results(module_type, params)
+    def cached_module_results(module_type, params, cancel_check: nil)
+      cancelled!(cancel_check)
       cache_key = [ module_type.to_s, normalized_module_params(params) ]
-      @module_results_cache[cache_key] ||= build_module_results(module_type, params)
+      @module_results_cache[cache_key] ||= build_module_results(module_type, params, cancel_check: cancel_check)
     end
 
-    def build_module_results(module_type, params)
+    def build_module_results(module_type, params, cancel_check: nil)
       results = Array.new(candles.length)
-      module_runner(module_type).call(**params.symbolize_keys).each do |point|
-        index = candle_index_by_time[point[:time]]
-        results[index] = point[:result] if index
+      module_runner(module_type).call(**params.symbolize_keys).each_with_index do |point, point_index|
+        cancelled!(cancel_check) if (point_index % 128).zero?
+        candle_index = candle_index_by_time[point[:time]]
+        results[candle_index] = point[:result] if candle_index
       end
       results
     end
@@ -82,7 +89,7 @@ module Research
 
     # --- Simulation ---
 
-    def simulate(candles, module_series, params)
+    def simulate(candles, module_series, params, cancel_check: nil)
       return [] if candles.length < 3
 
       trades        = []
@@ -92,6 +99,7 @@ module Research
       row = Research::Runtime::RowCursor.new(candles:, module_series:, index: 1)
 
       (1...(candles.length - 1)).each do |idx|
+        cancelled!(cancel_check)
         prev_row.index = idx - 1
         row.index = idx
         fill_open  = candles[idx + 1][:open].to_f
@@ -176,5 +184,9 @@ module Research
 
     def fee(price) = price * (fee_bps / 10_000.0)
     def r(value)   = value.round(4)
+
+    def cancelled!(cancel_check)
+      raise Cancelled if cancel_check&.call
+    end
   end
 end

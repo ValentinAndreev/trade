@@ -9,9 +9,9 @@ import ChartSidebarActions from "../tabs/chart_sidebar_actions"
 import ChartBridge from "../data_grid/chart_bridge"
 import { generateTrades, computeSystemStats } from "../data_grid/system_engine"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
-import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, DataGridControllerAPI, StimulusApp } from "../types/store"
+import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, DataGridControllerAPI, StimulusApp, ResearchConfig } from "../types/store"
 import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS, SYSTEM_STATS_MAX_RETRIES } from "../config/constants"
-import { buildDefaultResearchState, syncResearchStateFromInputs, type ResearchState } from "../research/state"
+import { buildDefaultResearchState, syncResearchStateFromInputs } from "../research/state"
 import {
   fetchResearchCatalog,
   validateResearchSystem,
@@ -47,6 +47,31 @@ export default class extends Controller {
   private _researchFilePicker!: ResearchFilePicker
   private _researchValidation = new Map<string, { key: string; result: ResearchValidationResponse | null }>()
   private _researchValidationPending = new Map<string, string>()
+  private _tabScrollArea: HTMLElement | null = null
+  private _lastRenderedActiveTabId: string | null = null
+  private _lastRenderedTabCount = 0
+  private _tabBarScrollLeft = 0
+  private _forceRevealActiveTab = false
+  private readonly _onTabBarScroll = () => {
+    this._tabBarScrollLeft = this._tabScrollArea?.scrollLeft ?? 0
+    this._syncTabBarScrollControls()
+  }
+  private readonly _onTabBarWheel = (event: WheelEvent) => {
+    const area = this._tabScrollArea
+    if (!area) return
+
+    const maxScrollLeft = Math.max(0, area.scrollWidth - area.clientWidth)
+    if (maxScrollLeft <= 0) return
+
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+    if (delta === 0) return
+
+    event.preventDefault()
+    area.scrollLeft += delta
+    this._tabBarScrollLeft = area.scrollLeft
+    this._syncTabBarScrollControls()
+  }
+  private readonly _onWindowResize = () => this._syncTabBarScrollControls()
 
   async connect() {
     this.store = new TabStore()
@@ -100,6 +125,7 @@ export default class extends Controller {
       this.renderer.dataSidebar.availableIndicators = this.config.indicators as IndicatorInfo[]
     }
     this.render()
+    window.addEventListener("resize", this._onWindowResize)
 
     this._boundListeners = {
       label:  (e) => this._onDrawingCreated("labels", e),
@@ -253,6 +279,8 @@ export default class extends Controller {
   }
 
   disconnect() {
+    window.removeEventListener("resize", this._onWindowResize)
+    this._unbindTabBarScrollArea()
     if (this._linkedDataRefreshInterval) {
       clearInterval(this._linkedDataRefreshInterval)
       this._linkedDataRefreshInterval = null
@@ -288,6 +316,7 @@ export default class extends Controller {
     const isOpen = !dropdown.classList.contains("hidden")
     dropdown.classList.toggle("hidden")
     if (!isOpen) {
+      this._positionAddTabMenu(dropdown as HTMLElement)
       const close = (ev: MouseEvent) => {
         if (!(ev.target as HTMLElement).closest("[data-tab-type-menu]")) {
           dropdown.classList.add("hidden")
@@ -300,12 +329,21 @@ export default class extends Controller {
 
   // --- Tab CRUD ---
 
-  addTab() { this.store.addTab(); this.render() }
+  addTab() {
+    this.store.addTab()
+    this._forceRevealActiveTab = true
+    this.render()
+  }
   addChartTab() { this.addTab() }
-  addDataTab() { this.store.addDataTab(); this.render() }
+  addDataTab() {
+    this.store.addDataTab()
+    this._forceRevealActiveTab = true
+    this.render()
+  }
   addResearchTab() {
     const timeframe = this.config.timeframes.includes("1h") ? "1h" : (this.config.timeframes[0] || "1h")
     this.store.addResearchTab({ symbol: this.config.symbols[0] || "BTCUSD", timeframe })
+    this._forceRevealActiveTab = true
     this.render()
   }
   addSystemEditorTab() {
@@ -319,6 +357,7 @@ export default class extends Controller {
       directoryPath: relativeDirname(sourcePath),
       systemYaml: "",
     } : {})
+    this._forceRevealActiveTab = true
     this.render()
   }
 
@@ -460,9 +499,16 @@ export default class extends Controller {
     if (panelId && this.store.movePanelDown(panelId)) this.render()
   }
 
+  togglePanelExpand(e: Event) {
+    e.stopPropagation()
+    const panelId = (e.currentTarget as HTMLElement).dataset.togglePanelExpand
+    if (panelId && this.store.togglePanelMaximize(panelId)) this.render()
+  }
+
   selectPanel(e: Event) {
     if ((e.target as HTMLElement).closest("[data-close-panel]")) return
     if ((e.target as HTMLElement).closest("[data-move-panel]")) return
+    if ((e.target as HTMLElement).closest("[data-toggle-panel-expand]")) return
     const panelEl = (e.currentTarget as HTMLElement).closest("[data-panel-id]") as HTMLElement | null
     const panelId = panelEl?.dataset.panelId
     if (panelId && this.store.selectPanel(panelId)) this.render()
@@ -616,7 +662,7 @@ export default class extends Controller {
   updateDataSymbol(e: Event)         { this.dataActions.updateDataSymbol(e) }
   updateDataTimeframe(e: Event)      { this.dataActions.updateDataTimeframe(e) }
   updateDataDateRange()              { this.dataActions.updateDataDateRange() }
-  setDataDateRangeAndLoad()          { this.dataActions.setDataDateRangeAndLoad() }
+  setDataDateRangeAndLoad(e?: Event) { this.dataActions.setDataDateRangeAndLoad(e) }
   toggleDataColumns()                { this.dataActions.toggleDataColumns() }
   toggleDataConditions()             { this.dataActions.toggleDataConditions() }
   showAddColumn()                    { this.dataActions.showAddColumn() }
@@ -658,7 +704,8 @@ export default class extends Controller {
 
   // --- Research tab ---
 
-  updateResearchConfig() {
+  updateResearchConfig(e?: Event) {
+    if (e instanceof KeyboardEvent) e.preventDefault()
     if (!this._syncActiveResearchConfigFromSidebar()) return
     this.render()
   }
@@ -758,11 +805,21 @@ export default class extends Controller {
 
   startResize(e: Event) { startPanelResize(e as MouseEvent, "tabs") }
 
+  scrollTabsLeft() {
+    this._scrollTabsBy(-1)
+  }
+
+  scrollTabsRight() {
+    this._scrollTabsBy(1)
+  }
+
   // --- Render ---
 
   render(): void {
     this.dataActions.syncIndicatorsFromChart()
     const activeTab = this.store.activeTab
+    const prevScrollLeft = this._tabScrollArea?.scrollLeft ?? this._tabBarScrollLeft
+    const shouldRevealActiveTab = this._forceRevealActiveTab
     let researchValidationSystem: ResearchValidatedSystem | null = null
 
     if (activeTab?.type === "research" && activeTab.researchConfig) {
@@ -805,6 +862,19 @@ export default class extends Controller {
       researchFilePickerSelectedPath: this._activeResearchFilePickerSelectedPath(),
       researchValidationSystem,
     })
+    this._bindTabBarScrollArea()
+    if (this._tabScrollArea) {
+      const maxScrollLeft = Math.max(0, this._tabScrollArea.scrollWidth - this._tabScrollArea.clientWidth)
+      this._tabScrollArea.scrollLeft = Math.min(prevScrollLeft, maxScrollLeft)
+    }
+    if (shouldRevealActiveTab) {
+      this._ensureActiveTabVisible()
+    }
+    this._tabBarScrollLeft = this._tabScrollArea?.scrollLeft ?? prevScrollLeft
+    this._lastRenderedActiveTabId = this.store.activeTabId
+    this._lastRenderedTabCount = this.store.tabs.length
+    this._forceRevealActiveTab = false
+    this._syncTabBarScrollControls()
     requestAnimationFrame(() => {
       this._syncSelectedOverlayScale()
       this.drawingActions.syncAllModesToChart(this._getSelectedChartCtrl())
@@ -820,13 +890,85 @@ export default class extends Controller {
     this.dataActions.syncAllDataConditionsToChart(activeTab.id)
   }
 
+  private _bindTabBarScrollArea(): void {
+    const nextArea = this.tabBarTarget.querySelector<HTMLElement>("[data-tab-scroll-area]")
+    if (this._tabScrollArea === nextArea) return
+    this._unbindTabBarScrollArea()
+    this._tabScrollArea = nextArea
+    this._tabScrollArea?.addEventListener("scroll", this._onTabBarScroll, { passive: true })
+    this._tabScrollArea?.addEventListener("wheel", this._onTabBarWheel, { passive: false })
+  }
+
+  private _unbindTabBarScrollArea(): void {
+    this._tabScrollArea?.removeEventListener("scroll", this._onTabBarScroll)
+    this._tabScrollArea?.removeEventListener("wheel", this._onTabBarWheel)
+    this._tabScrollArea = null
+  }
+
+  private _scrollTabsBy(direction: 1 | -1): void {
+    const area = this.tabBarTarget.querySelector<HTMLElement>("[data-tab-scroll-area]")
+    if (!area) return
+    const distance = Math.max(180, Math.round(area.clientWidth * 0.7))
+    area.scrollBy({ left: direction * distance, behavior: "smooth" })
+  }
+
+  private _ensureActiveTabVisible(behavior: ScrollBehavior = "auto"): void {
+    const area = this.tabBarTarget.querySelector<HTMLElement>("[data-tab-scroll-area]")
+    const activeTab = this.tabBarTarget.querySelector<HTMLElement>("[data-tab-id].text-white")
+    if (!area || !activeTab) return
+    const maxScrollLeft = Math.max(0, area.scrollWidth - area.clientWidth)
+    const areaRect = area.getBoundingClientRect()
+    const tabRect = activeTab.getBoundingClientRect()
+    const tabLeft = area.scrollLeft + (tabRect.left - areaRect.left)
+    const tabRight = tabLeft + activeTab.offsetWidth
+    const viewportLeft = area.scrollLeft
+    const viewportRight = viewportLeft + area.clientWidth
+
+    if (tabLeft < viewportLeft) {
+      area.scrollTo({ left: Math.max(0, tabLeft - 16), behavior })
+      return
+    }
+
+    if (tabRight > viewportRight) {
+      area.scrollTo({ left: Math.min(maxScrollLeft, tabRight - area.clientWidth + 16), behavior })
+    }
+  }
+
+  private _positionAddTabMenu(dropdown: HTMLElement): void {
+    dropdown.style.left = "auto"
+    dropdown.style.right = "0"
+  }
+
+  private _syncTabBarScrollControls(): void {
+    const area = this.tabBarTarget.querySelector<HTMLElement>("[data-tab-scroll-area]")
+    const leftBtn = this.tabBarTarget.querySelector<HTMLElement>("[data-tab-scroll-left]")
+    const rightBtn = this.tabBarTarget.querySelector<HTMLElement>("[data-tab-scroll-right]")
+    if (!area || !leftBtn || !rightBtn) return
+
+    const maxScrollLeft = Math.max(0, area.scrollWidth - area.clientWidth)
+    const overflowed = maxScrollLeft > 4
+    const canScrollLeft = overflowed && area.scrollLeft > 4
+    const canScrollRight = overflowed && area.scrollLeft < maxScrollLeft - 4
+
+    this._setTabScrollButtonState(leftBtn, canScrollLeft)
+    this._setTabScrollButtonState(rightBtn, canScrollRight)
+  }
+
+  private _setTabScrollButtonState(button: HTMLElement, enabled: boolean): void {
+    button.classList.toggle("opacity-35", !enabled)
+    button.classList.toggle("pointer-events-none", !enabled)
+    button.classList.toggle("cursor-default", !enabled)
+    button.setAttribute("aria-hidden", enabled ? "false" : "true")
+    if (button instanceof HTMLButtonElement) button.disabled = !enabled
+  }
+
   _panelFromEvent(e: Event): Panel | null {
     const panelEl = (e.target as HTMLElement).closest("[data-panel-id]") as HTMLElement | null
     if (!panelEl) return this.store.selectedPanel
     return this._panelById(panelEl.dataset.panelId ?? "") || this.store.selectedPanel
   }
 
-  private _syncActiveResearchConfigFromSidebar(): ResearchState | null {
+  private _syncActiveResearchConfigFromSidebar(): ResearchConfig | null {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return null
 
@@ -867,7 +1009,7 @@ export default class extends Controller {
     return this._researchFilePicker.getSelected(tab.id, tab.researchConfig?.systemPath || null)
   }
 
-  private _activeResearchController(): { run(state?: ResearchState): Promise<void> } | null {
+  private _activeResearchController(): { run(state?: ResearchConfig): Promise<void> } | null {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "research") return null
 
@@ -875,7 +1017,7 @@ export default class extends Controller {
     if (!wrapper) return null
 
     const app = this.application as StimulusApp
-    return app.getControllerForElementAndIdentifier(wrapper, "research") as { run(state?: ResearchState): Promise<void> } | null
+    return app.getControllerForElementAndIdentifier(wrapper, "research") as { run(state?: ResearchConfig): Promise<void> } | null
   }
 
   private _findResearchCatalogEntry(systemPath: string | null, systemId: string | null): ResearchCatalogEntry | null {
@@ -926,7 +1068,7 @@ export default class extends Controller {
     this._researchValidationPending.delete(tabId)
   }
 
-  private _syncResearchSystemFromCatalog(tabId: string, config: ResearchState): ResearchCatalogEntry | null {
+  private _syncResearchSystemFromCatalog(tabId: string, config: ResearchConfig): ResearchCatalogEntry | null {
     const entry = this._findResearchCatalogEntry(config.systemPath || null, config.systemId || null)
     if (!entry) return null
 

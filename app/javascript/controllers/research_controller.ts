@@ -2,6 +2,7 @@ import { Controller } from "@hotwired/stimulus"
 import { fetchConfig, type AppConfig } from "../tabs/config"
 import { showToast } from "../services/toast"
 import type { ProcessedResearchRun } from "../research/types"
+import { ResearchEquityView } from "../research/equity_view"
 import { OptimizationChart } from "../research/optimization_chart"
 import { renderRunsGrid, type RunsGridView } from "../research/runs_grid"
 import {
@@ -20,11 +21,11 @@ import {
 import { SelectedRunView } from "../research/selected_run_view"
 import {
   hydrateResearchState,
-  type ResearchState,
 } from "../research/state"
 import { metricValue, optimizationParamKey, optimizationParamValue } from "../research/summary"
 import { renderResearchHTML } from "../research/templates"
 import { buildDefaultStatsPanelState } from "../system_stats/stats_panel"
+import type { ResearchConfig, ResearchTopPaneKey } from "../types/store"
 
 export default class extends Controller {
   static values = {
@@ -37,7 +38,7 @@ export default class extends Controller {
 
   private config: AppConfig | null = null
   private runs: ProcessedResearchRun[] = []
-  private state: ResearchState | null = null
+  private state: ResearchConfig | null = null
   private selectedRunIndex = 0
   private busy = false
   private cancelling = false
@@ -51,6 +52,7 @@ export default class extends Controller {
   private optimizationChart: OptimizationChart | null = null
   private runsGridView: RunsGridView | null = null
   private selectedRunView: SelectedRunView | null = null
+  private equityView: ResearchEquityView | null = null
   private statsPanelState = buildDefaultStatsPanelState()
 
   async connect() {
@@ -65,11 +67,11 @@ export default class extends Controller {
     this._stopBusyTimer()
     this._disconnectProgressSubscription()
     this._destroyResultsSplit()
-    this._destroyOptimizationViews()
+    this._destroyTopViews()
     this._destroySelectedRunView()
   }
 
-  async run(nextState?: ResearchState) {
+  async run(nextState?: ResearchConfig) {
     if (nextState) this.state = { ...nextState }
     if (!this.state) return
 
@@ -125,7 +127,7 @@ export default class extends Controller {
     if (!this.state || !this.config) return
 
     this._destroyResultsSplit()
-    this._destroyOptimizationViews()
+    this._destroyTopViews()
     this._destroySelectedRunView()
 
     this.element.innerHTML = renderResearchHTML({
@@ -136,57 +138,67 @@ export default class extends Controller {
     })
 
     this._renderSelectedRun()
-    this._renderOptimizationViewsSafely()
+    this._renderTopViewsSafely()
     this._setupResultsSplit()
   }
 
-  private _renderOptimizationViewsSafely() {
+  private _renderTopViewsSafely() {
     try {
-      this._renderOptimizationViews()
+      this._renderTopViews()
     } catch (error) {
-      console.error("[Research] Optimization views render failed:", error)
+      console.error("[Research] Top research views render failed:", error)
+      const equityEl = this.element.querySelector("[data-selected-run-equity]") as HTMLElement | null
       const chartEl = this.element.querySelector("[data-optimization-chart]") as HTMLElement | null
       const gridEl = this.element.querySelector("[data-runs-grid]") as HTMLElement | null
+      if (equityEl) {
+        equityEl.innerHTML = `<div class="flex items-center justify-center h-full text-sm text-gray-500">Equity chart failed to render.</div>`
+      }
       if (chartEl) {
         chartEl.innerHTML = `<div class="flex items-center justify-center h-full text-sm text-gray-500">Optimization chart failed to render.</div>`
       }
       if (gridEl && !gridEl.innerHTML.trim()) {
         gridEl.innerHTML = `<div class="flex items-center justify-center h-full text-sm text-gray-500">Optimization table is unavailable.</div>`
       }
-      showToast("Optimization chart render failed")
+      showToast("Research overview render failed")
     }
   }
 
-  private _renderOptimizationViews() {
-    this._destroyOptimizationViews()
-    if (!this.state || this.runs.length <= 1) return
+  private _renderTopViews() {
+    this._destroyTopViews()
+    if (!this.state || this.busy) return
 
+    this._renderEquityView()
     const chartEl = this.element.querySelector("[data-optimization-chart]") as HTMLElement | null
     const gridEl = this.element.querySelector("[data-runs-grid]") as HTMLElement | null
-    if (!chartEl || !gridEl) return
 
-    this.optimizationChart = new OptimizationChart(
-      chartEl,
-      this.runs.map((run, index) => ({
-        index,
-        x: optimizationParamValue(run, this.state.optimizationTarget),
-        y: metricValue(run.stats, this.state.selectedMetric),
-      })),
-      this.selectedRunIndex,
-      optimizationTargetLabel(this.state.optimizationTarget),
-      metricLabel(this.state.selectedMetric),
-      (index: number) => this._selectRun(index)
-    )
-    this.optimizationChart.build()
+    if (this.runs.length <= 1) return
 
-    this.runsGridView = renderRunsGrid(
-      gridEl,
-      this.runs,
-      this.selectedRunIndex,
-      optimizationParamKey(this.state.optimizationTarget),
-      optimizationTargetLabel(this.state.optimizationTarget),
-      (index: number) => this._selectRun(index)
-    )
+    if (chartEl) {
+      this.optimizationChart = new OptimizationChart(
+        chartEl,
+        this.runs.map((run, index) => ({
+          index,
+          x: optimizationParamValue(run, this.state.optimizationTarget),
+          y: metricValue(run.stats, this.state.selectedMetric),
+        })),
+        this.selectedRunIndex,
+        optimizationTargetLabel(this.state.optimizationTarget),
+        metricLabel(this.state.selectedMetric),
+        (index: number) => this._selectRun(index)
+      )
+      this.optimizationChart.build()
+    }
+
+    if (gridEl) {
+      this.runsGridView = renderRunsGrid(
+        gridEl,
+        this.runs,
+        this.selectedRunIndex,
+        optimizationParamKey(this.state.optimizationTarget),
+        optimizationTargetLabel(this.state.optimizationTarget),
+        (index: number) => this._selectRun(index)
+      )
+    }
   }
 
   private _renderSelectedRun() {
@@ -196,7 +208,7 @@ export default class extends Controller {
     if (!container) return
 
     this._destroySelectedRunView()
-    this.selectedRunView = new SelectedRunView(container, this.statsPanelState)
+    this.selectedRunView = new SelectedRunView(container)
 
     if (this.busy) {
       this.selectedRunView.renderPlaceholder(
@@ -221,6 +233,7 @@ export default class extends Controller {
     this.selectedRunIndex = index
     this._persistResult()
     this._renderSelectedRun()
+    this._renderEquityView()
     this.optimizationChart?.setSelectedIndex(index)
     this.runsGridView?.setSelectedIndex(index)
   }
@@ -235,11 +248,25 @@ export default class extends Controller {
     this.progressSubscription = null
   }
 
-  private _destroyOptimizationViews() {
+  private _destroyTopViews() {
+    this.equityView?.destroy()
+    this.equityView = null
     this.optimizationChart?.destroy()
     this.optimizationChart = null
     this.runsGridView?.destroy()
     this.runsGridView = null
+  }
+
+  private _renderEquityView() {
+    this.equityView?.destroy()
+    this.equityView = null
+
+    const run = this.runs[this.selectedRunIndex]
+    const equityEl = this.element.querySelector("[data-selected-run-equity]") as HTMLElement | null
+    if (!run || !equityEl) return
+
+    this.equityView = new ResearchEquityView(equityEl, this.statsPanelState)
+    this.equityView.render(run.stats)
   }
 
   private _startBusyTimer() {
@@ -268,10 +295,10 @@ export default class extends Controller {
     this._renderSafely()
   }
 
-  private _storedConfig(): Partial<ResearchState> | null {
+  private _storedConfig(): Partial<ResearchConfig> | null {
     if (!this.configValue) return null
     try {
-      return JSON.parse(this.configValue) as Partial<ResearchState>
+      return JSON.parse(this.configValue) as Partial<ResearchConfig>
     } catch {
       return null
     }
@@ -309,10 +336,10 @@ export default class extends Controller {
   }
 
   private _setupResultsSplit() {
-    if (!this.state || this.runs.length <= 1) return
+    if (!this.state || !this._hasTopWorkspace()) return
 
     const root = this.element.querySelector("[data-research-results-root]") as HTMLElement | null
-    const pane = this.element.querySelector("[data-optimization-pane]") as HTMLElement | null
+    const pane = this.element.querySelector("[data-research-top-workspace]") as HTMLElement | null
     const handle = this.element.querySelector("[data-research-split-handle]") as HTMLElement | null
     if (!root || !pane || !handle) return
 
@@ -363,6 +390,18 @@ export default class extends Controller {
   private _destroyResultsSplit() {
     this.splitCleanup?.()
     this.splitCleanup = null
+  }
+
+  toggleTopPaneExpand(e: Event) {
+    const paneKey = (e.currentTarget as HTMLElement).dataset.paneKey as ResearchTopPaneKey | undefined
+    if (!this.state || !paneKey) return
+    this.state.topPaneExpanded = this.state.topPaneExpanded === paneKey ? null : paneKey
+    this._persistState()
+    this._renderSafely()
+  }
+
+  private _hasTopWorkspace(): boolean {
+    return !this.busy && this.runs.length > 0
   }
 
 }

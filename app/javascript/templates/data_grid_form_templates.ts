@@ -16,6 +16,27 @@ export const INPUT_CLS = "px-2 py-1.5 text-sm text-white bg-[#2a2a3e] border bor
 export const BTN_PRIMARY = "px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded"
 export const BTN_SECONDARY = "px-3 py-1.5 text-sm bg-[#2a2a3e] hover:bg-[#3a3a4e] text-gray-300 rounded"
 
+interface UtcDateRangeOptions {
+  ctrl: string
+  label?: string
+  linked?: boolean
+  startDate: string
+  startHour: number
+  startMinute: number
+  endDate: string
+  endHour: number
+  endMinute: number
+  startDateField: string
+  startHourField: string
+  startMinuteField: string
+  endDateField: string
+  endHourField: string
+  endMinuteField: string
+  setAction?: string
+  dateAction?: string
+  timeAction?: string
+}
+
 export function symbolSelectHTML(ctrl: string, selected: string[], available: string[]): string {
   return `
     <label class="flex flex-col gap-1 text-sm text-gray-400">
@@ -58,34 +79,88 @@ export function dateRangeHTML(
   endMinute: number,
   linked: boolean,
 ): string {
+  return utcDateRangeHTML({
+    ctrl,
+    label: `Date Range (UTC, 24h)${linked ? " — start only" : ""}`,
+    linked,
+    startDate,
+    startHour,
+    startMinute,
+    endDate,
+    endHour,
+    endMinute,
+    startDateField: "dataStartDate",
+    startHourField: "dataStartHour",
+    startMinuteField: "dataStartMinute",
+    endDateField: "dataEndDate",
+    endHourField: "dataEndHour",
+    endMinuteField: "dataEndMinute",
+    dateAction: `change->${ctrl}#setDataDateRangeAndLoad`,
+    timeAction: `keydown.enter->${ctrl}#setDataDateRangeAndLoad`,
+  })
+}
+
+export function utcDateRangeHTML({
+  ctrl,
+  label = "Date Range (UTC, 24h)",
+  linked = false,
+  startDate,
+  startHour,
+  startMinute,
+  endDate,
+  endHour,
+  endMinute,
+  startDateField,
+  startHourField,
+  startMinuteField,
+  endDateField,
+  endHourField,
+  endMinuteField,
+  setAction,
+  dateAction,
+  timeAction,
+}: UtcDateRangeOptions): string {
+  const dateActionAttr = dateAction ? ` data-action="${dateAction}"` : ""
+  const timeActionAttr = timeAction ? ` data-action="${timeAction}"` : ""
   const endRow = linked
     ? ""
     : `
       <div class="flex gap-2 items-center min-w-0 flex-wrap">
-        <input type="date" data-field="dataEndDate" value="${endDate}" class="min-w-0 flex-1 ${INPUT_CLS}">
-        <input type="number" data-field="dataEndHour" min="0" max="23" value="${endHour}" placeholder="HH" title="Hour (0–23)"
+        <input type="date" data-field="${endDateField}" value="${endDate}" class="min-w-0 flex-1 ${INPUT_CLS}"${dateActionAttr}>
+        <input type="number" data-field="${endHourField}" min="0" max="23" value="${endHour}" placeholder="HH" title="Hour (0–23)"
+               ${timeActionAttr}
                class="w-12 number-no-spinner ${INPUT_CLS} text-center">
         <span class="text-gray-500">:</span>
-        <input type="number" data-field="dataEndMinute" min="0" max="59" value="${endMinute}" placeholder="MM" title="Minute (0–59)"
+        <input type="number" data-field="${endMinuteField}" min="0" max="59" value="${endMinute}" placeholder="MM" title="Minute (0–59)"
+               ${timeActionAttr}
                class="w-12 number-no-spinner ${INPUT_CLS} text-center">
       </div>`
-  return `
-    <div class="flex flex-col gap-2 text-sm text-gray-400 min-w-0">
-      <span>Date Range (UTC, 24h)${linked ? " — start only" : ""}</span>
-      <div class="flex flex-col gap-2 min-w-0">
-        <div class="flex gap-2 items-center min-w-0 flex-wrap">
-          <input type="date" data-field="dataStartDate" value="${startDate}" class="min-w-0 flex-1 ${INPUT_CLS}">
-          <input type="number" data-field="dataStartHour" min="0" max="23" value="${startHour}" placeholder="HH" title="Hour (0–23)"
-                 class="w-12 number-no-spinner ${INPUT_CLS} text-center">
-          <span class="text-gray-500">:</span>
-          <input type="number" data-field="dataStartMinute" min="0" max="59" value="${startMinute}" placeholder="MM" title="Minute (0–59)"
-                 class="w-12 number-no-spinner ${INPUT_CLS} text-center">
-        </div>
-        ${endRow}
-        <button type="button" data-action="click->${ctrl}#setDataDateRangeAndLoad"
+
+  const setButton = setAction
+    ? `
+        <button type="button" data-action="click->${ctrl}#${setAction}"
                 class="self-start px-2 py-1.5 text-xs font-medium text-gray-300 bg-[#2a2a3e] hover:bg-[#3a3a4e] rounded cursor-pointer">
           Set
         </button>
+      `
+    : ""
+
+  return `
+    <div class="flex flex-col gap-2 text-sm text-gray-400 min-w-0">
+      <span>${label}</span>
+      <div class="flex flex-col gap-2 min-w-0">
+        <div class="flex gap-2 items-center min-w-0 flex-wrap">
+          <input type="date" data-field="${startDateField}" value="${startDate}" class="min-w-0 flex-1 ${INPUT_CLS}"${dateActionAttr}>
+          <input type="number" data-field="${startHourField}" min="0" max="23" value="${startHour}" placeholder="HH" title="Hour (0–23)"
+                 ${timeActionAttr}
+                 class="w-12 number-no-spinner ${INPUT_CLS} text-center">
+          <span class="text-gray-500">:</span>
+          <input type="number" data-field="${startMinuteField}" min="0" max="59" value="${startMinute}" placeholder="MM" title="Minute (0–59)"
+                 ${timeActionAttr}
+                 class="w-12 number-no-spinner ${INPUT_CLS} text-center">
+        </div>
+        ${endRow}
+        ${setButton}
       </div>
     </div>
   `

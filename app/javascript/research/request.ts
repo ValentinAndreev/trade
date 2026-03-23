@@ -1,10 +1,10 @@
 import { apiFetch } from "../services/api_fetch"
 import { showToast } from "../services/toast"
+import type { ResearchConfig } from "../types/store"
 import type { ProcessedResearchRun, ResearchApiResponse } from "./types"
 import { processResearchRuns } from "./results"
-import type { ResearchState } from "./state"
 
-export async function runResearch(state: ResearchState, runId?: string): Promise<ProcessedResearchRun[] | null> {
+export async function runResearch(state: ResearchConfig, runId?: string): Promise<ProcessedResearchRun[] | null> {
   const response = await apiFetch("/api/research/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -23,7 +23,7 @@ export async function runResearch(state: ResearchState, runId?: string): Promise
   return processResearchRuns(payload.runs)
 }
 
-export function buildResearchRequest(state: ResearchState, runId?: string) {
+export function buildResearchRequest(state: ResearchConfig, runId?: string) {
   return {
     ...(runId ? { run_id: runId } : {}),
     symbol: state.symbol,

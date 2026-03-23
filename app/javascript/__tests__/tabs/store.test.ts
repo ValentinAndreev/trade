@@ -186,6 +186,17 @@ describe("TabStore", () => {
       const tab = store.addTab()
       expect(store.updatePanelTimeframe(tab.panels[0].id, "1m")).toBe(false)
     })
+
+    it("togglePanelMaximize expands and collapses a chart panel", () => {
+      const tab = store.addTab()
+      const second = store.addPanel(tab.id)!
+
+      expect(store.togglePanelMaximize(second.id)).toBe(true)
+      expect(tab.maximizedPanelId).toBe(second.id)
+
+      expect(store.togglePanelMaximize(second.id)).toBe(true)
+      expect(tab.maximizedPanelId).toBeNull()
+    })
   })
 
   describe("research config", () => {
@@ -199,6 +210,14 @@ describe("TabStore", () => {
       expect(ok).toBe(true)
       expect(tab.researchConfig?.systemId).toBe("rsi_threshold")
       expect(tab.researchConfig?.systemYaml).toBe("id: rsi_threshold")
+    })
+
+    it("stores top pane expansion state on research tab", () => {
+      const tab = store.addResearchTab()
+      const ok = store.updateResearchConfig(tab.id, { topPaneExpanded: "equity" })
+
+      expect(ok).toBe(true)
+      expect(tab.researchConfig?.topPaneExpanded).toBe("equity")
     })
 
     it("updateResearchResult stores runs and selected index", () => {

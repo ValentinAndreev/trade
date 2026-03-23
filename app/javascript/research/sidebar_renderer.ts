@@ -1,9 +1,13 @@
 import { BORDER_COLOR, BG_SURFACE, BG_INPUT } from "../config/theme"
 import type { ResearchConfig } from "../types/store"
 import { escapeHTML } from "../utils/dom"
+import { utcDateRangeHTML } from "../templates/data_grid_form_templates"
 import { METRIC_OPTIONS } from "./catalog"
 import type { ResearchCatalogEntry, ResearchValidatedSystem } from "./dsl"
 import { renderFileManagerModal } from "./file_manager"
+import { researchDateTimeParts } from "./state"
+
+const FIELD_CLS = "h-10 rounded border border-[#3a3a4e] bg-[#2a2a3e] px-3 text-sm text-white focus:outline-none focus:border-blue-400 disabled:cursor-not-allowed"
 
 export default class ResearchSidebarRenderer {
   constructor(
@@ -35,6 +39,8 @@ export default class ResearchSidebarRenderer {
       ? config.optimizationTarget
       : (optimizationTargets[0]?.value || config.optimizationTarget)
     const runDisabled = !selectedSystem
+    const startParts = researchDateTimeParts(config.startTime)
+    const endParts = researchDateTimeParts(config.endTime, true)
 
     this.sidebarEl.innerHTML = `
       <div class="flex flex-col gap-4 text-base">
@@ -46,8 +52,24 @@ export default class ResearchSidebarRenderer {
         <div class="flex flex-col gap-3">
           ${selectFieldHTML(this.ctrl, "Symbol", "symbol", symbols, config.symbol)}
           ${selectFieldHTML(this.ctrl, "Timeframe", "timeframe", timeframes, config.timeframe)}
-          ${inputFieldHTML(this.ctrl, "Start", "startTime", "datetime-local", config.startTime)}
-          ${inputFieldHTML(this.ctrl, "End", "endTime", "datetime-local", config.endTime)}
+          ${utcDateRangeHTML({
+            ctrl: this.ctrl,
+            label: "Date Range (UTC, 24h)",
+            startDate: startParts.date,
+            startHour: startParts.hour,
+            startMinute: startParts.minute,
+            endDate: endParts.date,
+            endHour: endParts.hour,
+            endMinute: endParts.minute,
+            startDateField: "researchStartDate",
+            startHourField: "researchStartHour",
+            startMinuteField: "researchStartMinute",
+            endDateField: "researchEndDate",
+            endHourField: "researchEndHour",
+            endMinuteField: "researchEndMinute",
+            dateAction: `change->${this.ctrl}#updateResearchConfig`,
+            timeAction: `keydown.enter->${this.ctrl}#updateResearchConfig`,
+          })}
         </div>
 
         <hr class="border-[#3a3a4e]">
@@ -141,7 +163,7 @@ function selectFieldHTML(ctrl: string, label: string, field: string, options: st
       <select
         data-field="${field}"
         data-action="change->${ctrl}#updateResearchConfig"
-        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white"
+        class="${FIELD_CLS}"
         style="color-scheme: dark"
       >${html}</select>
     </label>
@@ -173,7 +195,7 @@ function inputFieldHTML(
         ${attrs}
         data-field="${field}"
         data-action="change->${ctrl}#updateResearchConfig"
-        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white disabled:cursor-not-allowed"
+        class="${FIELD_CLS}"
       >
     </label>
   `
@@ -228,7 +250,7 @@ function optimizationFieldHTML(
       <select
         data-field="optimizationTarget"
         data-action="change->${ctrl}#updateResearchConfig"
-        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white"
+        class="${FIELD_CLS}"
         style="color-scheme: dark"
         ${disabled ? "disabled" : ""}
       >${html}</select>
@@ -247,7 +269,7 @@ function metricFieldHTML(ctrl: string, selectedMetric: string, optimizationEnabl
       <select
         data-field="selectedMetric"
         data-action="change->${ctrl}#updateResearchConfig"
-        class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-3 text-white"
+        class="${FIELD_CLS}"
         style="color-scheme: dark"
         ${optimizationEnabled ? "" : "disabled"}
       >${options}</select>

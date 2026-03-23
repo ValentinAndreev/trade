@@ -51,6 +51,12 @@ export class YamlAutocomplete {
     return this.dropdown.style.display !== "none"
   }
 
+  acceptSelection(): boolean {
+    if (!this.textarea || !this.matches.length) return false
+    this.complete(this.textarea, this.matches[this.selectedIndex])
+    return true
+  }
+
   setConfig(config: HighlightConfig): void {
     this.config = config
   }
@@ -100,9 +106,8 @@ export class YamlAutocomplete {
         break
       case "Tab":
       case "Enter":
-        if (this.textarea) {
+        if (this.acceptSelection()) {
           e.preventDefault()
-          this.complete(this.textarea, this.matches[this.selectedIndex])
         }
         break
       case "Escape":

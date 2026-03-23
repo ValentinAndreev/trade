@@ -208,5 +208,29 @@ RSpec.describe Research::Backtest do
       expect(signal_calls.count(:long_exit)).to eq(close_values.length - 3)
       expect(signal_calls.count(:short_exit)).to eq(0)
     end
+
+    it 'supports cooperative cancellation during the current backtest run' do
+      system = instance_double(Research::Systems::Definition)
+      checks = 0
+
+      allow(system).to receive(:module_runtime_configs).and_return({})
+      allow(system).to receive(:run_params) { |params| params }
+      allow(system).to receive(:signal_for).and_return(false)
+
+      backtest = described_class.new(
+        system:, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      )
+
+      expect do
+        backtest.run(
+          params: { position_mode: 'long_short' },
+          cancel_check: -> do
+            checks += 1
+            checks > 3
+          end
+        )
+      end.to raise_error(Research::Backtest::Cancelled)
+    end
   end
 end

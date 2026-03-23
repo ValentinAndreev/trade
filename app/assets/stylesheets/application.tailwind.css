@@ -20,6 +20,14 @@
   background: #60a5fa;
 }
 
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Hide number input spinners (hour/minute in date range) */
 .number-no-spinner::-webkit-inner-spin-button,
 .number-no-spinner::-webkit-outer-spin-button {

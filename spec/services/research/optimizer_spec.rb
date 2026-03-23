@@ -56,7 +56,7 @@ RSpec.describe Research::Optimizer do
 
   describe '#call' do
     it 'runs all parameter values and keeps each result in memory' do
-      allow(backtest).to receive(:run) do |params:, mode:, stage:|
+      allow(backtest).to receive(:run) do |params:, mode:, stage:, cancel_check:|
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
       end
 
@@ -77,7 +77,7 @@ RSpec.describe Research::Optimizer do
     end
 
     it 'supports float optimization ranges for system thresholds' do
-      allow(backtest).to receive(:run) do |params:, mode:, stage:|
+      allow(backtest).to receive(:run) do |params:, mode:, stage:, cancel_check:|
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
       end
 
@@ -101,7 +101,7 @@ RSpec.describe Research::Optimizer do
         started: nil, run_completed: nil, finished: nil, failed: nil
       )
 
-      allow(backtest).to receive(:run) do |params:, mode:, stage:|
+      allow(backtest).to receive(:run) do |params:, mode:, stage:, cancel_check:|
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
       end
 
@@ -139,7 +139,7 @@ RSpec.describe Research::Optimizer do
         1.4   # finished elapsed
       ]
 
-      allow(backtest).to receive(:run) do |params:, mode:, stage:|
+      allow(backtest).to receive(:run) do |params:, mode:, stage:, cancel_check:|
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
       end
 
@@ -177,7 +177,7 @@ RSpec.describe Research::Optimizer do
       )
       run_count = 0
 
-      allow(backtest).to receive(:run) do |params:, mode:, stage:|
+      allow(backtest).to receive(:run) do |params:, mode:, stage:, cancel_check:|
         run_count += 1
         Research::CancellationRegistry.cancel('run-123') if run_count == 1
         { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }

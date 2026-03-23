@@ -4,11 +4,11 @@ name: EMA Fast / Slow Cross
 modules:
   ema_fast:
     type: ema
-    period: 20
+    period: 10
   ema_slow:
     type: ema
-    period: 50
-
+    period: 20
+    
 params:
   position_mode: long_short
 

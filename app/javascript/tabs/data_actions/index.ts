@@ -78,7 +78,8 @@ export default class DataTabActions {
     this.deps.store.updateDataConfig(tab.id, { startTime, endTime })
   }
 
-  setDataDateRangeAndLoad() {
+  setDataDateRangeAndLoad(event?: Event) {
+    if (event instanceof KeyboardEvent) event.preventDefault()
     const tab = this.deps.store.activeTab
     if (!tab || tab.type !== "data" || !tab.dataConfig) return
     const startTime = this._readDateTime("dataStartDate", "dataStartHour", "dataStartMinute")

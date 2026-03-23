@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest"
 import { buildResearchProgressInfo, estimateOptimizationRuns, formatElapsed } from "../../research/progress"
 import type { ResearchProgressSnapshot } from "../../research/progress_subscription"
-import type { ResearchState } from "../../research/state"
+import type { ResearchConfig } from "../../types/store"
 
-const baseState: ResearchState = {
+const baseState: ResearchConfig = {
   symbol: "BTCUSD",
   timeframe: "1h",
   startTime: "2026-03-01T00:00",
@@ -20,6 +20,7 @@ const baseState: ResearchState = {
   optimizationStep: 5,
   selectedMetric: "sharpeRatio",
   resultsSplitRatio: 0.38,
+  topPaneExpanded: null,
 }
 
 describe("research progress helpers", () => {
@@ -53,7 +54,7 @@ describe("research progress helpers", () => {
 
     const info = buildResearchProgressInfo({ ...baseState, optimizationEnabled: true }, 1, snapshot)
     expect(info.detail).toContain("4/10 runs")
-    expect(info.note).toContain("Current EMA Period 23")
+    expect(info.note).toContain("Current Ema Period 23")
     expect(info.statusLabel).toBe("40%")
     expect(info.percent).toBe(40)
     expect(info.elapsedLabel).toBe("00:12")

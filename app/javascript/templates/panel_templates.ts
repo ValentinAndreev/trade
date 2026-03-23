@@ -40,16 +40,24 @@ export function controlButtonsHTML(
   ctrl: string,
   panelId: string,
   isFirst: boolean,
-  isLast: boolean
+  isLast: boolean,
+  isExpanded: boolean,
 ): string {
   const btnClass = "w-7 h-7 flex items-center justify-center text-gray-400 hover:text-white bg-[#1a1a2e]/85 hover:bg-[#2a2a3e] rounded text-base cursor-pointer"
+  const expandIcon = isExpanded ? "↙" : "↗"
+  const expandTitle = isExpanded ? "Collapse panel" : "Expand panel"
 
-  const upBtn = isFirst ? "" : `
+  const expandBtn = `
+    <button data-toggle-panel-expand="${panelId}"
+            data-action="click->${ctrl}#togglePanelExpand"
+            class="${btnClass}" title="${expandTitle}">${expandIcon}</button>`
+
+  const upBtn = isExpanded || isFirst ? "" : `
     <button data-move-panel data-panel-id="${panelId}"
             data-action="click->${ctrl}#movePanelUp"
             class="${btnClass}" title="Move up">&#9650;</button>`
 
-  const downBtn = isLast ? "" : `
+  const downBtn = isExpanded || isLast ? "" : `
     <button data-move-panel data-panel-id="${panelId}"
             data-action="click->${ctrl}#movePanelDown"
             class="${btnClass}" title="Move down">&#9660;</button>`
@@ -61,7 +69,7 @@ export function controlButtonsHTML(
 
   return `
     <div class="absolute top-1 right-1 z-10 flex gap-0.5">
-      ${upBtn}${downBtn}${closeBtn}
+      ${expandBtn}${upBtn}${downBtn}${closeBtn}
     </div>
   `
 }
@@ -122,7 +130,7 @@ export function tabButtonHTML(
     ? `<span
          data-action="click->${ctrl}#createDataFromChart"
          title="Create Data tab from this chart"
-         class="ml-0.5 inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-green-300 hover:bg-green-500/10 text-xs leading-none cursor-pointer"
+         class="ml-0.5 inline-flex w-6 h-6 items-center justify-center rounded text-gray-500 hover:text-green-300 hover:bg-green-500/10 text-xs leading-none ${isActive ? "cursor-pointer" : "opacity-0 pointer-events-none"}"
        >&#9638;</span>`
     : ""
 
@@ -174,7 +182,7 @@ export function addTabButtonHTML(ctrl: string): string {
         class="px-3 py-2 text-gray-400 hover:text-white text-2xl leading-none cursor-pointer"
         title="Add new tab"
       >+</button>
-      <div data-tab-type-dropdown class="hidden absolute top-full left-0 z-50 mt-1 py-1 bg-[#22223a] border border-[#3a3a4e] rounded shadow-xl min-w-[140px]">
+      <div data-tab-type-dropdown class="hidden absolute top-full right-0 z-50 mt-1 py-1 bg-[#22223a] border border-[#3a3a4e] rounded shadow-xl min-w-[140px]">
         <button
           data-action="click->${ctrl}#addChartTab"
           class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"

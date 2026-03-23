@@ -68,6 +68,7 @@ describe("persistence", () => {
       expect(result[0].type).toBe("research")
       expect(result[0].researchConfig?.systemId).toBe("price_ema_cross")
       expect(result[0].researchConfig?.systemYaml).toBe("")
+      expect(result[0].researchConfig?.topPaneExpanded).toBeNull()
     })
 
     it("hydrates missing research result for persisted research tabs", () => {
@@ -93,6 +94,7 @@ describe("persistence", () => {
           optimizationStep: 1,
           selectedMetric: "sharpeRatio",
           resultsSplitRatio: 0.38,
+          topPaneExpanded: null,
         },
       }]
       localStorage.setItem("chart-tabs", JSON.stringify(tabs))
@@ -150,6 +152,7 @@ describe("persistence", () => {
           optimizationStep: 1,
           selectedMetric: "sharpeRatio",
           resultsSplitRatio: 0.38,
+          topPaneExpanded: null,
         },
         researchResult: {
           runs: [{ params: { ema_period: 20 }, trades: [] }],

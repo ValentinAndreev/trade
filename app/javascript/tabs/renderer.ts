@@ -169,6 +169,31 @@ export default class TabRenderer {
       i++
     }
 
-    this.tabBarEl.innerHTML = parts.join("") + addTabButtonHTML(this.ctrl)
+    const scrollBtnClass = "shrink-0 w-8 h-8 mt-0.5 flex items-center justify-center rounded border border-[#2a2a3e] text-gray-400 hover:text-white hover:bg-[#1a1a2e] cursor-pointer transition-opacity"
+
+    this.tabBarEl.innerHTML = `
+      <div class="flex items-center gap-2 min-w-0 w-full">
+        <button
+          type="button"
+          data-tab-scroll-left
+          data-action="click->${this.ctrl}#scrollTabsLeft"
+          class="${scrollBtnClass}"
+          title="Scroll tabs left"
+        >&larr;</button>
+        <div data-tab-scroll-area class="flex-1 min-w-0 overflow-x-auto overflow-y-hidden no-scrollbar">
+          <div data-tab-scroll-content class="flex items-center gap-1 w-max min-w-full">
+            ${parts.join("")}
+          </div>
+        </div>
+        <button
+          type="button"
+          data-tab-scroll-right
+          data-action="click->${this.ctrl}#scrollTabsRight"
+          class="${scrollBtnClass}"
+          title="Scroll tabs right"
+        >&rarr;</button>
+        ${addTabButtonHTML(this.ctrl)}
+      </div>
+    `
   }
 }

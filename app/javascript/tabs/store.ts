@@ -53,6 +53,7 @@ export default class TabStore {
       name: null,
       type: "chart",
       primaryPanelId: panelId,
+      maximizedPanelId: null,
       panels: [{
         id: panelId,
         timeframe: "1m",
@@ -176,6 +177,7 @@ export default class TabStore {
       const idx = tab.panels.findIndex(p => p.id === panelId)
       if (idx === -1) continue
       tab.panels.splice(idx, 1)
+      if (tab.maximizedPanelId === panelId) tab.maximizedPanelId = null
       this._cleanupPanelLinks(panelId)
       if (tab.panels.length === 0) {
         const overlayId = `o-${this._nextOverlayId++}`
@@ -232,6 +234,19 @@ export default class TabStore {
       const targetIdx = idx + direction
       if (targetIdx < 0 || targetIdx >= tab.panels.length) return false;
       [tab.panels[idx], tab.panels[targetIdx]] = [tab.panels[targetIdx], tab.panels[idx]]
+      this._save()
+      return true
+    }
+    return false
+  }
+
+  togglePanelMaximize(panelId: string): boolean {
+    for (const tab of this.tabs) {
+      if (tab.type !== "chart") continue
+      if (!tab.panels.some(panel => panel.id === panelId)) continue
+      tab.maximizedPanelId = tab.maximizedPanelId === panelId ? null : panelId
+      this.selectedPanelId = panelId
+      this.selectedOverlayId = tab.panels.find(panel => panel.id === panelId)?.overlays[0]?.id || null
       this._save()
       return true
     }

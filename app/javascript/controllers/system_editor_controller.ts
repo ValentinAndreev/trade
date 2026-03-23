@@ -362,6 +362,8 @@ export default class extends Controller {
   }
 
   handleEditorKeydown(e: KeyboardEvent) {
+    if (e.defaultPrevented) return
+
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
       e.preventDefault()
       void this.saveSystem()
@@ -401,17 +403,18 @@ export default class extends Controller {
       return
     }
 
-    // Tab — always prevent focus change; insert 2 spaces when autocomplete is closed
+    // Tab — accept autocomplete when visible, otherwise keep the existing 2-space indent
     if (e.key === "Tab") {
       e.preventDefault()
-      if (!this.autocomplete.isVisible) {
-        const ta = this.editor.yamlTextarea()
-        if (ta) {
-          editorInsert(ta, "  ")
-          this.editor.ensureSelectionVisible()
-        }
+      if (this.autocomplete.acceptSelection()) {
+        e.stopImmediatePropagation()
+        return
       }
-      // When visible the autocomplete's keydown listener (fires after this) handles completion
+      const ta = this.editor.yamlTextarea()
+      if (ta) {
+        editorInsert(ta, "  ")
+        this.editor.ensureSelectionVisible()
+      }
       return
     }
 
