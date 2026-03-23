@@ -1,0 +1,82 @@
+module Research
+  class Backtest
+    @system: Research::Systems::Definition
+    @symbol: String
+    @timeframe: String
+    @start_time: research_time_value
+    @end_time: research_time_value
+    @exchange: String
+    @fee_bps: Float
+    @slippage_bps: Float
+    @module_results_cache: Hash[[String, Array[[String | Symbol, untyped]]], research_module_result_series]
+    @module_runners: Hash[String, Research::Modules::Base]
+    @candle_index_by_time: Hash[Integer, Integer]
+    @candles: Array[ohlcv]
+
+    class Cancelled < StandardError
+    end
+
+    MODULES: { ema: singleton(Research::Modules::Ema), rsi: singleton(Research::Modules::Rsi) }
+
+    class Position
+      attr_reader direction: String
+      attr_reader entry_time: Integer
+      attr_reader entry_price: Float
+      attr_reader entry_index: Integer
+
+      def initialize: (direction: String, entry_time: Integer, entry_price: Float, entry_index: Integer) -> void
+    end
+
+    private
+
+    attr_reader system: Research::Systems::Definition
+    attr_reader symbol: String
+    attr_reader timeframe: String
+    attr_reader start_time: research_time_value
+    attr_reader end_time: research_time_value
+    attr_reader exchange: String
+    attr_reader fee_bps: Float
+    attr_reader slippage_bps: Float
+
+    public
+
+    def initialize: (
+      system: Research::Systems::Definition,
+      symbol: String,
+      timeframe: String,
+      start_time: research_time_value,
+      end_time: research_time_value,
+      ?exchange: String,
+      ?fee_bps: Numeric,
+      ?slippage_bps: Numeric
+    ) -> void
+
+    def run: (
+      params: Hash[Symbol | String, untyped],
+      ?mode: Symbol,
+      ?stage: Symbol,
+      ?cancel_check: ^() -> bool
+    ) -> research_run
+
+    private
+
+    def module_results_for: (research_module_runtime_configs module_configs, ?cancel_check: ^() -> bool) -> research_module_series
+    def cached_module_results: (String | Symbol module_type, Hash[Symbol | String, untyped] params, ?cancel_check: ^() -> bool) -> research_module_result_series
+    def build_module_results: (String | Symbol module_type, Hash[Symbol | String, untyped] params, ?cancel_check: ^() -> bool) -> research_module_result_series
+    def normalized_module_params: (Hash[Symbol | String, untyped] params) -> Array[[String | Symbol, untyped]]
+    def candle_index_by_time: () -> Hash[Integer, Integer]
+    def module_runner: (String | Symbol module_type) -> Research::Modules::Base
+    def candles: () -> Array[ohlcv]
+    def simulate: (Array[ohlcv] candles, research_module_series module_series, research_runtime_params params, ?cancel_check: ^() -> bool) -> Array[research_trade]
+    def exit_signal?: (Position position, prev_row: Research::Runtime::RowCursor, row: Research::Runtime::RowCursor, params: research_runtime_params) -> bool
+    def entry_signals: (prev_row: Research::Runtime::RowCursor, row: Research::Runtime::RowCursor, params: research_runtime_params, position_mode: String) -> [bool, bool]
+    def close_fill_price: (String direction, Float fill_open) -> Float
+    def close_trade: (Position position, fill_time: Integer, fill_price: Float, fill_index: Integer) -> research_trade
+    def open_trade: (Position position, Array[ohlcv] candles) -> research_trade
+    def calc_pnl: (String direction, Float entry, Float exit_price) -> Float
+    def with_slip: (Float price, Symbol side) -> Float
+    def fee: (Float price) -> Float
+    def r: (Numeric value) -> Float
+    def cancelled!: (?^() -> bool cancel_check) -> void
+  end
+end

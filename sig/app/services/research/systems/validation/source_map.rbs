@@ -1,0 +1,25 @@
+module Research
+  module Systems
+    module Validation
+      class SourceMap
+        @key_nodes: Hash[String, Psych::Nodes::Node]
+        @value_nodes: Hash[String, Psych::Nodes::Node]
+
+        def self.build: (Psych::Nodes::Document? document) -> SourceMap
+
+        def key_location: (Array[String] path, String key) -> research_location
+        def value_location: (Array[String] path) -> research_location
+        def value_location_for_offset: (Array[String] path, Integer offset, ?Integer length) -> research_location
+
+        private
+
+        def initialize: (?Psych::Nodes::Node root) -> void
+        def visit: (Psych::Nodes::Node node, Array[String] path) -> void
+        def path_key: (Array[String] path) -> String
+        def location_for: (Psych::Nodes::Node? node) -> research_location
+        def offset_position: (String value, Integer offset) -> [Integer, Integer]
+        def fallback_location: () -> research_location
+      end
+    end
+  end
+end

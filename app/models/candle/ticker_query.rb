@@ -38,7 +38,7 @@ class Candle::TickerQuery
 
   def parse_tickers(raw)
     Array(raw).each_with_object({}) do |row, result|
-      sym = row[IDX_SYMBOL]&.sub(/\At/, '')
+      sym = row[IDX_SYMBOL]&.delete_prefix('t')
       next unless sym
 
       result[sym] = {

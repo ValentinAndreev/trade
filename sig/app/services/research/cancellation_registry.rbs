@@ -1,0 +1,16 @@
+module Research
+  class CancellationRegistry
+    self.@flags: Hash[String, bool]
+    self.@mutex: Mutex
+
+    def self.cancel: (String | Symbol | Integer? run_id) -> void
+    def self.cancelled?: (String | Symbol | Integer? run_id) -> bool
+    def self.reset!: () -> void
+
+    private
+
+    def self.flags: () -> Hash[String, bool]
+    def self.mutex: () -> Mutex
+    def self.normalize: (String | Symbol | Integer? run_id) -> String?
+  end
+end

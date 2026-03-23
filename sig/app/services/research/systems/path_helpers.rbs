@@ -1,0 +1,25 @@
+module Research
+  module Systems
+    module PathHelpers
+      def systems_dir: () -> Pathname
+      def relative_path_for: (String | Pathname path) -> String
+      def resolve_relative_path: (String? relative_path) -> Pathname?
+
+      private
+
+      def validate_name!: (String | Symbol name, code: String, ?path: String) -> void
+      def ensure_available_path!: (
+        Pathname target_path,
+        label: String,
+        kind: String,
+        path: String,
+        code: String,
+        ?ignore_path: Pathname?
+      ) -> Pathname
+      def resolve_or_raise!: (String relative_path, String code) -> Pathname
+      def resolve_directory!: (String relative_path) -> Pathname
+      def resolve_non_root_directory!: (String relative_path, root_message: String) -> Pathname
+      def raise_error!: (String message, path: String, code: String, length: Integer) -> void
+    end
+  end
+end

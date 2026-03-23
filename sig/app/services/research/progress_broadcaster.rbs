@@ -1,0 +1,26 @@
+module Research
+  class ProgressBroadcaster
+    @run_id: String?
+    @terminal_event_sent: bool
+
+    def initialize: (run_id: String | Symbol | Integer?) -> void
+    def active?: () -> bool
+    def started: (total_runs: Integer, mode: Symbol | String, ?target: String?) -> void
+    def run_completed: (
+      total_runs: Integer,
+      completed_runs: Integer,
+      elapsed_ms: Numeric,
+      last_run_ms: Numeric,
+      ?current_value: Numeric | String | nil
+    ) -> void
+    def finished: (total_runs: Integer, elapsed_ms: Numeric) -> void
+    def cancelled: (total_runs: Integer, completed_runs: Integer, elapsed_ms: Numeric) -> void
+    def failed: (message: String, ?total_runs: Integer?, ?completed_runs: Integer?, ?elapsed_ms: Numeric?) -> void
+
+    private
+
+    attr_reader run_id: String?
+    def terminal_event_sent?: () -> bool
+    def broadcast: (Hash[Symbol, untyped] payload) -> void
+  end
+end

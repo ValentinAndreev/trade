@@ -1,0 +1,40 @@
+module Research
+  module Systems
+    class Catalog
+      class Entry
+        attr_reader id: String
+        attr_reader name: String
+        attr_reader file_name: String
+        attr_reader relative_path: String
+        attr_reader yaml: String
+        attr_reader metadata: research_system_metadata?
+
+        def initialize: (
+          id: String,
+          name: String,
+          file_name: String,
+          relative_path: String,
+          yaml: String,
+          ?metadata: research_system_metadata?
+        ) -> void
+
+        def to_h: () -> research_catalog_entry
+      end
+
+      extend PathHelpers
+
+      def self.entries: () -> Array[Entry]
+      def self.directory_paths: () -> Array[String]
+      def self.find: (String? id) -> Entry?
+      def self.find_by_relative_path: (String? relative_path) -> Entry?
+      def self.load_yaml: (?String? id, ?relative_path: String?) -> String?
+
+      private
+
+      def self.template_paths: () -> Array[String]
+      def self.build_catalog_entry: (Pathname path) -> Entry
+      def self.file_id_for: (String | Pathname path) -> String
+      def self.humanized_name_for: (String | Symbol system_id) -> String
+    end
+  end
+end

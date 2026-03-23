@@ -1,0 +1,20 @@
+module Research
+  module Systems
+    module Validation
+      module Checks
+        module Conditions
+          ENTRY_KEYS: ::Array["long_entry" | "short_entry"]
+
+          private
+
+          def validate_conditions: () -> void
+          def validate_condition_rule: (String | Symbol condition_name, untyped rule_payload) -> void
+          def validate_condition_expression_references: (research_condition_ast ast, Array[String] path) -> void
+          def extract_references: (research_condition_ast node) -> Array[String]
+          def validate_condition_reference: (String value, Array[String] path) -> void
+          def validate_param_reference: (String value, Array[String] path) -> void
+        end
+      end
+    end
+  end
+end

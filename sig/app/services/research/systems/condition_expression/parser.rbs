@@ -1,0 +1,60 @@
+module Research
+  module Systems
+    module ConditionExpression
+      class ParseError < StandardError
+        @offset: Integer
+        @length: Integer
+
+        attr_reader offset: Integer
+        attr_reader length: Integer
+
+        def initialize: (String message, offset: Integer, ?length: Integer) -> void
+      end
+
+      class Parser
+        @text: String
+        @tokens: Array[untyped]
+        @index: Integer
+
+        Token: untyped
+        OPERATORS: Array[String]
+
+        def initialize: (String? text) -> void
+        def parse: () -> research_condition_ast
+
+        private
+
+        attr_reader text: String
+        attr_reader tokens: Array[untyped]
+        attr_accessor index: Integer
+
+        def parse_or: () -> research_condition_ast
+        def parse_and: () -> research_condition_ast
+        def parse_comparison: () -> research_condition_ast
+        def parse_additive: () -> research_condition_ast
+        def parse_multiplicative: () -> research_condition_ast
+        def parse_unary: () -> research_condition_ast
+        def parse_primary: () -> research_condition_ast
+        def parse_reference_or_call: () -> research_condition_ast?
+        def parse_group: () -> research_condition_ast?
+        def parse_number: () -> research_condition_ast?
+        def parse_call: (untyped token) -> research_condition_ast
+        def parse_call_arguments: () -> Array[research_condition_ast]
+        def validate_call_arity: (untyped token, Array[research_condition_ast] args, research_condition_function_definition function) -> void
+        def validate_positive_integer_literal_arguments: (untyped token, Array[research_condition_ast] args, research_condition_function_definition function) -> void
+        def parse_binary_chain: (Array[String] operators, Symbol node_type, ?repeatable: bool) { () -> research_condition_ast } -> research_condition_ast
+        def build_binary_node: (Symbol type, String op, research_condition_ast left, research_condition_ast right) -> research_condition_ast
+        def tokenize: () -> Array[untyped]
+        def match?: (Symbol type, *String values) -> bool
+        def advance_token: () -> true
+        def current_token: () -> untyped?
+        def previous_token: () -> untyped
+        def raise_unexpected_token: (untyped token) -> void
+        def expression_kind: (research_condition_ast node) -> Symbol?
+        def binary_expression_kind: (research_condition_ast node, expected: Symbol, result: Symbol) -> Symbol?
+        def positive_integer_literal?: (research_condition_ast node) -> bool
+        def call_expression_kind: (research_condition_ast node) -> Symbol?
+      end
+    end
+  end
+end

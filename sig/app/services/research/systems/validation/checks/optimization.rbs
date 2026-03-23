@@ -1,0 +1,15 @@
+module Research
+  module Systems
+    module Validation
+      module Checks
+        module Optimization
+          private
+
+          def validate_optimization: () -> void
+          def validate_optimization_target: (untyped value, Array[String] path) -> void
+          def validate_param_target: (String value, Array[String] path) -> void
+        end
+      end
+    end
+  end
+end

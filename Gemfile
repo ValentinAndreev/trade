@@ -42,6 +42,7 @@ group :development, :test do
 
   # Code Quality
   gem 'rubocop-rails-omakase', require: false
+  gem 'rubocop-performance', require: false
 
   # Testing
   gem 'rspec-rails'

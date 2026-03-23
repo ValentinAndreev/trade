@@ -1,0 +1,19 @@
+module Research
+  module Systems
+    module Validation
+      class Result
+        @compiled: Research::Systems::Definition?
+        @diagnostics: Array[Diagnostic]
+
+        attr_reader compiled: Research::Systems::Definition?
+        attr_reader diagnostics: Array[Diagnostic]
+
+        def initialize: (?compiled: Research::Systems::Definition?, ?diagnostics: Array[Diagnostic]) -> void
+        def valid?: () -> bool
+        def invalid?: () -> bool
+        def metadata: () -> research_system_metadata?
+        def raise_if_invalid!: () -> self
+      end
+    end
+  end
+end

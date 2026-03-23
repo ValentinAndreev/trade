@@ -1,0 +1,26 @@
+module Research
+  module Runtime
+    class RowCursor
+      EMPTY_HASH: research_module_result
+      EMPTY_SERIES: research_module_result_series
+
+      attr_accessor candles: Array[ohlcv]
+      attr_accessor module_series: research_module_series
+      attr_accessor index: Integer
+
+      def initialize: (candles: Array[ohlcv], module_series: research_module_series, index: Integer) -> void
+      def []: (Symbol key) -> research_row_cursor_value
+      def dig: (*Symbol | String keys) -> untyped?
+      def dig_at: (Integer offset, *Symbol | String keys) -> untyped?
+
+      private
+
+      def candle: () -> Hash[Symbol, untyped]
+      def candle_at: (Integer target_index) -> Hash[Symbol, untyped]
+      def module_result: (Symbol | String module_name) -> research_module_result
+      def module_result_at: (Symbol | String module_name, Integer target_index) -> research_module_result
+      def current_results: () -> research_current_results
+      def dig_value: (untyped value, Array[Symbol | String] keys) -> untyped?
+    end
+  end
+end

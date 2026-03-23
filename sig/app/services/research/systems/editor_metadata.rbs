@@ -1,0 +1,9 @@
+module Research
+  module Systems
+    module EditorMetadata
+      def self?.response: () -> research_editor_metadata
+      def self?.highlight_config: () -> research_highlight_config
+      def self?.collect_highlight_tokens: (untyped node, Array[String] keywords, Array[String] values, ?String? parent_key) -> void
+    end
+  end
+end

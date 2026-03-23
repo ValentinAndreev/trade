@@ -1,0 +1,13 @@
+module Api
+  class DataTablesController < ApplicationController
+    def show: () -> void
+    def correlations: () -> void
+    def statistics: () -> void
+
+    private
+
+    def fetch_candles: () -> Array[ohlcv]
+    def build_rows: () -> Array[data_table_row]
+    def indicator_specs: () -> Array[indicator_spec]
+  end
+end

@@ -1,0 +1,23 @@
+module Research
+  module Modules
+    class Base
+      @candles: Array[ohlcv]
+      @input_data: Array[research_input_point]
+      @time_lookup: Hash[String, Integer]
+
+      private
+
+      attr_reader candles: Array[ohlcv]
+
+      public
+
+      def initialize: (candles: Array[ohlcv]) -> void
+
+      private
+
+      def input_data: () -> Array[research_input_point]
+      def time_lookup: () -> Hash[String, Integer]
+      def time_for: (String | Time date_time) -> Integer
+    end
+  end
+end

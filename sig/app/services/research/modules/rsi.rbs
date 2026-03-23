@@ -1,0 +1,7 @@
+module Research
+  module Modules
+    class Rsi < Base
+      def call: (period: Numeric | String) -> Array[research_module_point]
+    end
+  end
+end

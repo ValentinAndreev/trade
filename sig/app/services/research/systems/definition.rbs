@@ -1,0 +1,60 @@
+module Research
+  module Systems
+    class Definition
+      @payload: research_yaml_payload
+      @schema: research_schema
+      @modules: research_modules
+      @runtime_params: research_runtime_params
+      @optimization_targets: Array[research_optimization_target]
+      @signal_evaluator: Research::Runtime::SignalEvaluator
+      @parsed_conditions: Hash[String, research_condition_ast]
+      @module_param_keys: Array[Symbol]
+
+      BAR_FIELDS: Set[String]
+
+      private
+
+      attr_reader payload: research_yaml_payload
+      attr_reader schema: research_schema
+
+      public
+
+      def initialize: (research_yaml_payload payload, schema: research_schema) -> void
+      def id: () -> String
+      def name: () -> String
+      def strategy_key: () -> String
+      def modules: () -> research_modules
+      def runtime_params: () -> research_runtime_params
+      def optimization_targets: () -> Array[research_optimization_target]
+      def default_optimization_target: () -> String?
+      def metadata: () -> research_system_metadata
+      def run_params: (Hash[Symbol | String, untyped] params) -> research_runtime_params
+      def system_params: () -> research_runtime_params
+      def optimization_param_key: (String? target) -> Symbol
+      def signal_for: (
+        Symbol | String name,
+        prev_row: Research::Runtime::RowCursor?,
+        row: Research::Runtime::RowCursor,
+        params: research_runtime_params
+      ) -> bool
+      def module_runtime_configs: (Hash[Symbol | String, untyped] params) -> research_module_runtime_configs
+
+      private
+
+      def signal_evaluator: () -> Research::Runtime::SignalEvaluator
+      def parsed_conditions: () -> Hash[String, research_condition_ast]
+      def resolve_reference: (untyped ref, row: Research::Runtime::RowCursor, params: research_runtime_params, ?row_offset: Integer) -> Float?
+      def target_label: (String target) -> String?
+      def module_param_key: (String | Symbol module_name, String | Symbol param_key) -> Symbol
+      def module_param_keys: () -> Array[Symbol]
+      def normalize_modules: (Hash[Symbol | String, Hash[Symbol | String, untyped]] raw_modules) -> research_modules
+      def module_type: (research_module_payload module_config) -> String
+      def module_params: (research_module_payload module_config) -> Hash[String, untyped]
+      def default_module_target: () -> String?
+      def humanize_token: (untyped value) -> String
+      def to_f_or_nil: (untyped value) -> Float?
+      def resolve_row_value: (Research::Runtime::RowCursor row, Integer row_offset, *Symbol path) -> untyped?
+      def to_numeric: (untyped value) -> untyped
+    end
+  end
+end

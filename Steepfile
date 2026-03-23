@@ -10,6 +10,7 @@ target :app do
   check "app/models/candle.rb"
   check "app/controllers/api/"
   check "app/jobs/"
+  check "app/services/research/"
   check "config/configs/"
 
   library "pathname"

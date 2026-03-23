@@ -1,0 +1,53 @@
+module Research
+  class RunRequest
+    @raw_params: research_request_payload
+    @system: Research::Systems::Definition
+    @runtime_params: research_runtime_params
+    @dataset: {
+      symbol: String,
+      timeframe: String,
+      start_time: research_time_value,
+      end_time: research_time_value,
+      exchange: String?
+    }
+    @execution: { fee_bps: untyped, slippage_bps: untyped }
+    @optimization: { enabled: bool?, target: String?, from: untyped, to: untyped, step: untyped }
+
+    attr_reader system: Research::Systems::Definition
+
+    def initialize: (research_request_payload raw_params) -> void
+    def backtest_config: () -> {
+      system: Research::Systems::Definition,
+      symbol: String,
+      timeframe: String,
+      start_time: research_time_value,
+      end_time: research_time_value,
+      exchange: String,
+      fee_bps: untyped,
+      slippage_bps: untyped
+    }
+    def runtime_params: () -> research_runtime_params
+    def optimization_enabled?: () -> bool
+    def optimization_target: () -> String?
+    def optimization_range: () -> { from: untyped, to: untyped, step: untyped }
+    def response_payload: (runs: Array[research_run]) -> Hash[Symbol, untyped]
+    def progress_run_id: () -> String?
+
+    private
+
+    attr_reader raw_params: research_request_payload
+
+    def requested_yaml: () -> String?
+    def dataset: () -> {
+      symbol: String,
+      timeframe: String,
+      start_time: research_time_value,
+      end_time: research_time_value,
+      exchange: String?
+    }
+    def execution: () -> { fee_bps: untyped, slippage_bps: untyped }
+    def optimization: () -> { enabled: bool?, target: String?, from: untyped, to: untyped, step: untyped }
+    def optimization_payload: () -> Hash[Symbol, untyped]
+    def slice_hash: (Hash[Symbol | String, untyped]? value, *Symbol keys) -> Hash[Symbol, untyped]
+  end
+end

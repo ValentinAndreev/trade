@@ -1,0 +1,32 @@
+module Research
+  module Systems
+    module ConditionExpression
+      class Evaluator
+        @ast: research_condition_ast
+        @resolver: ^(String, row: Research::Runtime::RowCursor, params: research_runtime_params, ?row_offset: Integer) -> Float?
+
+        ARITHMETIC_OPERATIONS: Hash[String, ^(Float, Float) -> Float?]
+        CALL_EVALUATORS: Hash[String, untyped]
+
+        def initialize: (
+          research_condition_ast ast,
+          resolver: ^(String, row: Research::Runtime::RowCursor, params: research_runtime_params, ?row_offset: Integer) -> Float?
+        ) -> void
+        def call: (row: Research::Runtime::RowCursor, prev_row: Research::Runtime::RowCursor?, params: research_runtime_params) -> bool
+
+        private
+
+        attr_reader ast: research_condition_ast
+        attr_reader resolver: ^(String, row: Research::Runtime::RowCursor, params: research_runtime_params, ?row_offset: Integer) -> Float?
+
+        def evaluate_boolean: (research_condition_ast node, row: Research::Runtime::RowCursor, prev_row: Research::Runtime::RowCursor?, params: research_runtime_params) -> bool
+        def evaluate_comparison: (research_condition_ast node, row: Research::Runtime::RowCursor, prev_row: Research::Runtime::RowCursor?, params: research_runtime_params) -> bool
+        def resolve_numeric: (research_condition_ast node, row: Research::Runtime::RowCursor, params: research_runtime_params, ?row_offset: Integer) -> Float?
+        def evaluate_unary: (research_condition_ast node, row: Research::Runtime::RowCursor, params: research_runtime_params, row_offset: Integer) -> Float?
+        def evaluate_arithmetic: (research_condition_ast node, row: Research::Runtime::RowCursor, params: research_runtime_params, row_offset: Integer) -> Float?
+        def evaluate_call: (research_condition_ast node, row: Research::Runtime::RowCursor, params: research_runtime_params, row_offset: Integer) -> Float?
+        def resolve_numeric_arguments: (Array[research_condition_ast] nodes, row: Research::Runtime::RowCursor, params: research_runtime_params, row_offset: Integer) -> Array[Float]?
+      end
+    end
+  end
+end

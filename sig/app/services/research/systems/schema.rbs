@@ -1,0 +1,9 @@
+module Research
+  module Systems
+    module Schema
+      @data: research_schema
+
+      def self?.data: () -> research_schema
+    end
+  end
+end

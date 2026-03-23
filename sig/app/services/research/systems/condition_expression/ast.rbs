@@ -1,0 +1,11 @@
+module Research
+  module Systems
+    module ConditionExpression
+      module Ast
+        def self?.each: (research_condition_ast node) ?{ (research_condition_ast) -> void } -> untyped
+        def self?.children: (research_condition_ast node) -> Array[research_condition_ast]
+        def self?.references: (research_condition_ast node) -> Array[String]
+      end
+    end
+  end
+end

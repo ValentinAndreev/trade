@@ -1,0 +1,18 @@
+module Research
+  module Runtime
+    class SignalEvaluator
+      @evaluators: Hash[Symbol, Research::Systems::ConditionExpression::Evaluator]
+
+      def initialize: (
+        Hash[Symbol | String, research_condition_ast] parsed_conditions,
+        resolver: ^(String, row: Research::Runtime::RowCursor, params: research_runtime_params, ?row_offset: Integer) -> Float?
+      ) -> void
+      def call: (
+        name: Symbol | String,
+        prev_row: Research::Runtime::RowCursor?,
+        row: Research::Runtime::RowCursor,
+        params: research_runtime_params
+      ) -> bool
+    end
+  end
+end

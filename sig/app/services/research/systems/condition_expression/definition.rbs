@@ -1,0 +1,32 @@
+module Research
+  module Systems
+    module ConditionExpression
+      module Definition
+        self.@binary_operator_symbols: Array[String]
+        self.@function_names: Array[String]
+
+        ROOT_REQUIREMENT: "Condition expressions must evaluate to a boolean comparison"
+
+        MODULE_OUTPUT_REFERENCE: "<module>.value"
+
+        PARAMS_REFERENCE: "params.<key>"
+
+        OPERATORS: Array[research_condition_operator_definition]
+        FUNCTIONS: Array[research_condition_function_definition]
+
+        def self.binary_operator_symbols: () -> Array[String]
+        def self.function_names: () -> Array[String]
+        def self.function_definition: (String | Symbol name) -> research_condition_function_definition?
+        def self.highlight_fragment: () -> {
+          "conditions" => {
+            "operators" => Hash[String, { "label" => String }],
+            "functions" => Hash[String, { "label" => String }]
+          }
+        }
+        def self.frontend_metadata: (reference_fields: Array[String]?) -> research_condition_frontend_metadata
+        def self.arity_error_message: (research_condition_function_definition function) -> String
+        def self.positive_integer_literal_error_message: (research_condition_function_definition function, Integer index) -> String
+      end
+    end
+  end
+end

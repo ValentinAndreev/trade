@@ -1,0 +1,22 @@
+module Research
+  module Systems
+    class Repository
+      extend PathHelpers
+
+      # Delegate to Catalog so a stub on Catalog.systems_dir is shared by repository writes.
+      def self.systems_dir: () -> Pathname
+      def self.save_system: (String yaml, ?source_relative_path: String?, ?directory_relative_path: String?) -> Catalog::Entry
+      def self.rename_entry: (source_relative_path: String, target_id: String, yaml: String) -> Catalog::Entry
+      def self.delete_entry: (source_relative_path: String) -> void
+      def self.create_directory: (parent_relative_path: String?, directory_name: String) -> String
+      def self.rename_directory: (source_relative_path: String, target_name: String) -> String
+      def self.delete_directory: (source_relative_path: String) -> void
+
+      private
+
+      def self.system_path_for: (String system_id, source_relative_path: String?, directory_relative_path: String?) -> Pathname
+      def self.replace_root_id: (String yaml, String target_id) -> String
+      def self.build_validated_entry: (Pathname path, String yaml, Research::Systems::Validation::Result validation) -> Catalog::Entry
+    end
+  end
+end

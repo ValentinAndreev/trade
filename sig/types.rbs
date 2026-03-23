@@ -60,3 +60,138 @@ type indicator_info = {
   options: Array[Symbol],
   min_data: Integer
 }
+
+type research_runtime_params = Hash[Symbol, untyped]
+type research_request_payload = Hash[Symbol, untyped]
+type research_yaml_payload = Hash[String, untyped]
+type research_schema = Hash[String, untyped]
+type research_module_payload = Hash[String, untyped]
+type research_modules = Hash[String, research_module_payload]
+type research_module_runtime_config = {
+  type: String,
+  params: Hash[Symbol, untyped]
+}
+type research_module_runtime_configs = Hash[String, research_module_runtime_config]
+type research_input_point = {
+  date_time: String,
+  open: Float,
+  high: Float,
+  low: Float,
+  close: Float,
+  volume: Float
+}
+type research_time_value = String | Time | Date | DateTime
+type research_module_result = Hash[Symbol, untyped]
+type research_module_point = {
+  time: Integer,
+  result: research_module_result
+}
+type research_module_result_series = Array[research_module_result?]
+type research_current_results = Hash[Symbol, research_module_result]
+type research_module_series = Hash[Symbol, research_module_result_series]
+type research_row_cursor_value = Integer | research_module_result | research_current_results | nil
+type research_condition_ast = Hash[Symbol, untyped]
+type research_condition_operator_definition = {
+  symbol: String,
+  category: Symbol,
+  label: String,
+  precedence: Integer,
+  register_in_frontend_parser: bool
+}
+type research_condition_function_definition = {
+  name: String,
+  label: String,
+  signature: String,
+  description: String,
+  min_args: Integer,
+  max_args: Integer?,
+  return_kind: Symbol,
+  numeric_arguments: bool,
+  positive_integer_literal_indexes: Array[Integer]
+}
+type research_condition_operator_metadata = {
+  symbol: String,
+  category: String,
+  label: String,
+  precedence: Integer,
+  register_in_frontend_parser: bool
+}
+type research_condition_function_metadata = {
+  name: String,
+  label: String,
+  signature: String,
+  description: String,
+  min_args: Integer,
+  max_args: Integer?,
+  return_kind: String,
+  numeric_arguments: bool,
+  positive_integer_literal_indexes: Array[Integer]
+}
+type research_condition_reference_metadata = {
+  candle_fields: Array[String],
+  module_output: String,
+  params_prefix: String
+}
+type research_condition_frontend_metadata = {
+  root_requirement: String,
+  operators: Array[research_condition_operator_metadata],
+  functions: Array[research_condition_function_metadata],
+  references: research_condition_reference_metadata
+}
+type research_highlight_config = {
+  keywords: Array[String],
+  values: Array[String]
+}
+type research_editor_metadata = {
+  highlight: research_highlight_config,
+  condition_expression: research_condition_frontend_metadata
+}
+type research_location = {
+  line: Integer,
+  column: Integer,
+  length: Integer
+}
+type research_diagnostic_hash = {
+  message: String,
+  line: Integer,
+  column: Integer,
+  length: Integer,
+  path: String?,
+  code: String?
+}
+type research_optimization_target = {
+  value: String,
+  label: String
+}
+type research_system_metadata = {
+  id: String,
+  name: String,
+  modules: research_modules,
+  params: research_runtime_params,
+  conditions: Array[untyped],
+  optimization_targets: Array[research_optimization_target]
+}
+type research_catalog_entry = {
+  id: String,
+  name: String,
+  file_name: String,
+  relative_path: String,
+  yaml: String,
+  metadata: research_system_metadata?
+}
+type research_trade = {
+  entryTime: Integer,
+  entryPrice: Float,
+  exitTime: Integer?,
+  exitPrice: Float?,
+  direction: String,
+  pnl: Float,
+  pnlPercent: Float,
+  bars: Integer?
+}
+type research_run = {
+  mode: String,
+  stage: String,
+  params: research_runtime_params,
+  trades: Array[research_trade]
+}

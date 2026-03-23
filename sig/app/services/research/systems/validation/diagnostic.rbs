@@ -1,0 +1,27 @@
+module Research
+  module Systems
+    module Validation
+      class Diagnostic
+        attr_reader message: String
+        attr_reader line: Integer
+        attr_reader column: Integer
+        attr_reader length: Integer
+        attr_reader path: String?
+        attr_reader code: String?
+
+        def self.yaml_missing: () -> Diagnostic
+
+        def initialize: (
+          message: String,
+          line: Integer,
+          column: Integer,
+          length: Integer,
+          ?path: String?,
+          ?code: String?
+        ) -> void
+
+        def to_h: () -> research_diagnostic_hash
+      end
+    end
+  end
+end

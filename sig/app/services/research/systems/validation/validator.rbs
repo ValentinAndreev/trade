@@ -1,0 +1,32 @@
+module Research
+  module Systems
+    module Validation
+      class Validator
+        @yaml_text: String
+        @diagnostics: Array[Diagnostic]
+        @schema: research_schema
+        @document: Psych::Nodes::Document
+        @payload: research_yaml_payload
+        @source_map: SourceMap
+
+        include Checks::Structure
+        include Checks::Conditions
+        include Checks::Optimization
+
+        def initialize: (String? yaml_text) -> void
+        def call: () -> Result
+
+        private
+
+        def parse_document: () -> bool
+        def parse_payload: () -> bool
+        def source_map: () -> SourceMap
+        def add_error: (message: String, path: Array[String], code: String, ?key_path: Array[String]?) -> void
+        def add_expression_error: (message: String, path: Array[String], offset: Integer, length: Integer, code: String) -> void
+        def numeric_like?: (untyped value) -> bool
+        def integer_like?: (untyped value) -> bool
+        def validate_unknown_keys: (Array[String] path, Array[String | Symbol] actual_keys, Array[String | Symbol] allowed_keys) -> void
+      end
+    end
+  end
+end

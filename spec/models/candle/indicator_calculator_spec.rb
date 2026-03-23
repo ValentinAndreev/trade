@@ -4,7 +4,7 @@ require 'rails_helper'
 
 RSpec.describe Candle::IndicatorCalculator do
   let(:candles) do
-    50.times.map do |i|
+    Array.new(50) do |i|
       {
         time: (Time.utc(2026, 1, 1) + i.minutes).to_i,
         open: 100.0 + i, high: 105.0 + i, low: 95.0 + i,

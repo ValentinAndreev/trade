@@ -1,0 +1,13 @@
+module Research
+  module Systems
+    module Validation
+      class Error < StandardError
+        @diagnostics: Array[Diagnostic]
+
+        attr_reader diagnostics: Array[Diagnostic]
+
+        def initialize: (Array[Diagnostic] diagnostics) -> void
+      end
+    end
+  end
+end

@@ -468,6 +468,7 @@ DEPENDENCIES
   rbs
   rbs_rails
   rspec-rails
+  rubocop-performance
   rubocop-rails-omakase
   solid_cable
   solid_cache

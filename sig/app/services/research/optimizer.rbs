@@ -1,0 +1,47 @@
+module Research
+  class Optimizer
+    @backtest: Research::Backtest
+    @system: Research::Systems::Definition
+    @base_params: research_runtime_params
+    @mode: Symbol
+    @stage: Symbol
+    @progress_interval: Float
+
+    private
+
+    attr_reader backtest: Research::Backtest
+    attr_reader system: Research::Systems::Definition
+    attr_reader base_params: research_runtime_params
+    attr_reader mode: Symbol
+    attr_reader stage: Symbol
+
+    public
+
+    def initialize: (
+      backtest: Research::Backtest,
+      system: Research::Systems::Definition,
+      base_params: Hash[Symbol | String, untyped],
+      ?mode: Symbol,
+      ?stage: Symbol,
+      ?progress_interval: Float
+    ) -> void
+    def call: (
+      target: String?,
+      from: Numeric | String,
+      to: Numeric | String,
+      step: Numeric | String,
+      ?progress: Research::ProgressBroadcaster?,
+      ?run_id: String?
+    ) -> Array[research_run]
+
+    private
+
+    attr_reader progress_interval: Float
+    def monotonic_now: () -> Float
+    def elapsed_ms: (Float started_at, ?Float finished_at) -> Float
+    def cancelled?: (String? run_id, Float _now) -> bool
+    def should_publish_progress?: (Float now, Float next_progress_at, Integer index, Integer total_runs) -> bool
+    def values_for: (from: Numeric | String, to: Numeric | String, step: Numeric | String) -> Array[Integer | Float]
+    def integer_like?: (Numeric | String value) -> bool
+  end
+end

@@ -1,7 +1,11 @@
 # Omakase Ruby styling for Rails
 inherit_gem: { rubocop-rails-omakase: rubocop.yml }
 
+plugins:
+  - rubocop-performance
+
 AllCops:
+  CacheRootDirectory: tmp/rubocop-cache
   Exclude:
     - db/schema.rb
 
@@ -14,3 +18,51 @@ Style/StringLiterals:
     - spec/**/*
     - test/**/*
     - Gemfile
+
+Performance/Count:
+  Enabled: true
+
+Performance/DeletePrefix:
+  Enabled: true
+
+Performance/DeleteSuffix:
+  Enabled: true
+
+Performance/Detect:
+  Enabled: true
+
+Performance/EndWith:
+  Enabled: true
+
+Performance/RangeInclude:
+  Enabled: true
+
+Performance/RegexpMatch:
+  Enabled: true
+
+Performance/RedundantMatch:
+  Enabled: true
+
+Performance/SelectMap:
+  Enabled: true
+
+Performance/Size:
+  Enabled: true
+
+Performance/StartWith:
+  Enabled: true
+
+Performance/StringReplacement:
+  Enabled: true
+
+Performance/BigDecimalWithNumericArgument:
+  Enabled: true
+
+Performance/InefficientHashSearch:
+  Enabled: true
+
+Performance/OpenStruct:
+  Enabled: true
+
+Performance/TimesMap:
+  Enabled: true

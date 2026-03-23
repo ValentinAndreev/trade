@@ -1,0 +1,19 @@
+module Research
+  module Systems
+    module Validation
+      module Checks
+        module Structure
+          REQUIRED_ROOT_KEYS: ::Array["id" | "name" | "modules" | "conditions"]
+
+          private
+
+          def validate_structure: () -> void
+          def validate_modules: () -> void
+          def validate_module_definition: (String module_name, untyped module_payload, Array[String] path) -> void
+          def validate_params: () -> void
+          def validate_scalar: (Hash[String, untyped] rule, untyped value, Array[String] path) -> void
+        end
+      end
+    end
+  end
+end
