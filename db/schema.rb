@@ -10,10 +10,84 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_05_071931) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_24_172800) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "timescaledb"
+
+  create_table "ai_chats", force: :cascade do |t|
+    t.bigint "ai_model_id"
+    t.datetime "created_at", null: false
+    t.string "last_used_model"
+    t.string "last_used_provider"
+    t.string "source_path"
+    t.string "system_id"
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["ai_model_id"], name: "index_ai_chats_on_ai_model_id"
+    t.index ["updated_at"], name: "index_ai_chats_on_updated_at"
+    t.index ["user_id", "source_path"], name: "index_ai_chats_on_user_id_and_source_path"
+    t.index ["user_id"], name: "index_ai_chats_on_user_id"
+  end
+
+  create_table "ai_messages", force: :cascade do |t|
+    t.bigint "ai_chat_id", null: false
+    t.bigint "ai_model_id"
+    t.bigint "ai_tool_call_id"
+    t.integer "cache_creation_tokens"
+    t.integer "cached_tokens"
+    t.text "content"
+    t.jsonb "content_raw"
+    t.datetime "created_at", null: false
+    t.integer "input_tokens"
+    t.jsonb "metadata", default: {}, null: false
+    t.integer "output_tokens"
+    t.string "role", null: false
+    t.text "thinking_signature"
+    t.text "thinking_text"
+    t.integer "thinking_tokens"
+    t.datetime "updated_at", null: false
+    t.index ["ai_chat_id"], name: "index_ai_messages_on_ai_chat_id"
+    t.index ["ai_model_id"], name: "index_ai_messages_on_ai_model_id"
+    t.index ["ai_tool_call_id"], name: "index_ai_messages_on_ai_tool_call_id"
+    t.index ["role"], name: "index_ai_messages_on_role"
+  end
+
+  create_table "ai_models", force: :cascade do |t|
+    t.jsonb "capabilities", default: [], null: false
+    t.integer "context_window"
+    t.datetime "created_at", null: false
+    t.string "family"
+    t.date "knowledge_cutoff"
+    t.integer "max_output_tokens"
+    t.jsonb "metadata", default: {}, null: false
+    t.jsonb "modalities", default: {}, null: false
+    t.datetime "model_created_at"
+    t.string "model_id", null: false
+    t.string "name", null: false
+    t.jsonb "pricing", default: {}, null: false
+    t.string "provider", null: false
+    t.datetime "updated_at", null: false
+    t.index ["capabilities"], name: "index_ai_models_on_capabilities", using: :gin
+    t.index ["family"], name: "index_ai_models_on_family"
+    t.index ["modalities"], name: "index_ai_models_on_modalities", using: :gin
+    t.index ["provider", "model_id"], name: "index_ai_models_on_provider_and_model_id", unique: true
+    t.index ["provider"], name: "index_ai_models_on_provider"
+  end
+
+  create_table "ai_tool_calls", force: :cascade do |t|
+    t.bigint "ai_message_id", null: false
+    t.jsonb "arguments", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.text "thought_signature"
+    t.string "tool_call_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ai_message_id"], name: "index_ai_tool_calls_on_ai_message_id"
+    t.index ["name"], name: "index_ai_tool_calls_on_name"
+    t.index ["tool_call_id"], name: "index_ai_tool_calls_on_tool_call_id", unique: true
+  end
 
   create_table "candles", id: false, force: :cascade do |t|
     t.decimal "close", precision: 15, scale: 8, null: false
@@ -29,6 +103,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_05_071931) do
     t.decimal "volume", precision: 25, scale: 8, null: false
     t.index ["symbol", "exchange", "ts"], name: "index_candles_on_symbol_exchange_ts", unique: true
     t.index ["ts"], name: "candles_ts_idx", order: :desc
+  end
+
+  create_table "llm_settings", force: :cascade do |t|
+    t.string "api_base"
+    t.text "api_key"
+    t.datetime "created_at", null: false
+    t.integer "max_output_tokens", default: 4000, null: false
+    t.string "model", default: "gemini-3-flash-preview", null: false
+    t.string "provider", default: "gemini", null: false
+    t.decimal "temperature", precision: 4, scale: 2, default: "0.2", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["user_id", "provider"], name: "index_llm_settings_on_user_id_and_provider", unique: true
   end
 
   create_table "presets", force: :cascade do |t|
@@ -50,6 +137,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_05_071931) do
     t.index ["channel"], name: "index_solid_cable_messages_on_channel"
     t.index ["channel_hash"], name: "index_solid_cable_messages_on_channel_hash"
     t.index ["created_at"], name: "index_solid_cable_messages_on_created_at"
+  end
+
+  create_table "solid_cache_entries", force: :cascade do |t|
+    t.integer "byte_size", null: false
+    t.datetime "created_at", null: false
+    t.binary "key", null: false
+    t.bigint "key_hash", null: false
+    t.binary "value", null: false
+    t.index ["byte_size"], name: "index_solid_cache_entries_on_byte_size"
+    t.index ["key_hash", "byte_size"], name: "index_solid_cache_entries_on_key_hash_and_byte_size"
+    t.index ["key_hash"], name: "index_solid_cache_entries_on_key_hash", unique: true
   end
 
   create_table "solid_queue_blocked_executions", force: :cascade do |t|
@@ -181,6 +279,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_05_071931) do
     t.index ["username"], name: "index_users_on_username", unique: true
   end
 
+  add_foreign_key "ai_chats", "ai_models"
+  add_foreign_key "ai_chats", "users"
+  add_foreign_key "ai_messages", "ai_chats"
+  add_foreign_key "ai_messages", "ai_models"
+  add_foreign_key "ai_messages", "ai_tool_calls"
+  add_foreign_key "ai_tool_calls", "ai_messages"
+  add_foreign_key "llm_settings", "users"
   add_foreign_key "presets", "users"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

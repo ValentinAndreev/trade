@@ -1,4 +1,12 @@
-import { BG_HOVER, BG_PRIMARY, BORDER_COLOR, BG_MODAL, BG_SURFACE, BG_TOOLBAR, BG_INPUT } from "../config/theme"
+import { BG_HOVER, BG_INPUT, BG_MODAL, BG_PANEL, BG_PRIMARY, BG_SURFACE, BG_TOOLBAR, BORDER_COLOR } from "../config/theme"
+import type {
+  AssistantChatMessage,
+  AssistantChatSummary,
+  AssistantDraftPayload,
+  LlmSettingPayload,
+  LlmSettingsDraft,
+  LlmSettingsPayload,
+} from "./assistant_api"
 import { escapeHTML } from "../utils/dom"
 import { highlightYaml } from "./yaml_highlighter"
 import type {
@@ -14,6 +22,7 @@ import { renderFileManagerModal } from "../research/file_manager"
 import { getConditionExpressionMetadata } from "./condition_expression"
 
 type SystemEditorTemplateArgs = {
+  tabId: string
   state: SystemEditorConfig
   catalog: ResearchCatalogEntry[]
   directories: string[]
@@ -28,6 +37,30 @@ type SystemEditorTemplateArgs = {
   filePickerDirectoryPath: string
   filePickerSelectedPath: string | null
   isOnline: boolean
+  assistantChats: AssistantChatSummary[]
+  assistantMessages: AssistantChatMessage[]
+  assistantCurrentChat: AssistantChatSummary | null
+  assistantInput: string
+  assistantLoading: boolean
+  assistantChatsLoading: boolean
+  assistantError: string | null
+  assistantSettings: LlmSettingsPayload | null
+  assistantSettingsDraft: LlmSettingsDraft | null
+  assistantSettingsOpen: boolean
+  assistantSettingsSaving: boolean
+  assistantExpandedReasoningIds: number[]
+  renameDialog: {
+    title: string
+    body: string
+    confirmLabel: string
+    value: string
+  } | null
+  confirmDialog: {
+    tone: "danger" | "warning"
+    title: string
+    body: string
+    confirmLabel: string
+  } | null
 }
 
 type HelpSection = {
@@ -53,6 +86,7 @@ const SHORTCUTS = [
 const ARGUMENT_ORDINALS = ["first", "second", "third"] as const
 
 export function renderSystemEditorHTML({
+  tabId,
   state,
   catalog,
   directories,
@@ -67,92 +101,193 @@ export function renderSystemEditorHTML({
   filePickerDirectoryPath,
   filePickerSelectedPath,
   isOnline,
+  assistantChats,
+  assistantMessages,
+  assistantCurrentChat,
+  assistantInput,
+  assistantLoading,
+  assistantChatsLoading,
+  assistantError,
+  assistantSettings,
+  assistantSettingsDraft,
+  assistantSettingsOpen,
+  assistantSettingsSaving,
+  assistantExpandedReasoningIds,
+  renameDialog,
+  confirmDialog,
 }: SystemEditorTemplateArgs): string {
   const diagnostics = validation?.diagnostics || []
   const valid = validation?.ok === true
   const offline = !isOnline
   const conditionExpressionMetadata = getConditionExpressionMetadata()
+  const providerOptions = assistantSettings?.providers || []
+  const selectedProvider = state.assistantSettingsProvider || assistantSettingsDraft?.provider || assistantSettings?.setting.provider || "gemini"
+  const modelSuggestions = assistantSettings?.model_suggestions_by_provider?.[selectedProvider] || []
+  const selectedProviderSetting = assistantSettings?.settings_by_provider?.[selectedProvider] || null
+  const configured = Boolean(selectedProviderSetting?.api_key_present && selectedProviderSetting.model.trim())
+  const modelListId = `system-editor-model-suggestions-${escapeHTML(tabId)}`
 
   return `
-    <div class="flex h-full min-h-0 flex-col overflow-hidden text-white bg-[${BG_PRIMARY}]">
-      <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-3 flex flex-wrap items-center gap-2">
-        ${toolbarButton("Open file", "click->system-editor#openFilePicker", offline)}
-        ${toolbarButton("New", "click->system-editor#newSystem", offline)}
-        ${toolbarButton(validating ? "Validating…" : "Validate", "click->system-editor#validateNow", offline || validating, "", `data-role="validate-button"`)}
-        ${toolbarButton(saving ? "Saving…" : "Save", "click->system-editor#saveSystem", offline || saving)}
-        ${toolbarButton("Rename", "click->system-editor#renameSystem", offline || saving || !sourceFileName)}
-        ${toolbarButton("Delete", "click->system-editor#deleteSystem", offline || saving || !sourceFileName, "border-red-500/30 text-red-200 hover:text-red-100 hover:bg-red-500/10")}
-        ${toolbarButton("Reload", "click->system-editor#resetSystem", offline || !sourceFileName)}
-        ${toolbarButton("Open in Test", "click->system-editor#openInTest", offline || !sourceFileName || hasUnsavedChanges, "", `data-role="open-in-test-button"`)}
-        <div class="ml-auto flex items-center gap-2">
-          <input
-            type="search"
-            value="${escapeHTML(state.searchQuery)}"
-            placeholder="Search"
-            data-field="searchQuery"
-            data-action="input->system-editor#updateSearchQuery keydown->system-editor#handleSearchKeydown"
-            class="h-10 w-64 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white"
-          >
-          ${toolbarButton("Prev", "click->system-editor#findPrevious", !state.searchQuery.trim(), "", `data-role="search-prev-button"`)}
-          ${toolbarButton("Next", "click->system-editor#findNext", !state.searchQuery.trim(), "", `data-role="search-next-button"`)}
+    <div class="flex h-full min-h-0 flex-col overflow-hidden bg-[${BG_PRIMARY}] text-white">
+      <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-3">
+        <div class="flex flex-wrap items-center gap-2">
+          ${toolbarButton("Open file", "click->system-editor#openFilePicker", offline)}
+          ${toolbarButton("New", "click->system-editor#newSystem", offline)}
+          ${toolbarButton(validating ? "Validating..." : "Validate", "click->system-editor#validateNow", offline || validating, "", `data-role="validate-button"`)}
+          ${toolbarButton(saving ? "Saving..." : "Save", "click->system-editor#saveSystem", offline || saving)}
+          ${toolbarButton("Rename", "click->system-editor#renameSystem", offline || saving || !sourceFileName)}
+          ${toolbarButton("Delete", "click->system-editor#deleteSystem", offline || saving || !sourceFileName, "border-red-500/30 text-red-200 hover:bg-red-500/10 hover:text-red-100")}
+          ${toolbarButton("Reload", "click->system-editor#resetSystem", offline || !sourceFileName)}
+          ${toolbarButton("Open in Test", "click->system-editor#openInTest", offline || !sourceFileName || hasUnsavedChanges, "", `data-role="open-in-test-button"`)}
+
+          <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <input
+              type="search"
+              value="${escapeHTML(state.searchQuery)}"
+              placeholder="Search"
+              data-field="searchQuery"
+              data-action="input->system-editor#updateSearchQuery keydown->system-editor#handleSearchKeydown"
+              class="h-10 w-56 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white"
+            >
+            ${toolbarButton("Prev", "click->system-editor#findPrevious", !state.searchQuery.trim(), "", `data-role="search-prev-button"`)}
+            ${toolbarButton("Next", "click->system-editor#findNext", !state.searchQuery.trim(), "", `data-role="search-next-button"`)}
+            ${toolbarButton("Settings", "click->system-editor#openAssistantSettings", assistantSettingsSaving)}
+            ${helpPopoverHTML(conditionExpressionMetadata)}
+          </div>
         </div>
       </div>
 
-      <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_TOOLBAR}] px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400">
-        <div class="flex flex-wrap items-center gap-3">
-          <span>File: <span data-role="current-file-name">${currentFileNameHTML(sourceFileName)}</span></span>
-          <span>State: <span data-role="save-state" class="${hasUnsavedChanges ? "text-amber-300" : "text-emerald-300"}">${hasUnsavedChanges ? "Unsaved changes" : "Saved"}</span></span>
-          <span>Search: <span data-role="search-match-count" class="text-white">${searchMatchCount} matches</span></span>
-          ${offline ? `<span class="text-red-400 font-medium">● Server offline</span>` : ""}
+      <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_TOOLBAR}] px-4 py-2 text-xs text-gray-400">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <span>File: <span data-role="current-file-name">${currentFileNameHTML(sourceFileName)}</span></span>
+            <span>State: <span data-role="save-state" class="${hasUnsavedChanges ? "text-amber-300" : "text-emerald-300"}">${hasUnsavedChanges ? "Unsaved changes" : "Saved"}</span></span>
+            <span>Search: <span data-role="search-match-count" class="text-white">${searchMatchCount} matches</span></span>
+            <span data-role="validation-status" class="${valid ? "text-emerald-300" : diagnostics.length ? "text-red-300" : "text-gray-400"}">${statusLabel(validation, validating)}</span>
+            ${offline ? `<span class="font-medium text-red-400">Server offline</span>` : ""}
+          </div>
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <span class="uppercase tracking-[0.18em] text-gray-500">Shortcuts</span>
+            ${shortcutChipsHTML()}
+          </div>
         </div>
-        <div
-          data-role="validation-status"
-          class="${valid ? "text-emerald-300" : diagnostics.length ? "text-red-300" : "text-gray-400"}"
-        >${statusLabel(validation, validating)}</div>
       </div>
 
-      <div class="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_28rem]">
-        <div class="min-w-0 min-h-0 p-4">
-          <div class="h-full min-h-0 rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] overflow-hidden shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
-            <div class="border-b border-[${BORDER_COLOR}] px-4 py-2 text-xs uppercase tracking-[0.18em] text-gray-500">
-              System YAML
-            </div>
-            <div class="relative h-[calc(100%-2.25rem)] min-h-0 overflow-hidden">
-              <div class="absolute inset-y-0 left-0 w-14 border-r border-[${BORDER_COLOR}] bg-[${BG_INPUT}] overflow-hidden pointer-events-none">
-                <pre data-system-editor-gutter class="px-2 py-4 font-mono text-xs leading-6 text-right text-gray-500">${buildLineNumbers(state.systemYaml, diagnostics)}</pre>
+      <div class="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
+        <section class="min-h-0 min-w-0 border-b border-[${BORDER_COLOR}] lg:border-b-0 lg:border-r">
+          <div class="flex h-full min-h-0 flex-col gap-4 p-4">
+            <div class="min-h-0 flex-1 overflow-hidden rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
+              <div class="border-b border-[${BORDER_COLOR}] px-4 py-2 text-xs uppercase tracking-[0.18em] text-gray-500">
+                System YAML
               </div>
-              <div data-system-editor-highlight class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-                <pre data-system-editor-highlight-pre class="m-0 pl-16 pr-4 py-4 font-mono text-[13px] leading-6 text-white whitespace-pre">${highlightYaml(state.systemYaml)}</pre>
+              <div class="relative h-[calc(100%-2.25rem)] min-h-0 overflow-hidden">
+                <div class="pointer-events-none absolute inset-y-0 left-0 w-14 overflow-hidden border-r border-[${BORDER_COLOR}] bg-[${BG_INPUT}]">
+                  <pre data-system-editor-gutter class="px-2 py-4 text-right font-mono text-xs leading-6 text-gray-500">${buildLineNumbers(state.systemYaml, diagnostics)}</pre>
+                </div>
+                <div data-system-editor-highlight class="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+                  <pre data-system-editor-highlight-pre class="m-0 whitespace-pre-wrap break-words pl-16 pr-4 py-4 font-mono text-[13px] leading-6 text-white">${highlightYaml(state.systemYaml)}</pre>
+                </div>
+                <textarea
+                  data-field="systemYaml"
+                  data-action="input->system-editor#updateYaml scroll->system-editor#syncEditorScroll keydown->system-editor#handleEditorKeydown"
+                  class="block h-full w-full resize-none overflow-x-hidden bg-transparent pl-16 pr-4 py-4 font-mono text-[13px] leading-6 whitespace-pre-wrap break-words outline-none"
+                  style="color: transparent; caret-color: white"
+                  spellcheck="false"
+                >${escapeHTML(state.systemYaml)}</textarea>
               </div>
-              <textarea
-                data-field="systemYaml"
-                data-action="input->system-editor#updateYaml scroll->system-editor#syncEditorScroll keydown->system-editor#handleEditorKeydown"
-                class="block h-full w-full resize-none bg-transparent pl-16 pr-4 py-4 font-mono text-[13px] leading-6 outline-none"
-                style="color: transparent; caret-color: white"
-                spellcheck="false"
-                wrap="off"
-              >${escapeHTML(state.systemYaml)}</textarea>
+            </div>
+
+            <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-4">
+              <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Diagnostics</div>
+              <div data-role="diagnostics-list" class="mt-3 flex max-h-44 flex-col gap-2 overflow-auto">
+                ${diagnosticsHTML(diagnostics)}
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        <aside class="min-h-0 overflow-auto border-l border-[${BORDER_COLOR}] bg-[${BG_MODAL}] px-4 py-4 flex flex-col gap-4">
-          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3">
-            <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Current file</div>
-            <div data-role="current-file-card-name" class="mt-2 text-sm">${currentFileNameHTML(sourceFileName, "mt-2 text-sm text-left")}</div>
-            <div data-role="current-system-id" class="mt-1 text-xs text-gray-400">${escapeHTML(state.systemId || "No id detected yet")}</div>
-          </div>
+        <section class="min-h-0 min-w-0">
+          <div class="flex h-full min-h-0 flex-col p-4">
+            <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
+              <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.18em] text-gray-500">LLM assistant</div>
+                    <div class="mt-1 text-sm text-gray-300">${assistantStatusHTML(assistantSettings, configured, selectedProvider, selectedProviderSetting)}</div>
+                  </div>
+                  <div class="flex flex-wrap items-center justify-end gap-2">
+                    <select
+                      data-role="assistant-chat-select"
+                      data-action="change->system-editor#selectAssistantChat"
+                      class="h-10 min-w-44 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white"
+                      ${assistantChatsLoading ? "disabled" : ""}
+                    >
+                      ${assistantChats.length
+                        ? assistantChats.map(chat => assistantChatOptionHTML(chat, state.assistantChatId)).join("")
+                        : assistantChatEmptyOptionHTML(assistantChatsLoading)}
+                    </select>
+                    ${toolbarButton("New", "click->system-editor#createAssistantChat", assistantLoading || !configured)}
+                    ${toolbarButton("Rename", "click->system-editor#renameAssistantChat", assistantLoading || !assistantCurrentChat)}
+                    ${toolbarButton("Delete", "click->system-editor#deleteAssistantChat", assistantLoading || !assistantCurrentChat, "border-red-500/30 text-red-200 hover:bg-red-500/10 hover:text-red-100")}
+                  </div>
+                </div>
+                ${assistantCurrentChat ? `
+                  <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-400">
+                    <span>${escapeHTML(assistantCurrentChat.title)}</span>
+                    ${assistantCurrentChat.source_path ? `<span class="font-mono text-gray-300">${escapeHTML(assistantCurrentChat.source_path)}</span>` : ""}
+                  </div>
+                ` : ""}
+                ${assistantError ? `
+                  <div class="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                    ${escapeHTML(assistantError)}
+                  </div>
+                ` : ""}
+              </div>
 
-          <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-3">
-            <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Diagnostics</div>
-            <div data-role="diagnostics-list" class="mt-3 flex flex-col gap-2">
-              ${diagnosticsHTML(diagnostics)}
+              <div data-role="assistant-messages" class="min-h-0 flex-1 overflow-auto bg-[${BG_PANEL}] px-4 py-4">
+                ${assistantMessagesHTML({
+                  configured: !!configured,
+                  loading: assistantLoading,
+                  currentChat: assistantCurrentChat,
+                  messages: assistantMessages,
+                  expandedReasoningIds: assistantExpandedReasoningIds,
+                })}
+              </div>
+
+              <div class="border-t border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-4">
+                <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] p-3">
+                  <textarea
+                    data-role="assistant-input"
+                    data-action="input->system-editor#updateAssistantInput keydown->system-editor#handleAssistantInputKeydown"
+                    class="min-h-28 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none"
+                    placeholder="${configured ? "Ask the assistant to generate, explain, or fix the system YAML..." : "Configure provider, model, and API key in Settings before using the assistant."}"
+                    ${configured ? "" : "disabled"}
+                  >${escapeHTML(assistantInput)}</textarea>
+                  <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+                    <div class="text-xs text-gray-500">
+                      Send with Ctrl/Cmd+Enter. Drafts are only applied to the editor when you confirm.
+                    </div>
+                    ${toolbarButton(assistantLoading ? "Sending..." : "Send", "click->system-editor#sendAssistantMessage", assistantLoading || !configured || !assistantInput.trim(), "min-w-24", `data-role="assistant-send-button"`)}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-
-          ${editorHelpHTML(conditionExpressionMetadata)}
-        </aside>
+        </section>
       </div>
+
+      ${assistantSettingsOpen ? assistantSettingsModalHTML({
+        modelListId,
+        settingsDraft: assistantSettingsDraft,
+        providerOptions,
+        modelSuggestions,
+        selectedProviderSetting,
+        saving: assistantSettingsSaving,
+      }) : ""}
+
+      ${renameDialog ? renameDialogHTML(renameDialog) : ""}
+
+      ${confirmDialog ? confirmDialogHTML(confirmDialog) : ""}
 
       ${filePickerOpen ? renderFileManagerModal({
         ctrl: "system-editor",
@@ -178,33 +313,40 @@ export function renderSystemEditorHTML({
   `
 }
 
-function editorHelpHTML(metadata: ResearchConditionExpressionMetadata | null): string {
-  const sections = buildHelpSections(metadata)
+function shortcutChipsHTML(): string {
+  return SHORTCUTS.map(([value, label]) => `
+    <span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-gray-300">
+      <span class="font-mono text-white">${escapeHTML(value)}</span>
+      <span class="ml-1">${escapeHTML(label)}</span>
+    </span>
+  `).join("")
+}
 
+function helpPopoverHTML(metadata: ResearchConditionExpressionMetadata | null): string {
   return `
-    <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-4 text-xs text-gray-400 leading-5">
-      <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Editor help</div>
-      ${sections.map((section, index) => renderHelpSection(section, index === 0)).join("")}
-
-      <div class="mt-4 border-t border-white/5 pt-4 text-[12px] text-gray-500">
-        If a referenced value is missing on early bars, or an arithmetic step fails such as division by zero, the comparison evaluates to false.
+    <div class="group relative">
+      <button
+        type="button"
+        class="flex h-10 w-10 items-center justify-center rounded-full border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] text-sm text-gray-200 hover:bg-[${BG_HOVER}] hover:text-white"
+        aria-label="Condition syntax help"
+      >?</button>
+      <div class="pointer-events-none absolute right-0 top-[calc(100%+0.5rem)] z-20 hidden w-[30rem] max-w-[calc(100vw-2rem)] rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] p-4 text-left shadow-[0_24px_48px_rgba(0,0,0,0.36)] group-hover:block">
+        ${conditionHelpPopoverBody(metadata)}
       </div>
     </div>
   `
 }
 
-function buildHelpSections(metadata: ResearchConditionExpressionMetadata | null): HelpSection[] {
-  return [
-    shortcutHelpSection(),
-    ...(metadata ? conditionHelpSections(metadata) : unavailableMetadataSection()),
-  ]
-}
+function conditionHelpPopoverBody(metadata: ResearchConditionExpressionMetadata | null): string {
+  const sections = metadata ? conditionHelpSections(metadata) : unavailableMetadataSection()
 
-function shortcutHelpSection(): HelpSection {
-  return {
-    title: "Shortcuts",
-    body: `${SHORTCUTS.map(([key, label]) => `${renderKeyLabel(key)} ${label}`).join(", ")}.`,
-  }
+  return `
+    <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Condition syntax</div>
+    ${sections.map((section, index) => renderHelpSection(section, index === 0)).join("")}
+    <div class="mt-4 border-t border-white/5 pt-4 text-[12px] leading-5 text-gray-500">
+      If a referenced value is missing on early bars, or an arithmetic step fails such as division by zero, the comparison evaluates to false.
+    </div>
+  `
 }
 
 function unavailableMetadataSection(): HelpSection[] {
@@ -219,7 +361,7 @@ function unavailableMetadataSection(): HelpSection[] {
 function conditionHelpSections(metadata: ResearchConditionExpressionMetadata): HelpSection[] {
   return [
     {
-      title: "Condition syntax",
+      title: "Condition expressions",
       body: `${escapeHTML(metadata.root_requirement)}. Wrap each condition in quotes and use comparisons or logical combinations as the top-level expression.`,
     },
     {
@@ -266,13 +408,13 @@ function renderHelpSectionBody(section: HelpSection): string {
 
   if (section.rows?.length) {
     return `
-      <div class="mt-2 space-y-2 text-[12px] text-gray-400">
+      <div class="mt-2 space-y-2 text-[12px] leading-5 text-gray-400">
         ${section.rows.map(row => `<div>${row}</div>`).join("")}
       </div>
     `
   }
 
-  return `<div class="mt-2 text-[12px] text-gray-400">${section.body || ""}</div>`
+  return `<div class="mt-2 text-[12px] leading-5 text-gray-400">${section.body || ""}</div>`
 }
 
 function renderHelpColumn(column: HelpColumn): string {
@@ -302,12 +444,8 @@ function buildOperatorColumn(
   return { title, rows }
 }
 
-function renderKeyLabel(value: string): string {
-  return `<span class="text-white">${escapeHTML(value)}</span>`
-}
-
 function renderMono(value: string): string {
-  return `<span class="text-white font-mono">${escapeHTML(value)}</span>`
+  return `<span class="font-mono text-white">${escapeHTML(value)}</span>`
 }
 
 function renderOperatorHelp(operator: ResearchConditionExpressionOperator): string {
@@ -329,19 +467,523 @@ function buildFunctionDetail(fn: ResearchConditionExpressionFunction): string {
   return ` (${escapeHTML(positions)} must be a positive integer literal)`
 }
 
+function assistantStatusHTML(
+  settings: LlmSettingsPayload | null,
+  configured: boolean | string,
+  provider: string,
+  providerSetting: LlmSettingPayload | null,
+): string {
+  if (!settings) return "Assistant settings are unavailable"
+  if (!configured) return "Configure provider, model, and API key in Settings"
+
+  const model = providerSetting?.model || settings.model_suggestions_by_provider?.[provider]?.[0] || ""
+  return `${escapeHTML(provider)} / <span class="font-mono text-white">${escapeHTML(model)}</span>`
+}
+
+function assistantChatOptionHTML(chat: AssistantChatSummary, selectedChatId: number | null): string {
+  return selectOptionHTML(String(chat.id), chat.title, selectedChatId === chat.id)
+}
+
+function assistantChatEmptyOptionHTML(loading: boolean): string {
+  const label = loading ? "Loading chats..." : "No chats"
+  return `
+    <option
+      value=""
+      disabled
+      selected
+      style="background-color: ${BG_INPUT}; color: #ffffff;"
+    >${escapeHTML(label)}</option>
+  `
+}
+
+function assistantMessagesHTML({
+  configured,
+  loading,
+  currentChat,
+  messages,
+  expandedReasoningIds,
+}: {
+  configured: boolean
+  loading: boolean
+  currentChat: AssistantChatSummary | null
+  messages: AssistantChatMessage[]
+  expandedReasoningIds: number[]
+}): string {
+  if (!configured) {
+    return emptyAssistantStateHTML(
+      "Settings required",
+      "Choose a provider, set a model, and save an API key before starting a chat.",
+      "Open Settings",
+      "click->system-editor#openAssistantSettings",
+    )
+  }
+
+  if (!currentChat) {
+    return emptyAssistantStateHTML(
+      "No active chat",
+      "Create a new chat or select a saved conversation for this system.",
+      "New chat",
+      "click->system-editor#createAssistantChat",
+    )
+  }
+
+  if (!messages.length && !loading) {
+    return emptyAssistantStateHTML(
+      "Start the conversation",
+      "Ask for a new system, request a YAML fix, or ask the assistant to explain validation errors.",
+    )
+  }
+
+  const hasVisibleReasoning = messages.some(message => Boolean(message.thinking_text?.trim()))
+
+  return `
+    <div class="flex min-h-full flex-col gap-4">
+      ${messages.map(message => assistantMessageHTML(message, expandedReasoningIds)).join("")}
+      ${loading && !hasVisibleReasoning ? `
+        <div class="self-start rounded-2xl rounded-bl-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-gray-300">
+          Assistant is thinking...
+        </div>
+      ` : ""}
+    </div>
+  `
+}
+
+function emptyAssistantStateHTML(
+  title: string,
+  body: string,
+  actionLabel?: string,
+  action?: string,
+): string {
+  return `
+    <div class="flex h-full items-center justify-center">
+      <div class="max-w-md rounded-2xl border border-white/10 bg-white/5 px-5 py-6 text-center">
+        <div class="text-sm font-medium text-white">${escapeHTML(title)}</div>
+        <div class="mt-2 text-sm leading-6 text-gray-400">${escapeHTML(body)}</div>
+        ${actionLabel && action ? `
+          <button
+            type="button"
+            data-action="${action}"
+            class="mt-4 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 py-2 text-sm text-gray-200 hover:bg-[${BG_HOVER}] hover:text-white"
+          >${escapeHTML(actionLabel)}</button>
+        ` : ""}
+      </div>
+    </div>
+  `
+}
+
+function assistantMessageHTML(message: AssistantChatMessage, expandedReasoningIds: number[]): string {
+  const isUser = message.role === "user"
+  const createdAt = formatAssistantTimestamp(message.created_at)
+  const content = message.content || ""
+  const reasoning = message.thinking_text?.trim() || ""
+  const draft = assistantDraftFromMetadata(message.metadata)
+  const contentHTML = content ? renderAssistantMessageContent(content, !isUser) : ""
+  const reasoningHTML = !isUser && reasoning ? assistantReasoningHTML(reasoning, message.id, expandedReasoningIds.includes(message.id)) : ""
+
+  return `
+    <article class="flex ${isUser ? "justify-end" : "justify-start"}">
+      <div class="max-w-[90%] rounded-2xl px-4 py-3 ${isUser ? "rounded-br-md border border-blue-400/20 bg-blue-500/15" : "rounded-bl-md border border-white/10 bg-white/5"}">
+        <div class="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] ${isUser ? "text-blue-100/80" : "text-gray-500"}">
+          <span>${isUser ? "You" : "Assistant"}</span>
+          <span class="normal-case tracking-normal text-gray-500">${escapeHTML(createdAt)}</span>
+        </div>
+        ${reasoningHTML ? `<div class="${contentHTML ? "mt-3" : "mt-2"}">${reasoningHTML}</div>` : ""}
+        ${contentHTML ? `<div class="mt-2 space-y-3 text-sm leading-6 text-gray-100">${contentHTML}</div>` : ""}
+        ${draft ? `
+          <div class="mt-3">
+            ${assistantDraftPreviewHTML(draft, message.id)}
+          </div>
+        ` : ""}
+      </div>
+    </article>
+  `
+}
+
+function assistantReasoningHTML(reasoning: string, messageId: number, expanded: boolean): string {
+  return `
+    <details
+      class="overflow-hidden rounded-xl border border-amber-400/20 bg-amber-500/10"
+      data-message-id="${messageId}"
+      data-action="toggle->system-editor#toggleAssistantReasoning"
+      ${expanded ? "open" : ""}
+    >
+      <summary class="cursor-pointer list-none px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-amber-200 marker:hidden">
+        <span class="inline-flex items-center gap-2">
+          <span>Reasoning</span>
+          <span class="normal-case tracking-normal text-amber-100/70">click to expand</span>
+        </span>
+      </summary>
+      <div class="border-t border-amber-400/10 px-3 py-3">
+        <div class="whitespace-pre-wrap break-words text-[13px] leading-6 text-amber-50/90">${escapeHTML(reasoning)}</div>
+      </div>
+    </details>
+  `
+}
+
+function assistantSettingsModalHTML({
+  modelListId,
+  settingsDraft,
+  providerOptions,
+  modelSuggestions,
+  selectedProviderSetting,
+  saving,
+}: {
+  modelListId: string
+  settingsDraft: LlmSettingsDraft | null
+  providerOptions: Array<{ value: string; label: string }>
+  modelSuggestions: string[]
+  selectedProviderSetting: LlmSettingPayload | null
+  saving: boolean
+}): string {
+  const draft = settingsDraft || {
+    provider: "gemini",
+    model: "gemini-3-flash-preview",
+    api_key: "",
+    api_base: "",
+    temperature: "0.2",
+    max_output_tokens: "4000",
+  }
+  const keyStatus = selectedProviderSetting?.api_key_present
+    ? "Saved key exists for this provider. Leave the field blank to keep it."
+    : "No saved key for this provider yet."
+
+  return `
+    <div
+      data-role="assistant-settings-modal"
+      data-action="click->system-editor#closeAssistantSettings"
+      class="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4 py-6"
+    >
+      <div
+        data-action="click->system-editor#stopAssistantSettingsPropagation"
+        class="w-full max-w-2xl rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_28px_64px_rgba(0,0,0,0.48)]"
+      >
+        <div class="border-b border-[${BORDER_COLOR}] px-6 py-4">
+          <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Assistant settings</div>
+          <div class="mt-1 text-sm text-gray-300">Provider, model, and API credentials used by the system editor assistant.</div>
+        </div>
+
+        <div class="grid gap-4 px-6 py-5 md:grid-cols-2">
+          <label class="text-sm text-gray-300">
+            <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Provider</div>
+            <select
+              data-field="assistantSettings.provider"
+              data-action="change->system-editor#updateAssistantSettingsField"
+              class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+            >
+              ${providerOptions.map(option => selectOptionHTML(option.value, option.label, draft.provider === option.value)).join("")}
+            </select>
+          </label>
+
+          <label class="text-sm text-gray-300">
+            <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Model</div>
+            <input
+              type="text"
+              list="${modelListId}"
+              value="${escapeHTML(draft.model)}"
+              data-field="assistantSettings.model"
+              data-action="input->system-editor#updateAssistantSettingsField"
+              class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+              placeholder="gemini-3-flash-preview"
+            >
+            <datalist id="${modelListId}">
+              ${modelSuggestions.map(model => `<option value="${escapeHTML(model)}"></option>`).join("")}
+            </datalist>
+          </label>
+
+          <label class="text-sm text-gray-300">
+            <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">API key</div>
+            <input
+              type="password"
+              value="${escapeHTML(draft.api_key)}"
+              data-field="assistantSettings.apiKey"
+              data-action="input->system-editor#updateAssistantSettingsField"
+              class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+              placeholder="Leave blank to keep the saved key"
+              autocomplete="off"
+            >
+            <div class="mt-2 text-xs text-gray-500">${escapeHTML(keyStatus)}</div>
+          </label>
+
+          <label class="text-sm text-gray-300">
+            <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Base URL</div>
+            <input
+              type="text"
+              value="${escapeHTML(draft.api_base)}"
+              data-field="assistantSettings.apiBase"
+              data-action="input->system-editor#updateAssistantSettingsField"
+              class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+              placeholder="Optional override"
+            >
+          </label>
+
+          <label class="text-sm text-gray-300">
+            <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Temperature</div>
+            <input
+              type="number"
+              value="${escapeHTML(draft.temperature)}"
+              min="0"
+              max="2"
+              step="0.1"
+              data-field="assistantSettings.temperature"
+              data-action="input->system-editor#updateAssistantSettingsField"
+              class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+            >
+          </label>
+
+          <label class="text-sm text-gray-300">
+            <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Max output tokens</div>
+            <input
+              type="number"
+              value="${escapeHTML(draft.max_output_tokens)}"
+              min="1"
+              max="128000"
+              step="1"
+              data-field="assistantSettings.maxOutputTokens"
+              data-action="input->system-editor#updateAssistantSettingsField"
+              class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+            >
+          </label>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-[${BORDER_COLOR}] px-6 py-4">
+          <div class="text-xs leading-5 text-gray-500">
+            Keys are stored server-side per user. The editor keeps drafts local until you explicitly save the YAML file.
+          </div>
+          <div class="flex items-center gap-2">
+            ${toolbarButton("Cancel", "click->system-editor#closeAssistantSettings", saving)}
+            ${toolbarButton(saving ? "Saving..." : "Save settings", "click->system-editor#saveAssistantSettings", saving)}
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function confirmDialogHTML(dialog: {
+  tone: "danger" | "warning"
+  title: string
+  body: string
+  confirmLabel: string
+}): string {
+  const accentClass = dialog.tone === "warning" ? "text-amber-300" : "text-red-300"
+  const confirmButtonClass = dialog.tone === "warning"
+    ? "border-amber-400/30 bg-amber-500/15 text-amber-100 hover:bg-amber-500/20 hover:text-white"
+    : "border-red-500/30 bg-red-500/15 text-red-100 hover:bg-red-500/20 hover:text-white"
+  const caption = dialog.tone === "warning" ? "Confirm overwrite" : "Confirm deletion"
+
+  return `
+    <div
+      data-role="system-editor-confirm-dialog"
+      data-action="click->system-editor#closeConfirmDialog"
+      class="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 px-4 py-6"
+    >
+      <div
+        data-action="click->system-editor#stopConfirmDialogPropagation"
+        class="w-full max-w-lg rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_28px_64px_rgba(0,0,0,0.48)]"
+      >
+        <div class="border-b border-[${BORDER_COLOR}] px-6 py-4">
+          <div class="text-xs uppercase tracking-[0.18em] ${accentClass}">${caption}</div>
+          <div class="mt-1 text-base font-medium text-white">${escapeHTML(dialog.title)}</div>
+          <div class="mt-2 text-sm leading-6 text-gray-300">${escapeHTML(dialog.body)}</div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 px-6 py-4">
+          ${toolbarButton("Cancel", "click->system-editor#closeConfirmDialog")}
+          ${toolbarButton(dialog.confirmLabel, "click->system-editor#confirmDialogAction", false, confirmButtonClass)}
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function renameDialogHTML(dialog: {
+  title: string
+  body: string
+  confirmLabel: string
+  value: string
+}): string {
+  const disabled = !dialog.value.trim()
+
+  return `
+    <div
+      data-role="system-editor-rename-dialog"
+      data-action="click->system-editor#closeRenameDialog"
+      class="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 px-4 py-6"
+    >
+      <div
+        data-action="click->system-editor#stopRenameDialogPropagation"
+        class="w-full max-w-lg rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_28px_64px_rgba(0,0,0,0.48)]"
+      >
+        <div class="border-b border-[${BORDER_COLOR}] px-6 py-4">
+          <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Rename chat</div>
+          <div class="mt-1 text-base font-medium text-white">${escapeHTML(dialog.title)}</div>
+          <div class="mt-2 text-sm leading-6 text-gray-300">${escapeHTML(dialog.body)}</div>
+        </div>
+
+        <div class="px-6 py-5">
+          <input
+            type="text"
+            value="${escapeHTML(dialog.value)}"
+            data-role="rename-dialog-input"
+            data-action="input->system-editor#updateRenameDialogValue keydown->system-editor#handleRenameDialogKeydown"
+            class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white outline-none"
+            placeholder="Chat title"
+            autocomplete="off"
+          >
+        </div>
+
+        <div class="flex items-center justify-end gap-2 border-t border-[${BORDER_COLOR}] px-6 py-4">
+          ${toolbarButton("Cancel", "click->system-editor#closeRenameDialog")}
+          ${toolbarButton(dialog.confirmLabel, "click->system-editor#submitRenameDialog", disabled)}
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function formatAssistantTimestamp(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function renderAssistantMessageContent(content: string, allowYamlApply = false): string {
+  const segments = splitCodeFenceSegments(content)
+  if (!segments.length) {
+    return `<div class="whitespace-pre-wrap break-words">${escapeHTML(content)}</div>`
+  }
+
+  return segments.map(segment => {
+    if (segment.type === "text") {
+      if (!segment.value.trim()) return ""
+      return `<div class="whitespace-pre-wrap break-words">${escapeHTML(segment.value.trim())}</div>`
+    }
+
+    return assistantCodeBlockHTML(segment.value, segment.language, allowYamlApply)
+  }).join("")
+}
+
+function assistantCodeBlockHTML(code: string, language = "", allowYamlApply = false): string {
+  const languageLabel = language || "code"
+  const body = language === "yaml" ? highlightYaml(code) : escapeHTML(code)
+  const applyButton = allowYamlApply && language === "yaml"
+    ? toolbarButton(
+        "Apply YAML",
+        "click->system-editor#applyAssistantYamlSnippet",
+        false,
+        "h-8 border-emerald-400/30 bg-emerald-500/15 px-2 text-xs text-emerald-50 hover:bg-emerald-500/20",
+        `data-yaml="${escapeHTML(encodeURIComponent(code))}"`
+      )
+    : ""
+
+  return `
+    <div class="overflow-hidden rounded-xl border border-white/10 bg-[#0b0c18]">
+      <div class="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-gray-500">
+        <span>${escapeHTML(languageLabel)}</span>
+        ${applyButton}
+      </div>
+      <pre class="m-0 overflow-auto px-3 py-3 font-mono text-[12px] leading-6 text-gray-100">${body}</pre>
+    </div>
+  `
+}
+
+function assistantDraftPreviewHTML(draft: AssistantDraftPayload, messageId?: number): string {
+  const applyButton = messageId
+    ? toolbarButton(
+        "Apply draft",
+        "click->system-editor#applyAssistantMessageDraft",
+        false,
+        "h-8 border-emerald-400/30 bg-emerald-500/15 px-2 text-xs text-emerald-50 hover:bg-emerald-500/20",
+        `data-message-id="${messageId}"`
+      )
+    : ""
+
+  return `
+    <div class="overflow-hidden rounded-xl border border-white/10 bg-[#0b0c18]">
+      <div class="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-gray-500">
+        <span>YAML draft</span>
+        ${applyButton}
+      </div>
+      <pre class="m-0 overflow-auto px-3 py-3 font-mono text-[12px] leading-6 text-gray-100">${highlightYaml(draft.yaml)}</pre>
+    </div>
+  `
+}
+
+function assistantDraftFromMetadata(metadata: Record<string, unknown>): AssistantDraftPayload | null {
+  const draft = metadata?.draft
+  if (!draft || typeof draft !== "object") return null
+
+  const payload = draft as Record<string, unknown>
+  if (typeof payload.yaml !== "string") return null
+
+  return {
+    yaml: payload.yaml,
+    source_yaml_hash: typeof payload.source_yaml_hash === "string" ? payload.source_yaml_hash : null,
+    validation: {
+      ok: Boolean((payload.validation as Record<string, unknown> | undefined)?.ok),
+      diagnostics: Array.isArray((payload.validation as Record<string, unknown> | undefined)?.diagnostics)
+        ? ((payload.validation as Record<string, unknown>).diagnostics as ResearchDslDiagnostic[])
+        : [],
+      system: ((payload.validation as Record<string, unknown> | undefined)?.system as Record<string, unknown> | null) || null,
+    },
+  }
+}
+
+function splitCodeFenceSegments(content: string): Array<{ type: "text" | "code"; value: string; language?: string }> {
+  const segments: Array<{ type: "text" | "code"; value: string; language?: string }> = []
+  const pattern = /```([\w-]+)?\n([\s\S]*?)```/g
+  let cursor = 0
+
+  for (const match of content.matchAll(pattern)) {
+    const index = match.index ?? 0
+    if (index > cursor) {
+      segments.push({ type: "text", value: content.slice(cursor, index) })
+    }
+
+    segments.push({
+      type: "code",
+      language: (match[1] || "").toLowerCase(),
+      value: (match[2] || "").replace(/\n$/, ""),
+    })
+    cursor = index + match[0].length
+  }
+
+  if (cursor < content.length) {
+    segments.push({ type: "text", value: content.slice(cursor) })
+  }
+
+  return segments
+}
+
+function selectOptionHTML(value: string, label: string, selected: boolean): string {
+  return `
+    <option
+      value="${escapeHTML(value)}"
+      ${selected ? "selected" : ""}
+      style="background-color: ${BG_INPUT}; color: #ffffff;"
+    >${escapeHTML(label)}</option>
+  `
+}
+
 function toolbarButton(label: string, action: string, disabled = false, extraClass = "", extraAttrs = ""): string {
   return `
     <button
       type="button"
       data-action="${action}"
       ${extraAttrs}
-      class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-200 hover:text-white hover:bg-[${BG_HOVER}] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${extraClass}"
+      class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-200 hover:bg-[${BG_HOVER}] hover:text-white disabled:cursor-not-allowed disabled:opacity-50 ${extraClass}"
       ${disabled ? "disabled" : ""}
-    >${label}</button>
+    >${escapeHTML(label)}</button>
   `
 }
 
-export function currentFileNameHTML(sourceFileName: string | null, className = "text-white font-mono"): string {
+export function currentFileNameHTML(sourceFileName: string | null, className = "font-mono text-white"): string {
   if (!sourceFileName) {
     return `<span class="${className}">Unsaved draft</span>`
   }
@@ -351,14 +993,14 @@ export function currentFileNameHTML(sourceFileName: string | null, className = "
       type="button"
       title="Double-click to open containing directory"
       data-action="dblclick->system-editor#openFilePicker"
-      class="${className} rounded px-1 py-0.5 hover:bg-white/5 cursor-pointer"
+      class="${className} rounded px-1 py-0.5 hover:bg-white/5"
     >${escapeHTML(sourceFileName)}</button>
   `
 }
 
 export function diagnosticsHTML(diagnostics: ResearchDslDiagnostic[]): string {
   if (!diagnostics.length) {
-    return `<div class="text-sm text-emerald-300">No YAML errors.</div>`
+    return `<div class="rounded border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">No YAML errors.</div>`
   }
 
   return diagnostics.map(diagnostic => `
@@ -368,7 +1010,7 @@ export function diagnosticsHTML(diagnostics: ResearchDslDiagnostic[]): string {
       data-column="${diagnostic.column}"
       data-length="${diagnostic.length}"
       data-action="click->system-editor#focusDiagnostic"
-      class="text-left rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-100 hover:bg-red-500/15 cursor-pointer"
+      class="cursor-pointer rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-left text-xs text-red-100 hover:bg-red-500/15"
     >
       <div class="font-medium">Line ${diagnostic.line}, col ${diagnostic.column}</div>
       <div class="mt-1">${escapeHTML(diagnostic.message)}</div>
@@ -388,7 +1030,7 @@ export function buildLineNumbers(yaml: string, diagnostics: ResearchDslDiagnosti
 }
 
 export function statusLabel(validation: ResearchValidationResponse | null, validating: boolean): string {
-  if (validating && !(validation?.diagnostics?.length)) return "Validating…"
+  if (validating && !(validation?.diagnostics?.length)) return "Validating..."
   if (!validation) return "Not validated"
   return validation.ok ? "YAML valid" : "YAML invalid"
 }

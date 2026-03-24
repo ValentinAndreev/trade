@@ -153,7 +153,6 @@ export class FilePickerModule {
   async deleteEntry(): Promise<void> {
     const selectedPath = this.selectedPath
     if (!selectedPath) return
-    if (!window.confirm(`Delete ${selectedPath}?`)) return
 
     const catalog = this.cb.getCatalog()
     const entry = findResearchEntry(catalog, selectedPath)

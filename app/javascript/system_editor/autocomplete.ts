@@ -210,7 +210,9 @@ function caretCoordinates(textarea: HTMLTextAreaElement, position: number): { to
   Object.assign(mirror.style, {
     position:        "absolute",
     visibility:      "hidden",
-    whiteSpace:      "pre",       // wrap="off" → no wrapping
+    whiteSpace:      "pre-wrap",
+    overflowWrap:    "break-word",
+    wordBreak:       "break-word",
     overflow:        "hidden",
     boxSizing:       cs.boxSizing,
     width:           cs.width,

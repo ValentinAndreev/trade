@@ -24,8 +24,11 @@ export function loadTabs(): Tab[] {
           if (tab.type === "research" && !tab.researchResult) {
             tab.researchResult = { runs: [], selectedRunIndex: 0 }
           }
-          if (tab.type === "system_editor" && !tab.systemEditorConfig) {
-            tab.systemEditorConfig = buildDefaultSystemEditorState()
+          if (tab.type === "system_editor") {
+            tab.systemEditorConfig = {
+              ...buildDefaultSystemEditorState(),
+              ...(tab.systemEditorConfig || {}),
+            }
           }
           return tab
         })

@@ -1,0 +1,7 @@
+examples:
+  - id: price_ema_cross
+    description: Simple price cross over a single EMA.
+  - id: ema_fast_slow_cross
+    description: Dual EMA cross system with long and short entries.
+  - id: ema_rsi_combo
+    description: EMA trend filter combined with RSI threshold logic.

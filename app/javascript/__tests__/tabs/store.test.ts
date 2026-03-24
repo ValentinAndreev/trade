@@ -113,10 +113,14 @@ describe("TabStore", () => {
     })
 
     it("addSystemEditorTab creates a persisted system editor tab", () => {
-      const tab = store.addSystemEditorTab({ systemId: "price_ema_cross", sourceSystemId: "price_ema_cross" })
+      const tab = store.addSystemEditorTab()
 
       expect(tab.type).toBe("system_editor")
-      expect(tab.systemEditorConfig?.systemId).toBe("price_ema_cross")
+      expect(tab.systemEditorConfig?.systemId).toBe("custom_system")
+      expect(tab.systemEditorConfig?.sourceSystemId).toBeNull()
+      expect(tab.systemEditorConfig?.systemYaml).toBe("")
+      expect(tab.systemEditorConfig?.assistantChatId).toBeNull()
+      expect(tab.systemEditorConfig?.assistantSettingsProvider).toBeNull()
       expect(store.tabLabel(tab)).toBe("System editor")
       expect(store.activeTabId).toBe(tab.id)
     })
@@ -247,6 +251,7 @@ describe("TabStore", () => {
       expect(ok).toBe(true)
       expect(tab.systemEditorConfig?.systemId).toBe("rsi_threshold")
       expect(tab.systemEditorConfig?.searchQuery).toBe("period")
+      expect(tab.systemEditorConfig?.assistantChatId).toBeNull()
     })
   })
 

@@ -114,8 +114,35 @@ describe("persistence", () => {
       const result = loadTabs()
 
       expect(result[0].type).toBe("system_editor")
-      expect(result[0].systemEditorConfig?.systemId).toBe("price_ema_cross")
-      expect(result[0].systemEditorConfig?.sourceSystemId).toBe("price_ema_cross")
+      expect(result[0].systemEditorConfig?.systemId).toBe("custom_system")
+      expect(result[0].systemEditorConfig?.sourceSystemId).toBeNull()
+      expect(result[0].systemEditorConfig?.systemYaml).toBe("")
+      expect(result[0].systemEditorConfig?.assistantChatId).toBeNull()
+      expect(result[0].systemEditorConfig?.assistantSettingsProvider).toBeNull()
+    })
+
+    it("hydrates missing assistant chat id on persisted editor config", () => {
+      const tabs = [{
+        id: "tab-1",
+        name: "System editor",
+        type: "system_editor",
+        panels: [],
+        systemEditorConfig: {
+          systemId: "price_ema_cross",
+          sourceSystemId: "price_ema_cross",
+          sourcePath: "trend/price_ema_cross.yml",
+          directoryPath: "trend",
+          systemYaml: "id: price_ema_cross",
+          searchQuery: "ema",
+          assistantSettingsProvider: "gemini",
+        },
+      }]
+
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+      const result = loadTabs()
+
+      expect(result[0].systemEditorConfig?.assistantChatId).toBeNull()
+      expect(result[0].systemEditorConfig?.assistantSettingsProvider).toBe("gemini")
     })
   })
 

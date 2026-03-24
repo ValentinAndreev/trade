@@ -1,0 +1,16 @@
+ema:
+  label: EMA
+  description: Exponential moving average over close prices.
+  output: value
+  params:
+    period:
+      type: integer
+      description: Lookback period. Must be >= 1.
+rsi:
+  label: RSI
+  description: Relative Strength Index over close prices.
+  output: value
+  params:
+    period:
+      type: integer
+      description: Lookback period. Must be >= 1.

@@ -1,14 +1,15 @@
 import type { SystemEditorConfig } from "../types/store"
-import { DEFAULT_RESEARCH_SYSTEM_ID } from "../research/state"
 
 export function buildDefaultSystemEditorState(): SystemEditorConfig {
   return {
-    systemId: DEFAULT_RESEARCH_SYSTEM_ID,
-    sourceSystemId: DEFAULT_RESEARCH_SYSTEM_ID,
+    systemId: "custom_system",
+    sourceSystemId: null,
     sourcePath: null,
     directoryPath: null,
     systemYaml: "",
     searchQuery: "",
+    assistantChatId: null,
+    assistantSettingsProvider: null,
   }
 }
 
@@ -20,12 +21,16 @@ export function hydrateSystemEditorState(stored: Partial<SystemEditorConfig> | n
 }
 
 export function normalizeSystemEditorState(state: SystemEditorConfig): void {
-  if (typeof state.systemId !== "string") state.systemId = DEFAULT_RESEARCH_SYSTEM_ID
+  if (typeof state.systemId !== "string") state.systemId = "custom_system"
   if (typeof state.sourceSystemId !== "string" && state.sourceSystemId !== null) state.sourceSystemId = state.systemId || null
   if (typeof state.sourcePath !== "string" && state.sourcePath !== null) state.sourcePath = null
   if (typeof state.directoryPath !== "string" && state.directoryPath !== null) state.directoryPath = null
   if (typeof state.systemYaml !== "string") state.systemYaml = ""
   if (typeof state.searchQuery !== "string") state.searchQuery = ""
+  if (typeof state.assistantChatId !== "number" && state.assistantChatId !== null) state.assistantChatId = null
+  if (typeof state.assistantSettingsProvider !== "string" && state.assistantSettingsProvider !== null) {
+    state.assistantSettingsProvider = null
+  }
 }
 
 export function buildStarterSystemYaml(systemId = "custom_system"): string {

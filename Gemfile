@@ -34,6 +34,8 @@ gem 'enumerable-statistics'
 
 # Frontend
 gem 'view_component'
+gem 'ruby_llm'
+gem 'ruby_llm-schema'
 
 group :development, :test do
   gem 'debug', platforms: %i[mri mingw mswin x64_mingw], require: 'debug/prelude'

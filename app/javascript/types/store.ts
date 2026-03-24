@@ -48,6 +48,8 @@ export interface SystemEditorConfig {
   directoryPath: string | null
   systemYaml: string
   searchQuery: string
+  assistantChatId: number | null
+  assistantSettingsProvider: string | null
 }
 
 export interface ResearchRunPayload {

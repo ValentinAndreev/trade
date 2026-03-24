@@ -1,0 +1,13 @@
+root_keys:
+  - id
+  - name
+  - modules
+  - params
+  - conditions
+  - optimization
+rules:
+  - Always produce a complete YAML document, not a fragment.
+  - Conditions must be quoted strings.
+  - The top-level condition expression must evaluate to a boolean comparison.
+  - Do not invent module types, param keys, root keys, operators or functions.
+  - Keep optimization targets aligned with the params and modules that actually exist.
