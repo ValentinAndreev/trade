@@ -5,7 +5,7 @@ class CandleBackfillJob < ApplicationJob
 
   def perform
     BitfinexConfig.symbols.each do |symbol|
-      Candle::Fetcher.new(symbol, load_all_data: true).call
+      Candle::Syncer.new(symbol, load_all_data: true).call
     end
   end
 end

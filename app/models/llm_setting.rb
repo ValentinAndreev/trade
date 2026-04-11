@@ -22,10 +22,6 @@ class LlmSetting < ApplicationRecord
   validates :temperature, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 2 }
   validates :max_output_tokens, numericality: { only_integer: true, greater_than: 0, less_than_or_equal_to: 128_000 }
 
-  def api_key_present?
-    api_key.present?
-  end
-
   def as_api_json
     {
       provider: provider,
@@ -33,7 +29,7 @@ class LlmSetting < ApplicationRecord
       api_base: api_base,
       temperature: temperature.to_f,
       max_output_tokens: max_output_tokens,
-      api_key_present: api_key_present?
+      api_key_present: api_key.present?
     }
   end
 end

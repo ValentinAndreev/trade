@@ -19,7 +19,7 @@ module Llm
       end
 
       def call(content:, editor_context:)
-        raise ArgumentError, 'LLM settings are not configured' unless @setting&.api_key_present?
+        raise ArgumentError, 'LLM settings are not configured' unless @setting&.api_key.present?
 
         content_text = content.to_s
         previous_message_id = @chat.ai_messages.maximum(:id) || 0

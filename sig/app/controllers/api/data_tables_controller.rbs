@@ -1,7 +1,6 @@
 module Api
   class DataTablesController < ApplicationController
     def show: () -> void
-    def correlations: () -> void
     def statistics: () -> void
 
     private

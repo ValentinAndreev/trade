@@ -18,7 +18,6 @@ class DataTable::Statistics
   def initialize: (Array[Numeric?] values) -> void
   def calculate: () -> (statistics_result | Hash[Symbol, untyped])
   def self.from_rows: (Array[data_table_row] rows, String | Symbol field) -> (statistics_result | Hash[Symbol, untyped])
-  def self.correlation_matrix: (Array[data_table_row] rows, Array[String | Symbol] fields) -> Hash[String, Float?]
 
   private
 

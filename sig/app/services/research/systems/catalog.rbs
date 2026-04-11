@@ -33,6 +33,8 @@ module Research
 
       def self.template_paths: () -> Array[String]
       def self.build_catalog_entry: (Pathname path) -> Entry
+      def self.extract_entry_metadata: (String yaml, Pathname path) -> { id: String, name: String }
+      def self.fallback_entry_metadata: (String fallback_id) -> { id: String, name: String }
       def self.file_id_for: (String | Pathname path) -> String
       def self.humanized_name_for: (String | Symbol system_id) -> String
     end

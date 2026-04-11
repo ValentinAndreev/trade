@@ -72,7 +72,7 @@ RSpec.describe User do
 
     it 'returns the default preset' do
       preset = create(:preset, :default, user: u)
-      expect(u.default_preset).to eq(preset)
+      expect(u.reload.default_preset).to eq(preset)
     end
   end
 

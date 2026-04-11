@@ -1,0 +1,10 @@
+module Api
+  module Research
+    class BaseController < ::Api::ApplicationController
+      private
+
+      def missing_yaml_response: () -> { ok: bool, diagnostics: Array[research_diagnostic_hash], system: nil }
+      def render_systems_validation_error: (Research::Systems::Validation::Error error, **untyped payload) -> void
+    end
+  end
+end

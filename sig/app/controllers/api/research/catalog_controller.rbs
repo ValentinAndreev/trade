@@ -1,0 +1,9 @@
+module Api
+  module Research
+    class CatalogController < BaseController
+      def index: () -> void
+      def editor_metadata: () -> void
+      def validate: () -> void
+    end
+  end
+end

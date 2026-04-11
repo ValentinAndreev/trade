@@ -20,7 +20,7 @@ module Llm
 
         def load_yaml(file_name)
           YAML.safe_load(
-            File.read(Rails.root.join('config/llm/system_editor', file_name)),
+            File.read(Rails.root.join('app/prompts/llm/system_editor_agent', file_name)),
             aliases: false
           ) || {}
         end

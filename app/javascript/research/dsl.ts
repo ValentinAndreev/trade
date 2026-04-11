@@ -134,7 +134,7 @@ export async function fetchResearchCatalog(): Promise<ResearchCatalogSnapshot> {
 }
 
 export async function validateResearchSystem(systemYaml: string, systemId?: string): Promise<ResearchValidationResponse | null> {
-  const response = await apiFetch("/api/research/validate", {
+  const response = await apiFetch("/api/research/systems/validate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

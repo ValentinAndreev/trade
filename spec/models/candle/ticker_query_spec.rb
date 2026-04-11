@@ -45,6 +45,31 @@ RSpec.describe Candle::TickerQuery do
         Rails.cache = original_cache
       end
     end
+
+    it 'uses a separate cache entry for each symbol set' do
+      create(:candle, symbol: 'BTCUSD', ts: 1.hour.ago, close: 49_000)
+      create(:candle, symbol: 'ETHUSD', ts: 1.hour.ago, close: 3_000)
+
+      allow(client).to receive(:tickers).with([ 'tBTCUSD' ]).and_return([
+        [ 'tBTCUSD', 0, 0, 0, 0, 100.0, 0.01, 50_000.0, 300.0, 51_000.0, 49_000.0 ]
+      ])
+      allow(client).to receive(:tickers).with(%w[tBTCUSD tETHUSD]).and_return([
+        [ 'tBTCUSD', 0, 0, 0, 0, 100.0, 0.01, 50_000.0, 300.0, 51_000.0, 49_000.0 ],
+        [ 'tETHUSD', 0, 0, 0, 0, 50.0, 0.02, 3_000.0, 200.0, 3_100.0, 2_900.0 ]
+      ])
+
+      original_cache = Rails.cache
+      Rails.cache = ActiveSupport::Cache::MemoryStore.new
+      begin
+        described_class.new(%w[BTCUSD]).call
+        described_class.new(%w[BTCUSD ETHUSD]).call
+
+        expect(client).to have_received(:tickers).with([ 'tBTCUSD' ]).once
+        expect(client).to have_received(:tickers).with(%w[tBTCUSD tETHUSD]).once
+      ensure
+        Rails.cache = original_cache
+      end
+    end
   end
 
   describe '#call with DB fallback' do

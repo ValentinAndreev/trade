@@ -38,7 +38,7 @@ class Api::SystemEditorChatsController < Api::ApplicationController
   def create_message
     provider = params[:provider].presence
     setting = provider ? current_user.llm_setting_for(provider) : current_user.active_llm_setting
-    return render json: { error: 'LLM settings are not configured' }, status: :unprocessable_content unless setting&.api_key_present?
+    return render json: { error: 'LLM settings are not configured' }, status: :unprocessable_content unless setting&.api_key.present?
 
     result = Llm::SystemEditor::ChatRunner.new(
       user: current_user,

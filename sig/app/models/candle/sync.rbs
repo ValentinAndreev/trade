@@ -1,0 +1,11 @@
+class Candle
+  module Sync
+    HISTORY_START_MS: Integer
+    EXCHANGE: String
+
+    class FetchError < StandardError
+    end
+
+    def self.current_time_ms: () -> Integer
+  end
+end

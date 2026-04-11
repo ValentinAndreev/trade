@@ -115,8 +115,37 @@ RSpec.describe 'Api::Research' do
       end
     end
 
+    it 'uses id and name from YAML metadata in the catalog response' do
+      Dir.mktmpdir do |dir|
+        allow(Research::Systems::Catalog).to receive(:systems_dir).and_return(Pathname.new(dir))
+
+        File.write(File.join(dir, 'custom_file_name.yml'), <<~YAML)
+          id: custom_system
+          name: Custom Strategy Name
+          modules:
+            ema:
+              type: ema
+              period: 3
+          conditions:
+            long_entry: "close >> ema.value"
+            short_entry: "close << ema.value"
+        YAML
+
+        get '/api/research/catalog'
+
+        expect(response).to have_http_status(:ok)
+
+        entry = response.parsed_body.fetch('systems').find { |item| item.fetch('relative_path') == 'custom_file_name.yml' }
+        expect(entry).to include(
+          'id' => 'custom_system',
+          'name' => 'Custom Strategy Name',
+          'file_name' => 'custom_file_name.yml'
+        )
+      end
+    end
+
     it 'validates yaml systems and returns metadata' do
-      post '/api/research/validate', params: {
+      post '/api/research/systems/validate', params: {
         system_id: 'price_ema_cross',
         system_yaml: yaml_system
       }, as: :json

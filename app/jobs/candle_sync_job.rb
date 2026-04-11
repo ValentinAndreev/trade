@@ -13,9 +13,9 @@ class CandleSyncJob < ApplicationJob
     end
 
     BitfinexConfig.symbols.each do |symbol|
-      Candle::Fetcher.new(symbol).call
+      Candle::Syncer.new(symbol).call
       sleep(BitfinexConfig.sync_pause)
-    rescue Candle::Fetcher::FetchError => e
+    rescue Candle::Sync::FetchError => e
       Rails.logger.error("CandleSyncJob: #{symbol} failed: #{e.message}")
     end
   end

@@ -1,0 +1,32 @@
+class Candle
+  module Sync
+    class Recent
+      OVERLAP_CANDLES: Integer
+      MIN_FETCH_LIMIT: Integer
+
+      def initialize: (
+        symbol: String,
+        interval: String,
+        history_source: Candle::Sync::HistorySource,
+        importer: Candle::Sync::Importer,
+        broadcaster: Candle::Sync::Broadcaster,
+        paginator: Candle::Sync::Paginator,
+        ?exchange: String
+      ) -> void
+
+      def call: () -> void
+
+      private
+
+      attr_reader symbol: String
+      attr_reader interval: String
+      attr_reader history_source: Candle::Sync::HistorySource
+      attr_reader importer: Candle::Sync::Importer
+      attr_reader broadcaster: Candle::Sync::Broadcaster
+      attr_reader paginator: Candle::Sync::Paginator
+      attr_reader exchange: String
+
+      def gap_minutes: () -> Integer?
+    end
+  end
+end

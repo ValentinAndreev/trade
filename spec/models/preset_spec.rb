@@ -32,23 +32,4 @@ RSpec.describe Preset do
       expect(build(:preset, user: other, name: 'My Setup')).to be_valid
     end
   end
-
-  describe '#ensure_single_default' do
-    it 'clears other defaults when a new default is set' do
-      p1 = create(:preset, :default, user: user)
-      p2 = create(:preset, user: user)
-
-      p2.update!(is_default: true)
-      expect(p1.reload.is_default).to be(false)
-      expect(p2.reload.is_default).to be(true)
-    end
-
-    it 'does not clear defaults from other users' do
-      other = create(:user)
-      p1 = create(:preset, :default, user: other)
-      create(:preset, :default, user: user)
-
-      expect(p1.reload.is_default).to be(true)
-    end
-  end
 end

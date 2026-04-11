@@ -1,0 +1,21 @@
+class Candle
+  class Syncer
+    attr_reader symbol: String
+    attr_reader interval: String
+    attr_reader load_all_data: bool
+
+    def initialize: (String symbol, ?interval: String, ?load_all_data: bool) -> void
+    def call: () -> void
+
+    private
+
+    def sync_operation: () -> (Candle::Sync::Recent | Candle::Sync::Backfill)
+    def recent_sync: () -> Candle::Sync::Recent
+    def backfill_sync: () -> Candle::Sync::Backfill
+    def history_source: () -> Candle::Sync::HistorySource
+    def importer: () -> Candle::Sync::Importer
+    def broadcaster: () -> Candle::Sync::Broadcaster
+    def aggregate_refresher: () -> Candle::Sync::AggregateRefresher
+    def paginator: () -> Candle::Sync::Paginator
+  end
+end

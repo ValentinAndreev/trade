@@ -1,0 +1,12 @@
+module Api
+  module Research
+    class SystemsController < BaseController
+      def save: () -> void
+      def rename: () -> void
+      def destroy: () -> void
+      def create_directory: () -> void
+      def rename_directory: () -> void
+      def destroy_directory: () -> void
+    end
+  end
+end

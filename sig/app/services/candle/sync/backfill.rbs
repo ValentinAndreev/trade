@@ -1,0 +1,16 @@
+class Candle
+  module Sync
+    class Backfill
+      def initialize: (symbol: String, paginator: Candle::Sync::Paginator, ?exchange: String) -> void
+      def call: () -> void
+
+      private
+
+      attr_reader symbol: String
+      attr_reader paginator: Candle::Sync::Paginator
+      attr_reader exchange: String
+
+      def history_start_ms: () -> Integer?
+    end
+  end
+end

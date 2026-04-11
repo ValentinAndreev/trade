@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require 'digest'
+
 class Candle::TickerQuery
   SPARKLINE_POINTS = 48
-  TICKERS_CACHE_KEY = 'bitfinex/live_tickers'
+  TICKERS_CACHE_KEY_PREFIX = 'bitfinex/live_tickers'
   TICKERS_CACHE_TTL = 15.seconds
   SPARKLINE_CACHE_TTL = 2.minutes
 
@@ -26,7 +28,7 @@ class Candle::TickerQuery
   private
 
   def fetch_live_tickers
-    raw = Rails.cache.fetch(TICKERS_CACHE_KEY, expires_in: TICKERS_CACHE_TTL) do
+    raw = Rails.cache.fetch(tickers_cache_key, expires_in: TICKERS_CACHE_TTL) do
       prefixed = @symbols.map { |s| "t#{s}" }
       Utils::BitfinexClient.new.tickers(prefixed)
     end
@@ -50,6 +52,12 @@ class Candle::TickerQuery
         low:             row[IDX_LOW]&.to_f
       }
     end
+  end
+
+  def tickers_cache_key
+    symbol_set = @symbols.map(&:to_s).sort.join(',')
+    digest = Digest::MD5.hexdigest(symbol_set)
+    "#{TICKERS_CACHE_KEY_PREFIX}/#{digest}"
   end
 
   def fetch_all_sparklines
