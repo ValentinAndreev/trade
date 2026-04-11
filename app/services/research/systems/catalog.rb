@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'psych'
+
 module Research
   module Systems
     class Catalog
@@ -28,8 +30,12 @@ module Research
         def find(id)
           return if id.blank?
 
-          path = template_paths.find { |candidate| file_id_for(candidate) == id.to_s }
-          path ? build_catalog_entry(Pathname.new(path)) : nil
+          template_paths.sort.each do |candidate|
+            entry = build_catalog_entry(Pathname.new(candidate))
+            return entry if entry.id == id.to_s
+          end
+
+          nil
         end
 
         def find_by_relative_path(relative_path)
@@ -53,16 +59,38 @@ module Research
 
         def build_catalog_entry(path)
           yaml = File.read(path)
-          system_id = file_id_for(path)
+          metadata = extract_entry_metadata(yaml, path)
 
           Entry.new(
-            id: system_id,
-            name: humanized_name_for(system_id),
+            id: metadata.fetch(:id),
+            name: metadata.fetch(:name),
             file_name: path.basename.to_s,
             relative_path: relative_path_for(path),
             yaml: yaml,
             metadata: nil
           )
+        end
+
+        def extract_entry_metadata(yaml, path)
+          fallback_id = file_id_for(path)
+          payload = YAML.safe_load(yaml, aliases: false)
+          system_id = payload.fetch('id', nil).to_s.presence
+          system_name = payload.fetch('name', nil).to_s.presence
+          resolved_id = system_id || fallback_id
+
+          {
+            id: resolved_id,
+            name: system_name || humanized_name_for(resolved_id)
+          }
+        rescue Psych::Exception, NoMethodError
+          fallback_entry_metadata(fallback_id)
+        end
+
+        def fallback_entry_metadata(fallback_id)
+          {
+            id: fallback_id,
+            name: humanized_name_for(fallback_id)
+          }
         end
 
         def file_id_for(path)

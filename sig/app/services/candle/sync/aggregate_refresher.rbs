@@ -1,0 +1,12 @@
+class Candle
+  module Sync
+    class AggregateRefresher
+      def initialize: (?connection: untyped) -> void
+      def refresh: (Array[Time] imported_timestamps) -> void
+
+      private
+
+      attr_reader connection: untyped
+    end
+  end
+end

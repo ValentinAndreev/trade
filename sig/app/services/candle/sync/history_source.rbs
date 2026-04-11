@@ -1,0 +1,17 @@
+class Candle
+  module Sync
+    class HistorySource
+      def initialize: (symbol: String, interval: String, ?client: Utils::BitfinexClient) -> void
+      def fetch_records: (end_time: Integer, ?limit: Integer) -> Array[candle_record]
+
+      private
+
+      attr_reader symbol: String
+      attr_reader interval: String
+      attr_reader client: Utils::BitfinexClient
+
+      def fetch_candles: (end_time: Integer, limit: Integer, ?attempt: Integer) -> Array[Array[untyped]]
+      def retry_pause: () -> Numeric
+    end
+  end
+end

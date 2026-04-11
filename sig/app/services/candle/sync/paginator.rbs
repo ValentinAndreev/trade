@@ -1,0 +1,26 @@
+class Candle
+  module Sync
+    class Paginator
+      def initialize: (
+        history_source: Candle::Sync::HistorySource,
+        importer: Candle::Sync::Importer,
+        broadcaster: Candle::Sync::Broadcaster,
+        aggregate_refresher: Candle::Sync::AggregateRefresher,
+        ?rate_limit_pause: Numeric
+      ) -> void
+
+      def call: (start_from: Integer?, ?refresh_aggregates: bool, ?invalidate_min: bool) -> void
+
+      private
+
+      attr_reader history_source: Candle::Sync::HistorySource
+      attr_reader importer: Candle::Sync::Importer
+      attr_reader broadcaster: Candle::Sync::Broadcaster
+      attr_reader aggregate_refresher: Candle::Sync::AggregateRefresher
+      attr_reader rate_limit_pause: Numeric
+
+      def imported_records: (Array[candle_record] records, Array[Time] imported_timestamps) -> Array[candle_record]
+      def next_page_ms: (Time oldest_timestamp) -> Integer?
+    end
+  end
+end

@@ -124,6 +124,8 @@ class DataTable::Builder
   end
 
   def find_closest_close(close_by_time, times, target_time)
+    # TODO: Replace this nearest-neighbor lookup with backward-only matching.
+    # The current behavior may use a future candle when there is a gap in data.
     return close_by_time[target_time] if close_by_time.key?(target_time)
 
     idx = times.bsearch_index { |t| t >= target_time }

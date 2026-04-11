@@ -1,0 +1,12 @@
+module Api
+  module Research
+    class RunsController < BaseController
+      def create: () -> void
+      def cancel: () -> void
+
+      private
+
+      def research_payload: () -> research_request_payload
+    end
+  end
+end

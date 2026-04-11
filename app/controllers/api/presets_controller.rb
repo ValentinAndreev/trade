@@ -16,6 +16,7 @@ class Api::PresetsController < Api::ApplicationController
     preset.assign_attributes(preset_params)
 
     if preset.save
+      update_default_if_requested(preset)
       render json: preset_json(preset, full: true), status: (preset.previously_new_record? ? :created : :ok)
     else
       render json: { errors: preset.errors.full_messages }, status: :unprocessable_entity
@@ -24,6 +25,7 @@ class Api::PresetsController < Api::ApplicationController
 
   def update
     if @preset.update(preset_params)
+      update_default_if_requested(@preset)
       render json: preset_json(@preset, full: true)
     else
       render json: { errors: @preset.errors.full_messages }, status: :unprocessable_entity
@@ -55,13 +57,23 @@ class Api::PresetsController < Api::ApplicationController
   def set_preset = @preset = current_user.presets.find(params[:id])
 
   def preset_params
-    permitted = params.permit(:name, :is_default)
+    permitted = params.permit(:name)
     permitted[:payload] = params[:payload].to_unsafe_h if params[:payload].present?
     permitted
   end
 
+  def update_default_if_requested(preset)
+    return unless params.key?(:is_default)
+
+    if params[:is_default] == true
+      current_user.update!(default_preset: preset)
+    elsif current_user.default_preset_id == preset.id
+      current_user.update!(default_preset: nil)
+    end
+  end
+
   def preset_json(preset, full: false)
-    data = { id: preset.id, name: preset.name, is_default: preset.is_default, updated_at: preset.updated_at.iso8601 }
+    data = { id: preset.id, name: preset.name, is_default: preset.id == current_user.default_preset_id, updated_at: preset.updated_at.iso8601 }
     data[:payload] = preset.payload if full
     data
   end

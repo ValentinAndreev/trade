@@ -7,6 +7,27 @@ type ohlcv = {
   volume: Float
 }
 
+type candle_record = {
+  ts: Time,
+  symbol: String,
+  exchange: String,
+  timeframe: String,
+  open: Numeric,
+  high: Numeric,
+  low: Numeric,
+  close: Numeric,
+  volume: Numeric
+}
+
+type candle_live_ticker = {
+  last_price: Float?,
+  change_24h: Float?,
+  change_24h_perc: Float?,
+  volume: Float?,
+  high: Float?,
+  low: Float?
+}
+
 type ticker_data = {
   symbol: String,
   last_price: Float,
@@ -63,6 +84,7 @@ type indicator_info = {
 
 type research_runtime_params = Hash[Symbol, untyped]
 type research_request_payload = Hash[Symbol, untyped]
+type research_result_payload = Hash[Symbol | String, untyped]
 type research_yaml_payload = Hash[String, untyped]
 type research_schema = Hash[String, untyped]
 type research_module_payload = Hash[String, untyped]

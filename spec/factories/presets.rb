@@ -5,10 +5,11 @@ FactoryBot.define do
     user
     sequence(:name) { |n| "Preset #{n}" }
     payload { { tabs: [], navPage: 'main' } }
-    is_default { false }
 
     trait :default do
-      is_default { true }
+      after(:create) do |preset|
+        preset.user.update!(default_preset: preset)
+      end
     end
   end
 end

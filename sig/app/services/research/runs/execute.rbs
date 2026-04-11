@@ -1,0 +1,24 @@
+module Research
+  module Runs
+    class Execute
+      class Result
+        attr_reader payload: research_result_payload
+        attr_reader status: Symbol
+
+        def initialize: (payload: research_result_payload, status: Symbol) -> void
+      end
+
+      def initialize: (research_request_payload raw_params) -> void
+      def call: () -> Result
+
+      private
+
+      attr_reader raw_params: research_request_payload
+      attr_reader progress_session: Research::Runs::ProgressSession
+
+      def optimized_runs: (Research::RunRequest request, Research::Backtest backtest) -> Array[research_run]
+      def single_run: (Research::RunRequest request, Research::Backtest backtest) -> Array[research_run]
+      def log_completion: (Research::RunRequest request, Array[research_run] runs) -> void
+    end
+  end
+end

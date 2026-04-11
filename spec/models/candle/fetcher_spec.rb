@@ -3,70 +3,62 @@
 require 'rails_helper'
 
 RSpec.describe Candle::Fetcher do
-  let(:client) { instance_double(Utils::BitfinexClient) }
-
-  before do
-    allow(Utils::BitfinexClient).to receive(:new).and_return(client)
-    Rails.cache.clear
-  end
-
   describe '#call' do
-    it 'fetches and imports candles' do
-      now = Time.zone.now
-      candle_data = [
-        [ (now - 2.minutes).to_i * 1000, 50_000, 50_100, 50_200, 49_900, 10 ],
-        [ (now - 1.minute).to_i * 1000, 50_100, 50_200, 50_300, 50_000, 15 ]
-      ]
+    it 'delegates the default sync flow to Candle::Sync::Recent' do
+      history_source = instance_double(Candle::Sync::HistorySource)
+      importer = instance_double(Candle::Sync::Importer)
+      broadcaster = instance_double(Candle::Sync::Broadcaster)
+      aggregate_refresher = instance_double(Candle::Sync::AggregateRefresher)
+      paginator = instance_double(Candle::Sync::Paginator)
+      recent = instance_double(Candle::Sync::Recent, call: nil)
 
-      allow(client).to receive(:candles_history).and_return(candle_data, [])
-      allow(ActionCable.server).to receive(:broadcast)
-
-      fetcher = described_class.new('BTCUSD')
-      expect { fetcher.call }.to change(Candle, :count).by(2)
-    end
-
-    it 'broadcasts new candles via ActionCable' do
-      now = Time.zone.now
-      candle_data = [
-        [ (now - 1.minute).to_i * 1000, 50_000, 50_100, 50_200, 49_900, 10 ]
-      ]
-
-      allow(client).to receive(:candles_history).and_return(candle_data, [])
-      expect(ActionCable.server).to receive(:broadcast).with('candles:BTCUSD:1m', anything)
-
-      described_class.new('BTCUSD').call
-    end
-
-    it 'stops when no data returned' do
-      allow(client).to receive(:candles_history).and_return([])
+      allow(Candle::Sync::HistorySource).to receive(:new).with(symbol: 'BTCUSD', interval: '1m').and_return(history_source)
+      allow(Candle::Sync::Importer).to receive(:new).with(symbol: 'BTCUSD').and_return(importer)
+      allow(Candle::Sync::Broadcaster).to receive(:new).with(symbol: 'BTCUSD', interval: '1m').and_return(broadcaster)
+      allow(Candle::Sync::AggregateRefresher).to receive(:new).and_return(aggregate_refresher)
+      allow(Candle::Sync::Paginator).to receive(:new).with(
+        history_source: history_source,
+        importer: importer,
+        broadcaster: broadcaster,
+        aggregate_refresher: aggregate_refresher
+      ).and_return(paginator)
+      allow(Candle::Sync::Recent).to receive(:new).with(
+        symbol: 'BTCUSD',
+        interval: '1m',
+        history_source: history_source,
+        importer: importer,
+        broadcaster: broadcaster,
+        paginator: paginator
+      ).and_return(recent)
 
       described_class.new('BTCUSD').call
-      expect(Candle.count).to eq(0)
+
+      expect(recent).to have_received(:call)
     end
 
-    it 'retries on rate limit errors' do
-      now = Time.zone.now
-      candle_data = [ [ (now - 1.minute).to_i * 1000, 50_000, 50_100, 50_200, 49_900, 10 ] ]
+    it 'delegates full-history sync to Candle::Sync::Backfill' do
+      history_source = instance_double(Candle::Sync::HistorySource)
+      importer = instance_double(Candle::Sync::Importer)
+      broadcaster = instance_double(Candle::Sync::Broadcaster)
+      aggregate_refresher = instance_double(Candle::Sync::AggregateRefresher)
+      paginator = instance_double(Candle::Sync::Paginator)
+      backfill = instance_double(Candle::Sync::Backfill, call: nil)
 
-      call_count = 0
-      allow(client).to receive(:candles_history) do
-        call_count += 1
-        raise Utils::BitfinexClient::RateLimitError, 'rate limit' if call_count == 1
+      allow(Candle::Sync::HistorySource).to receive(:new).with(symbol: 'BTCUSD', interval: '5m').and_return(history_source)
+      allow(Candle::Sync::Importer).to receive(:new).with(symbol: 'BTCUSD').and_return(importer)
+      allow(Candle::Sync::Broadcaster).to receive(:new).with(symbol: 'BTCUSD', interval: '5m').and_return(broadcaster)
+      allow(Candle::Sync::AggregateRefresher).to receive(:new).and_return(aggregate_refresher)
+      allow(Candle::Sync::Paginator).to receive(:new).with(
+        history_source: history_source,
+        importer: importer,
+        broadcaster: broadcaster,
+        aggregate_refresher: aggregate_refresher
+      ).and_return(paginator)
+      allow(Candle::Sync::Backfill).to receive(:new).with(symbol: 'BTCUSD', paginator: paginator).and_return(backfill)
 
-        call_count == 2 ? candle_data : []
-      end
-      allow(ActionCable.server).to receive(:broadcast)
+      described_class.new('BTCUSD', interval: '5m', load_all_data: true).call
 
-      described_class.new('BTCUSD').call
-      expect(Candle.count).to eq(1)
-    end
-
-    it 'raises FetchError after max retries' do
-      allow(client).to receive(:candles_history)
-        .and_raise(Utils::BitfinexClient::RateLimitError, 'rate limit')
-
-      expect { described_class.new('BTCUSD').call }
-        .to raise_error(Candle::Fetcher::FetchError, /after 5 attempts/)
+      expect(backfill).to have_received(:call)
     end
   end
 end

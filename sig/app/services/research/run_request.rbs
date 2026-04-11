@@ -30,7 +30,7 @@ module Research
     def optimization_enabled?: () -> bool
     def optimization_target: () -> String?
     def optimization_range: () -> { from: untyped, to: untyped, step: untyped }
-    def response_payload: (runs: Array[research_run]) -> Hash[Symbol, untyped]
+    def response_payload: (runs: Array[research_run]) -> research_result_payload
     def progress_run_id: () -> String?
 
     private

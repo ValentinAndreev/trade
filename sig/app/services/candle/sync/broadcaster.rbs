@@ -1,0 +1,13 @@
+class Candle
+  module Sync
+    class Broadcaster
+      def initialize: (symbol: String, interval: String) -> void
+      def broadcast: (Array[candle_record] records) -> void
+
+      private
+
+      attr_reader symbol: String
+      attr_reader interval: String
+    end
+  end
+end

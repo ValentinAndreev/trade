@@ -38,6 +38,7 @@
 !/app/assets/builds/.keep
 
 /node_modules
+/vendor/bundle/
 
 /config/dashboard.current.yml
 

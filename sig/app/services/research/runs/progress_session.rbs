@@ -1,0 +1,27 @@
+module Research
+  module Runs
+    class ProgressSession
+      def initialize: (run_id: String | Symbol | Integer?) -> void
+      def started: (total_runs: Integer, mode: Symbol | String, ?target: String?) -> void
+      def run_completed: (
+        total_runs: Integer,
+        completed_runs: Integer,
+        run_started_at: Float,
+        ?current_value: Numeric | String | nil
+      ) -> void
+      def finished: (total_runs: Integer) -> void
+      def failed: (message: String, ?total_runs: Integer?, ?completed_runs: Integer?) -> void
+      def progress_broadcaster: () -> Research::ProgressBroadcaster
+      def current_time: () -> Float
+      def total_elapsed_ms: () -> Float
+
+      private
+
+      attr_reader broadcaster: Research::ProgressBroadcaster
+      attr_reader started_at: Float
+
+      def monotonic_now: () -> Float
+      def elapsed_ms: (Float started_at, ?Float finished_at) -> Float
+    end
+  end
+end

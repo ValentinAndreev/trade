@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_24_172800) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_11_223955) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "timescaledb"
@@ -120,7 +120,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_24_172800) do
 
   create_table "presets", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.boolean "is_default", default: false, null: false
     t.string "name", null: false
     t.jsonb "payload", default: {}, null: false
     t.datetime "updated_at", null: false
@@ -273,9 +272,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_24_172800) do
 
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.bigint "default_preset_id"
     t.string "password_digest", null: false
     t.datetime "updated_at", null: false
     t.string "username", null: false
+    t.index ["default_preset_id"], name: "index_users_on_default_preset_id"
     t.index ["username"], name: "index_users_on_username", unique: true
   end
 
@@ -293,4 +294,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_24_172800) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "users", "presets", column: "default_preset_id", on_delete: :nullify
 end

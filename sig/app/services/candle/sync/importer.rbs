@@ -1,0 +1,16 @@
+class Candle
+  module Sync
+    class Importer
+      def initialize: (symbol: String, ?exchange: String) -> void
+      def upsert_recent: (Array[candle_record] records) -> void
+      def import: (Array[candle_record] records, ?invalidate_min: bool) -> Array[Time]
+
+      private
+
+      attr_reader symbol: String
+      attr_reader exchange: String
+
+      def invalidate_cache: (Symbol kind) -> void
+    end
+  end
+end

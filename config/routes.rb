@@ -32,17 +32,17 @@ Rails.application.routes.draw do
     end
     resources :indicators, only: :index
     post 'indicators/:type/compute', to: 'indicators#compute'
-    get 'research/catalog', to: 'research#catalog'
-    get 'research/editor_metadata', to: 'research#editor_metadata'
-    post 'research/validate', to: 'research#validate'
-    post 'research/systems/save', to: 'research#save_system'
-    post 'research/systems/rename', to: 'research#rename_system'
-    post 'research/systems/delete', to: 'research#delete_system'
-    post 'research/directories/create', to: 'research#create_directory'
-    post 'research/directories/rename', to: 'research#rename_directory'
-    post 'research/directories/delete', to: 'research#delete_directory'
-    post 'research/run', to: 'research#run'
-    post 'research/cancel', to: 'research#cancel'
+    get 'research/catalog', to: 'research/catalog#index'
+    get 'research/editor_metadata', to: 'research/catalog#editor_metadata'
+    post 'research/validate', to: 'research/catalog#validate'
+    post 'research/systems/save', to: 'research/systems#save'
+    post 'research/systems/rename', to: 'research/systems#rename'
+    post 'research/systems/delete', to: 'research/systems#destroy'
+    post 'research/directories/create', to: 'research/systems#create_directory'
+    post 'research/directories/rename', to: 'research/systems#rename_directory'
+    post 'research/directories/delete', to: 'research/systems#destroy_directory'
+    post 'research/run', to: 'research/runs#create'
+    post 'research/cancel', to: 'research/runs#cancel'
     resource :llm_settings, only: %i[show create]
     resources :system_editor_chats, only: %i[index create show update destroy] do
       member do
@@ -51,7 +51,6 @@ Rails.application.routes.draw do
     end
 
     resource :data_table, only: :show do
-      post :correlations
       post :statistics
     end
   end
