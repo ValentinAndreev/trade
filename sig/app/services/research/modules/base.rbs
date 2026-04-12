@@ -12,9 +12,12 @@ module Research
       public
 
       def initialize: (candles: Array[ohlcv]) -> void
+      def call: (**untyped params) -> Array[research_module_point]
 
       private
 
+      def ta_class: () -> singleton(TechnicalAnalysis::Indicator)
+      def result_from: (untyped point) -> research_module_result
       def input_data: () -> Array[research_input_point]
       def time_lookup: () -> Hash[String, Integer]
       def time_for: (String | Time date_time) -> Integer

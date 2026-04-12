@@ -4,11 +4,6 @@ module Research
   class Backtest
     class Cancelled < StandardError; end
 
-    MODULES = {
-      ema: Research::Modules::Ema,
-      rsi: Research::Modules::Rsi
-    }.freeze
-
     Position = Struct.new(:direction, :entry_time, :entry_price, :entry_index, keyword_init: true)
 
     private attr_reader :system, :symbol, :timeframe, :start_time, :end_time, :exchange, :fee_bps, :slippage_bps
@@ -72,12 +67,7 @@ module Research
       @candle_index_by_time ||= candles.each_with_index.to_h { |candle, index| [ candle[:time], index ] }
     end
 
-    def module_runner(module_type)
-      @module_runners[module_type.to_s] ||= begin
-        klass = MODULES.fetch(module_type.to_sym) { raise ArgumentError, "Unsupported module: #{module_type}" }
-        klass.new(candles:)
-      end
-    end
+    def module_runner(module_type) = @module_runners[module_type.to_s] ||= Research::Modules.for(module_type).new(candles:)
 
     def candles
       @candles ||= Candle::FindQuery.new(

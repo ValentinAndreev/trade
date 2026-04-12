@@ -16,8 +16,6 @@ module Research
     class Cancelled < StandardError
     end
 
-    MODULES: { ema: singleton(Research::Modules::Ema), rsi: singleton(Research::Modules::Rsi) }
-
     class Position
       attr_reader direction: String
       attr_reader entry_time: Integer

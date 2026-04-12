@@ -98,7 +98,7 @@ class Candle::TickerQuery
 
   def build_ticker_from_db(symbol, sparkline)
     last_candle = Candle.for_symbol(symbol).ordered.last
-    return nil unless last_candle
+    return unless last_candle
 
     cutoff = last_candle.ts - 24.hours
     recent = Candle.for_symbol(symbol).where('ts >= ?', cutoff)

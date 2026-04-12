@@ -58,7 +58,7 @@ class Candle::IndicatorCalculator
   def self.available
     INDICATORS.map do |key, klass|
       {
-        key: key,
+        key:,
         name: klass.indicator_name,
         options: klass.valid_options,
         min_data: klass.min_data_size
@@ -81,9 +81,14 @@ class Candle::IndicatorCalculator
 
   def build_params(klass, params)
     valid = klass.valid_options
-    defaults = {}
-    defaults[:price_key] = :close if valid.include?(:price_key) && !params.key?(:price_key)
-    filtered = defaults.merge(params).select { |k, _| valid.include?(k.to_sym) }
-    filtered.transform_values { |v| v.is_a?(String) ? (v.match?(/\A\d+\z/) ? v.to_i : v.to_f) : v }
+    defaults = valid.include?(:price_key) ? { price_key: :close } : {}
+    defaults.merge(params)
+      .select { |k, _| valid.include?(k.to_sym) }
+      .transform_values { |v| coerce_param(v) }
+  end
+
+  def coerce_param(value)
+    return value unless value.is_a?(String)
+    value.match?(/\A\d+\z/) ? value.to_i : value.to_f
   end
 end

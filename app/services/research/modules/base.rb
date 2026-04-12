@@ -9,7 +9,20 @@ module Research
         @candles = candles
       end
 
+      def call(**params)
+        ta_params = ta_class.valid_options.include?(:price_key) ? params.merge(price_key: :close) : params
+        ta_class.calculate(input_data, **ta_params)
+          .map { |point| { time: time_for(point.date_time), result: result_from(point) } }
+      end
+
       private
+
+      def ta_class = "TechnicalAnalysis::#{self.class.name.demodulize}".constantize
+
+      def result_from(point)
+        hash = point.to_hash.except(:date_time)
+        hash.size == 1 ? { value: hash.values.first } : hash
+      end
 
       def input_data
         @input_data ||= candles.map do |candle|
