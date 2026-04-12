@@ -114,5 +114,5 @@ function selectNodeByRunIndex(api: GridApi<RunRow>, runIndex: number): void {
     if (selected) selectedNode = node
   })
 
-  selectedNode?.setSelected?.(true)
+  ;(selectedNode as IRowNode<RunRow> | null)?.setSelected(true)
 }

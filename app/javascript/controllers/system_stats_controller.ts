@@ -36,7 +36,7 @@ export default class extends Controller {
     }
 
     this.panel?.destroy()
-    this.panel = new StatsPanel(this.element, this.panelState)
+    this.panel = new StatsPanel(this.element as HTMLElement, this.panelState)
     this.panel.render(stats, trades)
   }
 

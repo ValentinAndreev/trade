@@ -9,7 +9,7 @@ import ChartSidebarActions from "../tabs/chart_sidebar_actions"
 import ChartBridge from "../data_grid/chart_bridge"
 import { generateTrades, computeSystemStats } from "../data_grid/system_engine"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
-import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, DataGridControllerAPI, StimulusApp, ResearchConfig } from "../types/store"
+import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, DataGridControllerAPI, StimulusApp, ResearchConfig, ResearchResult } from "../types/store"
 import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS, SYSTEM_STATS_MAX_RETRIES } from "../config/constants"
 import { buildDefaultResearchState, syncResearchStateFromInputs } from "../research/state"
 import {
@@ -197,7 +197,7 @@ export default class extends Controller {
   }
 
   private _onResearchResultChanged(e: Event) {
-    const { tabId, result } = (e as CustomEvent<{ tabId: string; result: { runs: Array<{ params: Record<string, number | string | boolean>; trades: Array<Record<string, unknown>> }>; selectedRunIndex: number } }>).detail
+    const { tabId, result } = (e as CustomEvent<{ tabId: string; result: ResearchResult }>).detail
     if (!tabId || !result) return
     this.store.updateResearchResult(tabId, result)
   }

@@ -160,17 +160,17 @@ function validateNode(node: jsep.Expression, expression: string): AstValidationI
 
   switch (node.type) {
     case "BinaryExpression":
-      return validateBinary(node, expression)
+      return validateBinary(node as jsep.BinaryExpression, expression)
     case "UnaryExpression":
-      return validateUnary(node, expression)
+      return validateUnary(node as jsep.UnaryExpression, expression)
     case "CallExpression":
-      return validateCall(node, expression)
+      return validateCall(node as jsep.CallExpression, expression)
     case "Identifier":
       return null
     case "Literal":
-      return validateLiteral(node, expression)
+      return validateLiteral(node as jsep.Literal, expression)
     case "MemberExpression":
-      return validateMember(node, expression)
+      return validateMember(node as jsep.MemberExpression, expression)
     default: {
       const token = extractNodeToken(node)
       return {
@@ -230,7 +230,8 @@ function validateCall(node: jsep.CallExpression, expression: string): AstValidat
     }
   }
 
-  const functionName = node.callee.name
+  const callee = node.callee as jsep.Identifier
+  const functionName = callee.name
   const functionDefinition = activeConditionExpressionIndex.functionsByName.get(functionName)
   if (!functionDefinition) {
     return {
@@ -286,17 +287,23 @@ function validateMember(node: jsep.MemberExpression, expression: string): AstVal
 function expressionKind(node: jsep.Expression): ExpressionKind | null {
   switch (node.type) {
     case "BinaryExpression":
-      return binaryExpressionKind(node)
-    case "UnaryExpression":
-      return node.operator === "-" && expressionKind(node.argument) === "numeric" ? "numeric" : null
+      return binaryExpressionKind(node as jsep.BinaryExpression)
+    case "UnaryExpression": {
+      const unary = node as jsep.UnaryExpression
+      return unary.operator === "-" && expressionKind(unary.argument) === "numeric" ? "numeric" : null
+    }
     case "CallExpression":
-      return callExpressionKind(node)
+      return callExpressionKind(node as jsep.CallExpression)
     case "Identifier":
       return "numeric"
-    case "Literal":
-      return typeof node.value === "number" ? "numeric" : null
-    case "MemberExpression":
-      return node.computed || node.object.type !== "Identifier" || node.property.type !== "Identifier" ? null : "numeric"
+    case "Literal": {
+      const lit = node as jsep.Literal
+      return typeof lit.value === "number" ? "numeric" : null
+    }
+    case "MemberExpression": {
+      const mem = node as jsep.MemberExpression
+      return mem.computed || mem.object.type !== "Identifier" || mem.property.type !== "Identifier" ? null : "numeric"
+    }
     default:
       return null
   }
@@ -323,7 +330,7 @@ function binaryExpressionKind(node: jsep.BinaryExpression): ExpressionKind | nul
 function callExpressionKind(node: jsep.CallExpression): ExpressionKind | null {
   if (!activeConditionExpressionIndex || node.callee.type !== "Identifier") return null
 
-  const functionDefinition = activeConditionExpressionIndex.functionsByName.get(node.callee.name)
+  const functionDefinition = activeConditionExpressionIndex.functionsByName.get((node.callee as jsep.Identifier).name)
   if (!functionDefinition || !hasValidArity(node.arguments.length, functionDefinition)) return null
   if (functionDefinition.numeric_arguments && node.arguments.some(argument => expressionKind(argument) !== "numeric")) return null
   if (functionDefinition.positive_integer_literal_indexes.some(index => !isPositiveIntegerLiteral(node.arguments[index]))) return null
@@ -346,8 +353,8 @@ function extractNodeToken(node: jsep.Expression): string {
   if ("operator" in node && typeof node.operator === "string") return node.operator
   if ("name" in node && typeof node.name === "string") return node.name
   if ("raw" in node && typeof node.raw === "string") return node.raw
-  if (node.type === "CallExpression" && node.callee.type === "Identifier") return node.callee.name
-  if (node.type === "MemberExpression") return renderMember(node)
+  if (node.type === "CallExpression" && (node as jsep.CallExpression).callee.type === "Identifier") return ((node as jsep.CallExpression).callee as jsep.Identifier).name
+  if (node.type === "MemberExpression") return renderMember(node as jsep.MemberExpression)
   return ""
 }
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import ScaleManager from "../../chart/scale_manager"
 import type { RuntimeOverlay } from "../../types/store"
+import type { ISeriesApi, SeriesType } from "lightweight-charts"
 
 function makeOverlay(partial: Partial<RuntimeOverlay>): RuntimeOverlay {
   return {
@@ -26,8 +27,8 @@ function makeOverlay(partial: Partial<RuntimeOverlay>): RuntimeOverlay {
 
 describe("ScaleManager", () => {
   it("keeps overlay indicators like SMA on the same scale as their pinned price overlay", () => {
-    const priceSeries = { applyOptions: vi.fn() } as never
-    const smaSeries = { applyOptions: vi.fn() } as never
+    const priceSeries = { applyOptions: vi.fn() } as unknown as ISeriesApi<SeriesType>
+    const smaSeries = { applyOptions: vi.fn() } as unknown as ISeriesApi<SeriesType>
     const rightScale = { applyOptions: vi.fn() }
     const hiddenScale = { applyOptions: vi.fn() }
 

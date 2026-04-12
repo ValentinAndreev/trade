@@ -166,6 +166,7 @@ export default class extends Controller {
   private _renderTopViews() {
     this._destroyTopViews()
     if (!this.state || this.busy) return
+    const state = this.state
 
     this._renderEquityView()
     const chartEl = this.element.querySelector("[data-optimization-chart]") as HTMLElement | null
@@ -178,12 +179,12 @@ export default class extends Controller {
         chartEl,
         this.runs.map((run, index) => ({
           index,
-          x: optimizationParamValue(run, this.state.optimizationTarget),
-          y: metricValue(run.stats, this.state.selectedMetric),
+          x: optimizationParamValue(run, state.optimizationTarget),
+          y: metricValue(run.stats, state.selectedMetric),
         })),
         this.selectedRunIndex,
-        optimizationTargetLabel(this.state.optimizationTarget),
-        metricLabel(this.state.selectedMetric),
+        optimizationTargetLabel(state.optimizationTarget),
+        metricLabel(state.selectedMetric),
         (index: number) => this._selectRun(index)
       )
       this.optimizationChart.build()
@@ -271,7 +272,7 @@ export default class extends Controller {
 
   private _startBusyTimer() {
     this._stopBusyTimer()
-    this.busyTimer = window.setInterval(() => {
+    this.busyTimer = setInterval(() => {
       if (!this.busyStartedAt) return
       this.busyElapsedSeconds = Math.floor((Date.now() - this.busyStartedAt) / 1000)
       if (this.busy) this._renderSafely()

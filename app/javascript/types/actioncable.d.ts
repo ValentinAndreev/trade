@@ -9,7 +9,7 @@ declare module "@rails/actioncable" {
     subscriptions: {
       create<T = unknown>(
         params: { channel: string; [key: string]: unknown },
-        callbacks: { received?: (data: T) => void; connected?: () => void; disconnected?: () => void }
+        callbacks: { received?: (data: T) => void; connected?: () => void; disconnected?: () => void; rejected?: () => void }
       ): Subscription
     }
     disconnect(): void
