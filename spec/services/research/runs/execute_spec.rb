@@ -13,7 +13,7 @@ RSpec.describe Research::Runs::Execute do
       finished: nil,
       failed: nil,
       current_time: 10.0,
-      progress_broadcaster: progress_broadcaster,
+      broadcaster: progress_broadcaster,
       total_elapsed_ms: 25.0
     )
   end

@@ -15,7 +15,7 @@ class User < ApplicationRecord
   def llm_setting_for(provider) = llm_settings.find_by(provider: provider.to_s)
 
   def as_api_json(include_presets: true)
-    data = { id: id, username: username }
+    data = { id:, username: }
     if include_presets
       data[:presets] = presets.order(:name).map do |p|
         { id: p.id, name: p.name, is_default: p.id == default_preset_id }

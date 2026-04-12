@@ -25,7 +25,7 @@ class Candle::FindQuery
     @exchange = exchange
     @timeframe = timeframe
     @limit = limit&.to_i
-    @end_time = parse_time(end_time) || Candle.max_ts(symbol: symbol, exchange: exchange)
+    @end_time = parse_time(end_time) || Candle.max_ts(symbol:, exchange:)
     @start_time = parse_time(start_time) || calculate_start_time
     @connection = ActiveRecord::Base.connection
   end
@@ -112,7 +112,7 @@ class Candle::FindQuery
   end
 
   def calculate_start_time
-    return Candle.min_ts(symbol: symbol, exchange: exchange) unless end_time
+    return Candle.min_ts(symbol:, exchange:) unless end_time
 
     count = limit || DEFAULT_LIMIT
     amount, tf = parse_timeframe

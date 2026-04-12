@@ -11,17 +11,9 @@ module Research
           @diagnostics = diagnostics
         end
 
-        def valid?
-          diagnostics.empty? && !compiled.nil?
-        end
-
-        def invalid?
-          !valid?
-        end
-
-        def metadata
-          compiled&.metadata
-        end
+        def valid? = diagnostics.empty? && !compiled.nil?
+        def invalid? = !valid?
+        def metadata = compiled&.metadata
 
         def raise_if_invalid!
           return self if valid?

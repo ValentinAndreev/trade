@@ -7,46 +7,37 @@ class Candle::Syncer
     @load_all_data = load_all_data
   end
 
-  def call
-    sync_operation.call
-  end
+  def call = sync_operation.call
 
   private
 
   attr_reader :symbol, :interval, :load_all_data
 
-  def sync_operation
-    load_all_data ? backfill_sync : recent_sync
-  end
+  def sync_operation = load_all_data ? backfill_sync : recent_sync
 
   def recent_sync
     Candle::Sync::Recent.new(
-      symbol: symbol,
-      interval: interval,
-      history_source: history_source,
-      importer: importer,
-      broadcaster: broadcaster,
-      paginator: paginator
+      symbol:,
+      interval:,
+      history_source:,
+      importer:,
+      broadcaster:,
+      paginator:
     )
   end
 
-  def backfill_sync
-    Candle::Sync::Backfill.new(
-      symbol: symbol,
-      paginator: paginator
-    )
-  end
+  def backfill_sync = Candle::Sync::Backfill.new(symbol:, paginator:)
 
   def history_source
-    @history_source ||= Candle::Sync::HistorySource.new(symbol: symbol, interval: interval)
+    @history_source ||= Candle::Sync::HistorySource.new(symbol:, interval:)
   end
 
   def importer
-    @importer ||= Candle::Sync::Importer.new(symbol: symbol)
+    @importer ||= Candle::Sync::Importer.new(symbol:)
   end
 
   def broadcaster
-    @broadcaster ||= Candle::Sync::Broadcaster.new(symbol: symbol, interval: interval)
+    @broadcaster ||= Candle::Sync::Broadcaster.new(symbol:, interval:)
   end
 
   def aggregate_refresher
@@ -55,10 +46,10 @@ class Candle::Syncer
 
   def paginator
     @paginator ||= Candle::Sync::Paginator.new(
-      history_source: history_source,
-      importer: importer,
-      broadcaster: broadcaster,
-      aggregate_refresher: aggregate_refresher
+      history_source:,
+      importer:,
+      broadcaster:,
+      aggregate_refresher:
     )
   end
 end

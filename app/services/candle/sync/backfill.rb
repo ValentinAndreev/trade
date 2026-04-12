@@ -9,16 +9,14 @@ class Candle
         @exchange = exchange
       end
 
-      def call
-        paginator.call(start_from: history_start_ms, refresh_aggregates: true, invalidate_min: true)
-      end
+      def call = paginator.call(start_from: history_start_ms, refresh_aggregates: true, invalidate_min: true)
 
       private
 
       attr_reader :symbol, :paginator, :exchange
 
       def history_start_ms
-        earliest_candle = Candle.min_ts(symbol: symbol, exchange: exchange)
+        earliest_candle = Candle.min_ts(symbol:, exchange:)
         return Candle::Sync.current_time_ms unless earliest_candle
 
         start_ms = (earliest_candle.to_i - 60) * 1000

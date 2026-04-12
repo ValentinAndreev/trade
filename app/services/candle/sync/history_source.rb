@@ -14,10 +14,10 @@ class Candle
       end
 
       def fetch_records(end_time:, limit: MAX_LIMIT)
-        fetch_candles(end_time: end_time, limit: limit).map do |mts, open, close, high, low, volume|
+        fetch_candles(end_time:, limit:).map do |mts, open, close, high, low, volume|
           {
             ts: Time.zone.at(mts / 1000),
-            symbol: symbol,
+            symbol:,
             exchange: Candle::Sync::EXCHANGE,
             timeframe: interval,
             open:,
@@ -45,12 +45,10 @@ class Candle
 
         Rails.logger.warn("Candle::Sync retry #{attempt + 1}/#{MAX_ATTEMPTS}: #{e.message}")
         sleep(retry_pause)
-        fetch_candles(end_time: end_time, limit: limit, attempt: attempt + 1)
+        fetch_candles(end_time:, limit:, attempt: attempt + 1)
       end
 
-      def retry_pause
-        Rails.env.test? ? 0.1 : 20
-      end
+      def retry_pause = Rails.env.test? ? 0.1 : 20
     end
   end
 end

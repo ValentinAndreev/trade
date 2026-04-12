@@ -10,9 +10,7 @@ module Api
         }
       end
 
-      def editor_metadata
-        render json: ::Research::Systems::EditorMetadata.response
-      end
+      def editor_metadata = render json: ::Research::Systems::EditorMetadata.response
     end
   end
 end

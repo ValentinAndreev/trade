@@ -4,13 +4,9 @@ module Llm
   module SystemEditor
     class ChatBroadcaster
       class << self
-        def stream_name(chat_id)
-          "system_editor_chat:#{chat_id}"
-        end
+        def stream_name(chat_id) = "system_editor_chat:#{chat_id}"
 
-        def broadcast(chat)
-          ActionCable.server.broadcast(stream_name(chat.id), ChatPayloadBuilder.call(chat))
-        end
+        def broadcast(chat) = ActionCable.server.broadcast(stream_name(chat.id), ChatPayloadBuilder.call(chat))
       end
     end
   end

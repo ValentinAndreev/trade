@@ -21,9 +21,7 @@ class Api::SystemEditorChatsController < Api::ApplicationController
     render json: chat_payload(chat), status: :created
   end
 
-  def show
-    render json: chat_payload(@chat)
-  end
+  def show = render json: chat_payload(@chat)
 
   def update
     @chat.update!(title: params[:title].to_s.strip.presence || @chat.title)
@@ -70,7 +68,5 @@ class Api::SystemEditorChatsController < Api::ApplicationController
     )
   end
 
-  def chat_payload(chat)
-    Llm::SystemEditor::ChatPayloadBuilder.call(chat)
-  end
+  def chat_payload(chat) = Llm::SystemEditor::ChatPayloadBuilder.call(chat)
 end

@@ -42,14 +42,12 @@ module Research
         end
       end
 
-      def default_optimization_target
-        optimization_targets.first&.fetch(:value, nil) || default_module_target
-      end
+      def default_optimization_target = optimization_targets.first&.fetch(:value, nil) || default_module_target
 
       def metadata
         {
-          id: id,
-          name: name,
+          id:,
+          name:,
           modules: modules.transform_values(&:dup),
           params: system_params,
           conditions: payload['conditions'].keys,
@@ -81,9 +79,7 @@ module Research
         result
       end
 
-      def system_params
-        runtime_params.except(*module_param_keys)
-      end
+      def system_params = runtime_params.except(*module_param_keys)
 
       def optimization_param_key(target)
         resolved_target = target.presence || default_optimization_target
@@ -93,9 +89,7 @@ module Research
         raise ArgumentError, "Unsupported optimization target: #{target}"
       end
 
-      def signal_for(name, prev_row:, row:, params:)
-        signal_evaluator.call(name:, prev_row:, row:, params:)
-      end
+      def signal_for(name, prev_row:, row:, params:) = signal_evaluator.call(name:, prev_row:, row:, params:)
 
       def module_runtime_configs(params)
         runtime_params = params.to_h.symbolize_keys
@@ -145,9 +139,7 @@ module Research
         "#{humanize_token(module_name)} #{humanize_token(param_key)}"
       end
 
-      def module_param_key(module_name, param_key)
-        :"#{module_name}_#{param_key}"
-      end
+      def module_param_key(module_name, param_key) = :"#{module_name}_#{param_key}"
 
       def module_param_keys
         @module_param_keys ||= modules.flat_map do |module_name, module_config|
@@ -161,40 +153,28 @@ module Research
         end
       end
 
-      def module_type(module_config)
-        module_config.to_h['type'].to_s
-      end
-
-      def module_params(module_config)
-        module_config.to_h.except('type')
-      end
+      def module_type(module_config) = module_config.to_h['type'].to_s
+      def module_params(module_config) = module_config.to_h.except('type')
 
       def default_module_target
-        modules.each do |module_name, module_config|
+        modules.filter_map do |module_name, module_config|
           param_key = module_params(module_config).keys.first
-          return "#{module_name}.#{param_key}" if param_key
-        end
-
-        nil
+          "#{module_name}.#{param_key}" if param_key
+        end.first
       end
 
-      def humanize_token(value)
-        value.to_s.tr('_', ' ').split.map(&:capitalize).join(' ')
-      end
+      def humanize_token(value) = value.to_s.tr('_', ' ').split.map(&:capitalize).join(' ')
 
       def to_f_or_nil(value)
         numeric = Float(value)
         numeric.finite? ? numeric : nil
       rescue ArgumentError, TypeError
-        nil
       end
 
       def resolve_row_value(row, row_offset, *path)
         offset = row_offset.to_i
         return row.dig(*path) if offset.zero?
-        return row.dig_at(offset, *path) if row.respond_to?(:dig_at)
-
-        nil
+        row.dig_at(offset, *path) if row.respond_to?(:dig_at)
       end
 
       def to_numeric(value)

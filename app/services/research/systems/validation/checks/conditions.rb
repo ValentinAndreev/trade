@@ -27,7 +27,7 @@ module Research
           def validate_condition_rule(condition_name, rule_payload)
             path = [ 'conditions', condition_name.to_s ]
             unless rule_payload.is_a?(String)
-              add_error(message: "#{condition_name} must be a string expression", path: path, code: 'condition_rule')
+              add_error(message: "#{condition_name} must be a string expression", path:, code: 'condition_rule')
               return
             end
 
@@ -36,7 +36,7 @@ module Research
           rescue Research::Systems::ConditionExpression::ParseError => e
             add_expression_error(
               message: e.message,
-              path: path,
+              path:,
               offset: e.offset,
               length: e.length,
               code: 'condition_expression_syntax'
@@ -49,9 +49,7 @@ module Research
             end
           end
 
-          def extract_references(node)
-            Research::Systems::ConditionExpression::Ast.references(node)
-          end
+          def extract_references(node) = Research::Systems::ConditionExpression::Ast.references(node)
 
           def validate_condition_reference(value, path)
             return if @schema.dig('references', 'fields').include?(value)
@@ -63,27 +61,27 @@ module Research
 
             module_name, attribute = value.split('.', 2)
             unless attribute == 'value'
-              add_error(message: "Unknown reference: #{value}", path: path, code: 'condition_reference')
+              add_error(message: "Unknown reference: #{value}", path:, code: 'condition_reference')
               return
             end
 
             modules_payload = @payload['modules']
             unless modules_payload.is_a?(Hash) && modules_payload.key?(module_name)
-              add_error(message: "Unknown module reference: #{value}", path: path, code: 'condition_reference')
+              add_error(message: "Unknown module reference: #{value}", path:, code: 'condition_reference')
             end
           end
 
           def validate_param_reference(value, path)
             param_key = value.delete_prefix('params.')
             unless @schema.fetch('params').key?(param_key)
-              add_error(message: "Unknown params reference: #{value}", path: path, code: 'condition_reference')
+              add_error(message: "Unknown params reference: #{value}", path:, code: 'condition_reference')
               return
             end
 
             params_payload = @payload['params']
             return if params_payload.is_a?(Hash) && params_payload.key?(param_key)
 
-            add_error(message: "Referenced param is not defined: #{value}", path: path, code: 'condition_reference')
+            add_error(message: "Referenced param is not defined: #{value}", path:, code: 'condition_reference')
           end
         end
       end

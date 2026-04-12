@@ -5,18 +5,12 @@ require 'psych'
 module Research
   module Systems
     class Catalog
-      Entry = Struct.new(:id, :name, :file_name, :relative_path, :yaml, :metadata, keyword_init: true) do
-        def to_h
-          { id: id, name: name, file_name: file_name, relative_path: relative_path, yaml: yaml, metadata: metadata }
-        end
-      end
+      Entry = Struct.new(:id, :name, :file_name, :relative_path, :yaml, :metadata, keyword_init: true)
 
       class << self
         include PathHelpers
 
-        def entries
-          template_paths.sort.map { |path| build_catalog_entry(Pathname.new(path)) }
-        end
+        def entries = template_paths.sort.map { |path| build_catalog_entry(Pathname.new(path)) }
 
         def directory_paths
           Dir[systems_dir.join('**/')].filter_map do |path|
@@ -30,12 +24,7 @@ module Research
         def find(id)
           return if id.blank?
 
-          template_paths.sort.each do |candidate|
-            entry = build_catalog_entry(Pathname.new(candidate))
-            return entry if entry.id == id.to_s
-          end
-
-          nil
+          entries.find { |e| e.id == id.to_s }
         end
 
         def find_by_relative_path(relative_path)
@@ -53,9 +42,7 @@ module Research
 
         private
 
-        def template_paths
-          Dir[systems_dir.join('**/*.yml')]
-        end
+        def template_paths = Dir[systems_dir.join('**/*.yml')]
 
         def build_catalog_entry(path)
           yaml = File.read(path)
@@ -66,7 +53,7 @@ module Research
             name: metadata.fetch(:name),
             file_name: path.basename.to_s,
             relative_path: relative_path_for(path),
-            yaml: yaml,
+            yaml:,
             metadata: nil
           )
         end
@@ -93,13 +80,9 @@ module Research
           }
         end
 
-        def file_id_for(path)
-          Pathname.new(path).basename('.yml').to_s
-        end
+        def file_id_for(path) = Pathname.new(path).basename('.yml').to_s
 
-        def humanized_name_for(system_id)
-          system_id.to_s.tr('_-', ' ').split.map(&:capitalize).join(' ')
-        end
+        def humanized_name_for(system_id) = system_id.to_s.tr('_-', ' ').split.map(&:capitalize).join(' ')
       end
     end
   end

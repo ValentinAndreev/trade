@@ -29,13 +29,13 @@ module Research
     def run(params:, mode: :normal, stage: :in_sample, cancel_check: nil)
       cancelled!(cancel_check)
       p = params.to_h.symbolize_keys
-      module_series = module_results_for(system.module_runtime_configs(p), cancel_check: cancel_check)
+      module_series = module_results_for(system.module_runtime_configs(p), cancel_check:)
       cancelled!(cancel_check)
       {
         mode:   mode.to_s,
         stage:  stage.to_s,
         params: system.run_params(p),
-        trades: simulate(candles, module_series, p, cancel_check: cancel_check)
+        trades: simulate(candles, module_series, p, cancel_check:)
       }
     end
 
@@ -46,14 +46,14 @@ module Research
     def module_results_for(module_configs, cancel_check: nil)
       module_configs.each_with_object({}) do |(module_name, config), acc|
         cancelled!(cancel_check)
-        acc[module_name.to_sym] = cached_module_results(config[:type], config[:params], cancel_check: cancel_check)
+        acc[module_name.to_sym] = cached_module_results(config[:type], config[:params], cancel_check:)
       end
     end
 
     def cached_module_results(module_type, params, cancel_check: nil)
       cancelled!(cancel_check)
       cache_key = [ module_type.to_s, normalized_module_params(params) ]
-      @module_results_cache[cache_key] ||= build_module_results(module_type, params, cancel_check: cancel_check)
+      @module_results_cache[cache_key] ||= build_module_results(module_type, params, cancel_check:)
     end
 
     def build_module_results(module_type, params, cancel_check: nil)
@@ -66,9 +66,7 @@ module Research
       results
     end
 
-    def normalized_module_params(params)
-      params.to_h.sort_by { |key, _| key.to_s }
-    end
+    def normalized_module_params(params) = params.to_h.sort_by { |key, _| key.to_s }
 
     def candle_index_by_time
       @candle_index_by_time ||= candles.each_with_index.to_h { |candle, index| [ candle[:time], index ] }
@@ -138,9 +136,7 @@ module Research
       [ long_entry, short_entry ]
     end
 
-    def close_fill_price(direction, fill_open)
-      direction == 'long' ? with_slip(fill_open, :sell) : with_slip(fill_open, :buy)
-    end
+    def close_fill_price(direction, fill_open) = direction == 'long' ? with_slip(fill_open, :sell) : with_slip(fill_open, :buy)
 
     def close_trade(position, fill_time:, fill_price:, fill_index:)
       pnl = calc_pnl(position.direction, position.entry_price, fill_price)

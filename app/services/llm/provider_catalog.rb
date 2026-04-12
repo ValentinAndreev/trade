@@ -14,9 +14,7 @@ module Llm
     ].freeze
 
     class << self
-      def options
-        PROVIDERS
-      end
+      def options = PROVIDERS
 
       def suggestions_by_provider(limit: 30)
         PROVIDERS.to_h do |provider|

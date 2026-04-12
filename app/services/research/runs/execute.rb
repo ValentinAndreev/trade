@@ -16,7 +16,7 @@ module Research
         runs = request.optimization_enabled? ? optimized_runs(request, backtest) : single_run(request, backtest)
 
         log_completion(request, runs)
-        Result.new(payload: request.response_payload(runs: runs), status: :ok)
+        Result.new(payload: request.response_payload(runs:), status: :ok)
       rescue Research::Systems::Validation::Error => e
         progress_session.failed(message: e.message)
         Result.new(payload: { error: e.message, diagnostics: e.diagnostics.map(&:to_h) }, status: :unprocessable_entity)
@@ -34,12 +34,12 @@ module Research
 
       def optimized_runs(request, backtest)
         Research::Optimizer.new(
-          backtest: backtest,
+          backtest:,
           system: request.system,
           base_params: request.runtime_params
         ).call(
           target: request.optimization_target,
-          progress: progress_session.progress_broadcaster,
+          progress: progress_session.broadcaster,
           run_id: request.progress_run_id,
           **request.optimization_range
         )
@@ -49,7 +49,7 @@ module Research
         progress_session.started(total_runs: 1, mode: :normal)
         run_started_at = progress_session.current_time
         run = backtest.run(params: request.runtime_params)
-        progress_session.run_completed(total_runs: 1, completed_runs: 1, run_started_at: run_started_at)
+        progress_session.run_completed(total_runs: 1, completed_runs: 1, run_started_at:)
         progress_session.finished(total_runs: 1)
         [ run ]
       end

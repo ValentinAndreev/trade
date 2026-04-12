@@ -17,7 +17,7 @@ class Utils::BitfinexClient
   end
 
   def candles_history(symbol:, interval:, start_time: nil, end_time: nil, limit: MAX_LIMIT)
-    params = { limit: limit }
+    params = { limit: }
     params[:start] = start_time if start_time
     params[:end] = end_time if end_time
 

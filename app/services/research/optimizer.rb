@@ -19,7 +19,7 @@ module Research
       values = values_for(from:, to:, step:)
       next_progress_at = started_at + progress_interval
 
-      progress&.started(total_runs: values.length, mode: mode, target: target)
+      progress&.started(total_runs: values.length, mode:, target:)
 
       completed_runs = []
       values.each_with_index do |value, index|
@@ -36,8 +36,8 @@ module Research
         run_started_at = now
         result = backtest.run(
           params: base_params.merge(param_key => value),
-          mode: mode,
-          stage: stage,
+          mode:,
+          stage:,
           cancel_check: -> { cancelled?(run_id, monotonic_now) }
         )
         completed_runs << result
@@ -72,9 +72,7 @@ module Research
 
     attr_reader :progress_interval
 
-    def monotonic_now
-      Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    end
+    def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     def elapsed_ms(started_at, finished_at = monotonic_now)
       (finished_at - started_at) * 1000.0
@@ -86,9 +84,7 @@ module Research
       Research::CancellationRegistry.cancelled?(run_id)
     end
 
-    def should_publish_progress?(now, next_progress_at, index, total_runs)
-      progress_interval.zero? || now >= next_progress_at || index == total_runs - 1
-    end
+    def should_publish_progress?(now, next_progress_at, index, total_runs) = progress_interval.zero? || now >= next_progress_at || index == total_runs - 1
 
     def values_for(from:, to:, step:)
       current = from.to_f
@@ -108,8 +104,6 @@ module Research
       values
     end
 
-    def integer_like?(value)
-      value.to_f == value.to_i
-    end
+    def integer_like?(value) = value.to_f == value.to_i
   end
 end

@@ -18,9 +18,7 @@ module Llm
           }
         end
 
-        def prompt_json(editor_context:)
-          JSON.pretty_generate(call(editor_context:))
-        end
+        def prompt_json(editor_context:) = JSON.pretty_generate(call(editor_context:))
 
         def normalize_editor_context(editor_context)
           context = editor_context.to_h.deep_symbolize_keys

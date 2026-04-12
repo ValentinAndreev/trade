@@ -24,11 +24,11 @@ class LlmSetting < ApplicationRecord
 
   def as_api_json
     {
-      provider: provider,
-      model: model,
-      api_base: api_base,
+      provider:,
+      model:,
+      api_base:,
       temperature: temperature.to_f,
-      max_output_tokens: max_output_tokens,
+      max_output_tokens:,
       api_key_present: api_key.present?
     }
   end

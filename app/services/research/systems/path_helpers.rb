@@ -3,13 +3,8 @@
 module Research
   module Systems
     module PathHelpers
-      def systems_dir
-        Rails.root.join('config/research/systems')
-      end
-
-      def relative_path_for(path)
-        Pathname.new(path).relative_path_from(systems_dir).to_s
-      end
+      def systems_dir = Rails.root.join('config/research/systems')
+      def relative_path_for(path) = Pathname.new(path).relative_path_from(systems_dir).to_s
 
       def resolve_relative_path(relative_path)
         return if relative_path.blank?
@@ -29,18 +24,18 @@ module Research
       def validate_name!(name, code:, path: 'id')
         return if name.to_s.match?(/\A[a-z0-9][a-z0-9_-]*\z/)
 
-        raise_error!('Name must use lowercase letters, numbers, "_" or "-"', path: path, code: code, length: name.to_s.length)
+        raise_error!('Name must use lowercase letters, numbers, "_" or "-"', path:, code:, length: name.to_s.length)
       end
 
       def ensure_available_path!(target_path, label:, kind:, path:, code:, ignore_path: nil)
         return target_path unless target_path.exist? && target_path != ignore_path
 
-        raise_error!("#{kind} #{label} already exists", path: path, code: code, length: label.length)
+        raise_error!("#{kind} #{label} already exists", path:, code:, length: label.length)
       end
 
       def resolve_or_raise!(relative_path, code)
         path = resolve_relative_path(relative_path)
-        raise_error!("System #{relative_path} was not found", path: 'source_path', code: code, length: relative_path.to_s.length) unless path
+        raise_error!("System #{relative_path} was not found", path: 'source_path', code:, length: relative_path.to_s.length) unless path
 
         path
       end
@@ -62,7 +57,7 @@ module Research
 
       def raise_error!(message, path:, code:, length:)
         raise Research::Systems::Validation::Error.new([
-          Research::Systems::Validation::Diagnostic.new(message: message, line: 1, column: 1, length: [ length, 1 ].max, path: path, code: code)
+          Research::Systems::Validation::Diagnostic.new(message:, line: 1, column: 1, length: [ length, 1 ].max, path:, code:)
         ])
       end
     end

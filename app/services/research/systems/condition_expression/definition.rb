@@ -90,9 +90,7 @@ module Research
             @function_names ||= FUNCTIONS.map { |function| function.fetch(:name) }.freeze
           end
 
-          def function_definition(name)
-            FUNCTIONS.find { |function| function.fetch(:name) == name.to_s }
-          end
+          def function_definition(name) = FUNCTIONS.find { |function| function.fetch(:name) == name.to_s }
 
           def highlight_fragment
             {

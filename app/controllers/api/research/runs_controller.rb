@@ -18,9 +18,7 @@ module Api
 
       private
 
-      def research_payload
-        params.to_unsafe_h.deep_symbolize_keys
-      end
+      def research_payload = params.to_unsafe_h.deep_symbolize_keys
     end
   end
 end

@@ -11,19 +11,13 @@ class AiChat < ApplicationRecord
 
   before_validation :ensure_title
 
-  def visible_messages
-    ai_messages.where(role: %w[user assistant]).order(:created_at, :id)
-  end
+  def visible_messages = ai_messages.where(role: %w[user assistant]).order(:created_at, :id)
 
-  def latest_preview
-    visible_messages.where.not(content: [ nil, '' ]).order(:created_at, :id).last&.content
-  end
+  def latest_preview = visible_messages.where.not(content: [ nil, '' ]).order(:created_at, :id).last&.content
 
   private
 
-  def ensure_title
-    self.title = title.to_s.strip.presence || default_title
-  end
+  def ensure_title = self.title = title.to_s.strip.presence || default_title
 
   def default_title
     base = system_id.presence || source_path.to_s.split('/').last.to_s.delete_suffix('.yml')

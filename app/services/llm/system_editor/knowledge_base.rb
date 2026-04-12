@@ -4,17 +4,9 @@ module Llm
   module SystemEditor
     class KnowledgeBase
       class << self
-        def dsl
-          load_yaml('dsl.yml')
-        end
-
-        def modules
-          load_yaml('modules.yml')
-        end
-
-        def examples
-          load_yaml('examples.yml')
-        end
+        def dsl = load_yaml('dsl.yml')
+        def modules = load_yaml('modules.yml')
+        def examples = load_yaml('examples.yml')
 
         private
 

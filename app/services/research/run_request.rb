@@ -16,7 +16,7 @@ module Research
 
     def backtest_config
       {
-        system: system,
+        system:,
         symbol: dataset.fetch(:symbol),
         timeframe: dataset.fetch(:timeframe),
         start_time: dataset.fetch(:start_time),
@@ -31,13 +31,8 @@ module Research
       @runtime_params ||= system.runtime_params.deep_symbolize_keys
     end
 
-    def optimization_enabled?
-      optimization.fetch(:enabled, false) == true
-    end
-
-    def optimization_target
-      optimization[:target]
-    end
+    def optimization_enabled? = optimization.fetch(:enabled, false) == true
+    def optimization_target = optimization[:target]
 
     def optimization_range
       {
@@ -62,9 +57,7 @@ module Research
       }
     end
 
-    def progress_run_id
-      raw_params[:run_id]
-    end
+    def progress_run_id = raw_params[:run_id]
 
     private
 

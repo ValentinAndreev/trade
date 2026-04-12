@@ -11,7 +11,7 @@ class Candle < ApplicationRecord
   self.implicit_order_column = 'ts'
 
   # Scopes
-  scope :for_symbol, ->(symbol) { where(symbol: symbol) }
+  scope :for_symbol, ->(symbol) { where(symbol:) }
   scope :for_timeframe, ->(tf) { where(timeframe: tf) }
   scope :in_range, ->(from, to) { where(ts: from..to) }
   scope :ordered, -> { order(ts: :asc) }
@@ -20,7 +20,7 @@ class Candle < ApplicationRecord
     def max_ts(symbol:, exchange: 'bitfinex')
       cache_key = "candle/max_ts/#{symbol}/#{exchange}"
       Rails.cache.fetch(cache_key, expires_in: 1.minute) do
-        where(symbol: symbol, exchange: exchange)
+        where(symbol:, exchange:)
           .order(ts: :desc)
           .limit(1)
           .pick(:ts)
@@ -31,7 +31,7 @@ class Candle < ApplicationRecord
       cache_key = "candle/min_ts/#{symbol}/#{exchange}"
       Rails.cache.fetch(cache_key, expires_in: 1.hour) do
         unscoped
-          .where(symbol: symbol, exchange: exchange)
+          .where(symbol:, exchange:)
           .reorder(ts: :asc)
           .limit(1)
           .pick(:ts)
@@ -39,7 +39,7 @@ class Candle < ApplicationRecord
     end
 
     def import(records, returning: %w[ts])
-      insert_all(records, unique_by: INDEX_FIELDS, returning: returning) # rubocop:disable Rails/SkipsModelValidations
+      insert_all(records, unique_by: INDEX_FIELDS, returning:) # rubocop:disable Rails/SkipsModelValidations
     end
 
     def upsert_recent(records)

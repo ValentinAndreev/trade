@@ -26,9 +26,7 @@ class Candle
 
       attr_reader :symbol, :exchange
 
-      def invalidate_cache(kind)
-        Rails.cache.delete("candle/#{kind}_ts/#{symbol}/#{exchange}")
-      end
+      def invalidate_cache(kind) = Rails.cache.delete("candle/#{kind}_ts/#{symbol}/#{exchange}")
     end
   end
 end

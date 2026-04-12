@@ -9,9 +9,7 @@ module Research
         include PathHelpers
 
         # Delegate to Catalog so a stub on Catalog.systems_dir is shared by repository writes.
-        def systems_dir
-          Catalog.systems_dir
-        end
+        def systems_dir = Catalog.systems_dir
 
         def save_system(yaml, source_relative_path: nil, directory_relative_path: nil)
           validation = Research::Systems::Validation::Validator.new(yaml).call
@@ -21,8 +19,8 @@ module Research
 
           path = system_path_for(
             system_id,
-            source_relative_path: source_relative_path,
-            directory_relative_path: directory_relative_path
+            source_relative_path:,
+            directory_relative_path:
           )
 
           FileUtils.mkdir_p(path.dirname)
@@ -129,7 +127,7 @@ module Research
             name: validation.compiled.name,
             file_name: Pathname.new(path).basename.to_s,
             relative_path: relative_path_for(path),
-            yaml: yaml,
+            yaml:,
             metadata: validation.metadata
           )
         end

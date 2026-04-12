@@ -24,7 +24,7 @@ module Research
           validate_optimization
 
           compiled = Research::Systems::Definition.new(@payload, schema: @schema) if @diagnostics.empty?
-          Result.new(compiled: compiled, diagnostics: @diagnostics)
+          Result.new(compiled:, diagnostics: @diagnostics)
         end
 
         private
@@ -84,12 +84,12 @@ module Research
           location ||= { line: 1, column: 1, length: 1 }
 
           @diagnostics << Diagnostic.new(
-            message: message,
+            message:,
             line: location[:line],
             column: location[:column],
             length: location[:length],
             path: Array(path).join('.'),
-            code: code
+            code:
           )
         end
 
@@ -97,12 +97,12 @@ module Research
           location = source_map.value_location_for_offset(path, offset, length) || { line: 1, column: 1, length: 1 }
 
           @diagnostics << Diagnostic.new(
-            message: message,
+            message:,
             line: location[:line],
             column: location[:column],
             length: location[:length],
             path: Array(path).join('.'),
-            code: code
+            code:
           )
         end
 

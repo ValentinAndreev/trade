@@ -23,7 +23,7 @@ class Candle
           records = history_source.fetch_records(end_time: end_ms)
           break if records.empty?
 
-          imported_timestamps = importer.import(records, invalidate_min: invalidate_min)
+          imported_timestamps = importer.import(records, invalidate_min:)
           break if imported_timestamps.empty?
 
           broadcaster.broadcast(imported_records(records, imported_timestamps)) if first_batch

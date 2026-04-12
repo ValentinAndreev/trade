@@ -40,7 +40,7 @@ module Api
         entry = ::Research::Systems::Repository.rename_entry(
           source_relative_path: params[:source_path],
           target_id: params[:target_system_id].to_s,
-          yaml: yaml
+          yaml:
         )
 
         render json: { ok: true, diagnostics: [], system: entry.to_h }
@@ -61,7 +61,7 @@ module Api
           directory_name: params[:directory_name]
         )
 
-        render json: { ok: true, diagnostics: [], path: path }
+        render json: { ok: true, diagnostics: [], path: }
       rescue ::Research::Systems::Validation::Error => e
         render_systems_validation_error(e, path: nil)
       end
@@ -72,7 +72,7 @@ module Api
           target_name: params[:target_name]
         )
 
-        render json: { ok: true, diagnostics: [], path: path }
+        render json: { ok: true, diagnostics: [], path: }
       rescue ::Research::Systems::Validation::Error => e
         render_systems_validation_error(e, path: nil)
       end

@@ -17,9 +17,7 @@ module Research
         mutex.synchronize { flags.delete(key) == true }
       end
 
-      def reset!
-        mutex.synchronize { flags.clear }
-      end
+      def reset! = mutex.synchronize { flags.clear }
 
       private
 

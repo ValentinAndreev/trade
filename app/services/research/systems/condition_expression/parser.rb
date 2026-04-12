@@ -39,25 +39,11 @@ module Research
         attr_reader :text, :tokens
         attr_accessor :index
 
-        def parse_or
-          parse_binary_chain(%w[||], :logical) { parse_and }
-        end
-
-        def parse_and
-          parse_binary_chain(%w[&&], :logical) { parse_comparison }
-        end
-
-        def parse_comparison
-          parse_binary_chain(%w[<< >> < > <= >=], :compare, repeatable: false) { parse_additive }
-        end
-
-        def parse_additive
-          parse_binary_chain(%w[+ -], :arithmetic) { parse_multiplicative }
-        end
-
-        def parse_multiplicative
-          parse_binary_chain(%w[* /], :arithmetic) { parse_unary }
-        end
+        def parse_or = parse_binary_chain(%w[||], :logical) { parse_and }
+        def parse_and = parse_binary_chain(%w[&&], :logical) { parse_comparison }
+        def parse_comparison = parse_binary_chain(%w[<< >> < > <= >=], :compare, repeatable: false) { parse_additive }
+        def parse_additive = parse_binary_chain(%w[+ -], :arithmetic) { parse_multiplicative }
+        def parse_multiplicative = parse_binary_chain(%w[* /], :arithmetic) { parse_unary }
 
         def parse_unary
           return parse_primary unless match?(:operator, '-')
@@ -112,7 +98,7 @@ module Research
           validate_call_arity(token, args, function)
           validate_positive_integer_literal_arguments(token, args, function)
 
-          { type: :call, name: token.value, args: args }
+          { type: :call, name: token.value, args: }
         end
 
         def parse_call_arguments
@@ -160,9 +146,7 @@ module Research
           left
         end
 
-        def build_binary_node(type, op, left, right)
-          { type: type, op: op, left: left, right: right }
-        end
+        def build_binary_node(type, op, left, right) = { type:, op:, left:, right: }
 
         def tokenize
           tokens = []
@@ -186,7 +170,7 @@ module Research
             number_match = text[pos..].match(/\A\d+(?:\.\d+)?/)
             if number_match
               value = number_match[0]
-              tokens << Token.new(type: :number, value: value, offset: pos, length: value.length)
+              tokens << Token.new(type: :number, value:, offset: pos, length: value.length)
               pos += value.length
               next
             end
@@ -194,7 +178,7 @@ module Research
             reference_match = text[pos..].match(/\A[a-z_][a-z0-9_.]*/i)
             if reference_match
               value = reference_match[0]
-              tokens << Token.new(type: :reference, value: value, offset: pos, length: value.length)
+              tokens << Token.new(type: :reference, value:, offset: pos, length: value.length)
               pos += value.length
               next
             end
@@ -219,17 +203,10 @@ module Research
           true
         end
 
-        def current_token
-          tokens[index]
-        end
+        def current_token = tokens[index]
+        def previous_token = tokens[index - 1]
 
-        def previous_token
-          tokens[index - 1]
-        end
-
-        def raise_unexpected_token(token)
-          raise ParseError.new("Unexpected token: #{token.value}", offset: token.offset, length: token.length)
-        end
+        def raise_unexpected_token(token) = raise ParseError.new("Unexpected token: #{token.value}", offset: token.offset, length: token.length)
 
         def expression_kind(node)
           case node[:type]
@@ -247,8 +224,6 @@ module Research
             binary_expression_kind(node, expected: :numeric, result: :numeric)
           when :call
             call_expression_kind(node)
-          else
-            nil
           end
         end
 

@@ -60,7 +60,7 @@ class Utils::SymbolStore
 
     def restore!(dashboard_symbols: nil, market_symbols: nil)
       DashboardConfig.update_current!(
-        dashboard_symbols: dashboard_symbols,
+        dashboard_symbols:,
         market_symbols: market_symbols&.to_h
       )
     end

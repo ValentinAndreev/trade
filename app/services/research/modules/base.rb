@@ -30,9 +30,7 @@ module Research
         end
       end
 
-      def time_for(date_time)
-        time_lookup.fetch(date_time.to_s)
-      end
+      def time_for(date_time) = time_lookup.fetch(date_time.to_s)
     end
   end
 end

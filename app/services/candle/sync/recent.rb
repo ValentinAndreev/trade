@@ -36,7 +36,7 @@ class Candle
       attr_reader :symbol, :interval, :history_source, :importer, :broadcaster, :paginator, :exchange
 
       def gap_minutes
-        latest_ts = Candle.max_ts(symbol: symbol, exchange: exchange)
+        latest_ts = Candle.max_ts(symbol:, exchange:)
         return nil unless latest_ts
 
         ((Time.zone.now - latest_ts) / 60).ceil

@@ -5,7 +5,7 @@ module Research
     class SignalEvaluator
       def initialize(parsed_conditions, resolver:)
         @evaluators = parsed_conditions.each_with_object({}) do |(key, ast), acc|
-          acc[key.to_sym] = Research::Systems::ConditionExpression::Evaluator.new(ast, resolver: resolver)
+          acc[key.to_sym] = Research::Systems::ConditionExpression::Evaluator.new(ast, resolver:)
         end
       end
 
@@ -13,7 +13,7 @@ module Research
         evaluator = @evaluators[name.to_sym]
         return false unless evaluator
 
-        evaluator.call(row: row, prev_row: prev_row, params: params)
+        evaluator.call(row:, prev_row:, params:)
       end
     end
   end

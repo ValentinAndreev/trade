@@ -4,17 +4,10 @@ module Research
   module Systems
     module Validation
       class SourceMap
-        def self.build(document)
-          new(document&.root)
-        end
+        def self.build(document) = new(document&.root)
 
-        def key_location(path, key)
-          location_for(@key_nodes[path_key(path + [ key.to_s ])])
-        end
-
-        def value_location(path)
-          location_for(@value_nodes[path_key(path)])
-        end
+        def key_location(path, key) = location_for(@key_nodes[path_key(path + [ key.to_s ])])
+        def value_location(path) = location_for(@value_nodes[path_key(path)])
 
         def value_location_for_offset(path, offset, length = 1)
           node = @value_nodes[path_key(path)]
@@ -62,9 +55,7 @@ module Research
           end
         end
 
-        def path_key(path)
-          Array(path).map(&:to_s).join("\u0000")
-        end
+        def path_key(path) = Array(path).map(&:to_s).join("\u0000")
 
         def location_for(node)
           return fallback_location unless node&.respond_to?(:start_line)
@@ -78,7 +69,7 @@ module Research
             1
           end
 
-          { line: start_line, column: start_column, length: length }
+          { line: start_line, column: start_column, length: }
         end
 
         def offset_position(value, offset)
@@ -89,9 +80,7 @@ module Research
           [ parts.length - 1, parts.last.to_s.length ]
         end
 
-        def fallback_location
-          { line: 1, column: 1, length: 1 }
-        end
+        def fallback_location = { line: 1, column: 1, length: 1 }
       end
     end
   end

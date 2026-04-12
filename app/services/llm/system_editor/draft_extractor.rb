@@ -57,11 +57,11 @@ module Llm
         end
 
         def fallback_from_assistant_message(message, source_yaml_hash:)
-          extract_yaml_candidates(message.content.to_s).each do |candidate|
+          extract_yaml_candidates(message.content.to_s).filter_map do |candidate|
             validation = Research::Systems::Validation::Validator.new(candidate).call
             next unless validation.valid?
 
-            return {
+            {
               'yaml' => candidate,
               'source_yaml_hash' => source_yaml_hash,
               'validation' => {
@@ -70,9 +70,7 @@ module Llm
                 'system' => validation.metadata
               }
             }
-          end
-
-          nil
+          end.first
         end
 
         def extract_yaml_candidates(content)
@@ -95,7 +93,6 @@ module Llm
           parsed = YAML.safe_load(value)
           parsed.is_a?(Hash) ? parsed.deep_stringify_keys : nil
         rescue Psych::SyntaxError
-          nil
         end
       end
     end

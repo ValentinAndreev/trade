@@ -37,7 +37,7 @@ module Research
 
           def validate_module_definition(module_name, module_payload, path)
             unless module_payload.is_a?(Hash)
-              add_error(message: "#{module_name} must be a mapping", path: path, code: 'module_type')
+              add_error(message: "#{module_name} must be a mapping", path:, code: 'module_type')
               return
             end
 
@@ -78,16 +78,16 @@ module Research
             case rule['type']
             when 'integer'
               unless integer_like?(value)
-                add_error(message: 'Expected integer value', path: path, code: 'scalar_integer')
+                add_error(message: 'Expected integer value', path:, code: 'scalar_integer')
                 return
               end
               min = rule['min']
-              add_error(message: "Value must be >= #{min}", path: path, code: 'scalar_min') if min && value.to_i < min.to_i
+              add_error(message: "Value must be >= #{min}", path:, code: 'scalar_min') if min && value.to_i < min.to_i
             when 'number'
-              add_error(message: 'Expected numeric value', path: path, code: 'scalar_number') unless numeric_like?(value)
+              add_error(message: 'Expected numeric value', path:, code: 'scalar_number') unless numeric_like?(value)
             when 'enum'
               allowed = Array(rule['values']).map(&:to_s)
-              add_error(message: "Expected one of: #{allowed.join(', ')}", path: path, code: 'scalar_enum') unless allowed.include?(value.to_s)
+              add_error(message: "Expected one of: #{allowed.join(', ')}", path:, code: 'scalar_enum') unless allowed.include?(value.to_s)
             end
           end
         end

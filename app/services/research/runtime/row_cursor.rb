@@ -25,8 +25,6 @@ module Research
         when :result
           module_name = keys[1]
           dig_value(module_result(module_name), keys.drop(2))
-        else
-          nil
         end
       end
 
@@ -44,28 +42,15 @@ module Research
         when :result
           module_name = keys[1]
           dig_value(module_result_at(module_name, target_index), keys.drop(2))
-        else
-          nil
         end
       end
 
       private
 
-      def candle
-        candles[index] || EMPTY_HASH
-      end
-
-      def candle_at(target_index)
-        candles[target_index] || EMPTY_HASH
-      end
-
-      def module_result(module_name)
-        (module_series[module_name.to_sym] || EMPTY_SERIES)[index] || EMPTY_HASH
-      end
-
-      def module_result_at(module_name, target_index)
-        (module_series[module_name.to_sym] || EMPTY_SERIES)[target_index] || EMPTY_HASH
-      end
+      def candle = candles[index] || EMPTY_HASH
+      def candle_at(target_index) = candles[target_index] || EMPTY_HASH
+      def module_result(module_name) = (module_series[module_name.to_sym] || EMPTY_SERIES)[index] || EMPTY_HASH
+      def module_result_at(module_name, target_index) = (module_series[module_name.to_sym] || EMPTY_SERIES)[target_index] || EMPTY_HASH
 
       def current_results
         module_series.each_with_object({}) do |(module_name, results), acc|

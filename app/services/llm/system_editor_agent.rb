@@ -9,7 +9,7 @@ module Llm
     tools do
       [
         Llm::SystemEditor::Tools::ValidateSystemYamlTool.new,
-        Llm::SystemEditor::Tools::ApplySystemDraftTool.new(editor_context: editor_context),
+        Llm::SystemEditor::Tools::ApplySystemDraftTool.new(editor_context:),
         Llm::SystemEditor::Tools::LoadExampleSystemTool.new,
         Llm::SystemEditor::Tools::LoadDslReferenceTool.new
       ]

@@ -38,9 +38,7 @@ module Research
           @resolver = resolver
         end
 
-        def call(row:, prev_row:, params:)
-          evaluate_boolean(@ast, row:, prev_row:, params:)
-        end
+        def call(row:, prev_row:, params:) = evaluate_boolean(@ast, row:, prev_row:, params:)
 
         private
 
@@ -105,8 +103,6 @@ module Research
             node[:value]
           when :reference
             resolver.call(node[:value], row:, params:, row_offset:)
-          else
-            nil
           end
         end
 
@@ -117,8 +113,6 @@ module Research
           case node[:op]
           when '-'
             -value
-          else
-            nil
           end
         end
 
