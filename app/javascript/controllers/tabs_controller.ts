@@ -24,13 +24,27 @@ import {
 } from "../research/file_manager"
 import { ResearchFilePicker } from "../research/research_file_picker"
 import { showToast } from "../services/toast"
+import {
+  DEFAULT_SIDEBAR_WIDTH_PX,
+  MIN_SIDEBAR_WIDTH_PX,
+  clampSidebarWidth,
+  loadSidebarPrefsRecord,
+  saveSidebarPrefsRecord,
+  sidebarScopeForTabType,
+  type SidebarPrefs,
+  type SidebarPrefsRecord,
+  type SidebarScope,
+} from "../tabs/sidebar_prefs"
 
 export default class extends Controller {
-  static targets = ["tabBar", "panels", "sidebar"]
+  static targets = ["tabBar", "panels", "sidebar", "sidebarFrame", "sidebarResizeHandle", "sidebarReopenRail"]
 
   declare tabBarTarget: HTMLElement
   declare panelsTarget: HTMLElement
   declare sidebarTarget: HTMLElement
+  declare sidebarFrameTarget: HTMLElement
+  declare sidebarResizeHandleTarget: HTMLElement
+  declare sidebarReopenRailTarget: HTMLElement
 
   store!: TabStore
   config!: { symbols: string[]; timeframes: string[]; indicators: IndicatorInfo[] }
@@ -52,6 +66,10 @@ export default class extends Controller {
   private _lastRenderedTabCount = 0
   private _tabBarScrollLeft = 0
   private _forceRevealActiveTab = false
+  private _sidebarPrefsRecord: SidebarPrefsRecord = loadSidebarPrefsRecord()
+  private _sidebarScope: SidebarScope = "chart"
+  private _isSidebarDragging = false
+  private get _sidebarPrefs(): SidebarPrefs { return this._sidebarPrefsRecord[this._sidebarScope] }
   private readonly _onTabBarScroll = () => {
     this._tabBarScrollLeft = this._tabScrollArea?.scrollLeft ?? 0
     this._syncTabBarScrollControls()
@@ -71,7 +89,11 @@ export default class extends Controller {
     this._tabBarScrollLeft = area.scrollLeft
     this._syncTabBarScrollControls()
   }
-  private readonly _onWindowResize = () => this._syncTabBarScrollControls()
+  private readonly _onWindowResize = () => {
+    this._sidebarPrefs.widthPx = clampSidebarWidth(this._sidebarPrefs.widthPx, window.innerWidth || DEFAULT_SIDEBAR_WIDTH_PX)
+    this._applySidebarLayout()
+    this._syncTabBarScrollControls()
+  }
 
   async connect() {
     this.store = new TabStore()
@@ -801,6 +823,51 @@ export default class extends Controller {
     this.render()
   }
 
+  switchSidebarPane(e: Event) {
+    const pane = (e.currentTarget as HTMLElement).dataset.sidebarPaneValue
+    const tab = this.store.activeTab
+    if (!tab || (pane !== "settings" && pane !== "llm")) return
+    if (this.store.setTabSidebarPane(tab.id, pane)) this.render()
+  }
+
+  toggleSidebarCollapse() {
+    if (!this._tabSupportsGlobalSidebar(this.store.activeTab) || this._sidebarPrefs.collapsed) return
+    this._sidebarPrefs.collapsed = true
+    this._persistSidebarPrefsForScope(this._activeSidebarScope())
+    this._applySidebarLayout()
+  }
+
+  reopenSidebar() {
+    if (!this._tabSupportsGlobalSidebar(this.store.activeTab)) return
+    if (!this._sidebarPrefs.collapsed) return
+    this._sidebarPrefs.collapsed = false
+    this._sidebarPrefs.widthPx = clampSidebarWidth(this._sidebarPrefs.widthPx || DEFAULT_SIDEBAR_WIDTH_PX, window.innerWidth || DEFAULT_SIDEBAR_WIDTH_PX)
+    this._persistSidebarPrefsForScope(this._activeSidebarScope())
+    this._applySidebarLayout()
+  }
+
+  startSidebarResize(e: Event) {
+    const mouseEvent = e as MouseEvent
+    if (mouseEvent.button !== 0) return
+    if (!this._tabSupportsGlobalSidebar(this.store.activeTab) || this._sidebarPrefs.collapsed) return
+    this._startSidebarResizeDrag(mouseEvent, this._sidebarPrefs.widthPx || DEFAULT_SIDEBAR_WIDTH_PX, this._activeSidebarScope())
+  }
+
+  startSidebarReopenResize(e: Event) {
+    const mouseEvent = e as MouseEvent
+    if (mouseEvent.button !== 0) return
+    if (!this._tabSupportsGlobalSidebar(this.store.activeTab) || !this._sidebarPrefs.collapsed) return
+    mouseEvent.preventDefault()
+    this._sidebarPrefs.collapsed = false
+    this._sidebarPrefs.widthPx = clampSidebarWidth(this._sidebarPrefs.widthPx || DEFAULT_SIDEBAR_WIDTH_PX, window.innerWidth || DEFAULT_SIDEBAR_WIDTH_PX)
+    this._applySidebarLayout()
+    this._startSidebarResizeDrag(
+      mouseEvent,
+      Math.max(MIN_SIDEBAR_WIDTH_PX, this._sidebarPrefs.widthPx || DEFAULT_SIDEBAR_WIDTH_PX),
+      this._activeSidebarScope(),
+    )
+  }
+
   // --- Panel resize ---
 
   startResize(e: Event) { startPanelResize(e as MouseEvent, "tabs") }
@@ -816,6 +883,7 @@ export default class extends Controller {
   // --- Render ---
 
   render(): void {
+    this._syncSidebarPrefsForActiveTab()
     this.dataActions.syncIndicatorsFromChart()
     const activeTab = this.store.activeTab
     const prevScrollLeft = this._tabScrollArea?.scrollLeft ?? this._tabBarScrollLeft
@@ -861,7 +929,9 @@ export default class extends Controller {
       researchFilePickerDirectoryPath: this._activeResearchFilePickerDirectoryPath(),
       researchFilePickerSelectedPath: this._activeResearchFilePickerSelectedPath(),
       researchValidationSystem,
+      activeSidebarPane: this._activeSidebarPane(),
     })
+    this._applySidebarLayout()
     this._bindTabBarScrollArea()
     if (this._tabScrollArea) {
       const maxScrollLeft = Math.max(0, this._tabScrollArea.scrollWidth - this._tabScrollArea.clientWidth)
@@ -960,6 +1030,87 @@ export default class extends Controller {
     button.classList.toggle("cursor-default", !enabled)
     button.setAttribute("aria-hidden", enabled ? "false" : "true")
     if (button instanceof HTMLButtonElement) button.disabled = !enabled
+  }
+
+  private _activeSidebarPane(): "settings" | "llm" {
+    return this.store.activeTab?.sidebarPane === "llm" ? "llm" : "settings"
+  }
+
+  // ARCH DEBT: Two separate sidebar infrastructures coexist.
+  //   1. Global sidebar (this controller) — chart, data, research tabs.
+  //      DOM lives in show.html.erb outside the panel. Prefs stored per-scope in sidebar_prefs.ts.
+  //   2. Embedded sidebar (system_editor_controller) — system_editor tab only.
+  //      DOM is part of the panel HTML itself. Prefs stored inside SystemEditorConfig.
+  //
+  // The split exists because system_editor has a different lifecycle and DOM model.
+  // To unify: system_editor would need a full workspace refactor (own TabStore entry,
+  // shared sidebar shell, per-scope prefs). Until then, any sidebar-wide change
+  // (new pane, resize logic, prefs format) must be applied to BOTH controllers.
+  private _tabSupportsGlobalSidebar(tab = this.store.activeTab): boolean {
+    return Boolean(tab && tab.type !== "system_editor" && tab.type !== "system_stats")
+  }
+
+  private _applySidebarLayout(): void {
+    const supported = this._tabSupportsGlobalSidebar(this.store.activeTab)
+    const collapsed = supported && this._sidebarPrefs.collapsed
+    const widthPx = supported ? clampSidebarWidth(this._sidebarPrefs.widthPx, window.innerWidth || DEFAULT_SIDEBAR_WIDTH_PX) : 0
+
+    this.sidebarFrameTarget.style.width = supported && !collapsed ? `${widthPx}px` : "0px"
+    this.sidebarFrameTarget.classList.toggle("hidden", !supported || collapsed)
+    this.sidebarFrameTarget.classList.toggle("border-l", supported && !collapsed)
+    this.sidebarResizeHandleTarget.classList.toggle("hidden", !supported || collapsed)
+    this.sidebarReopenRailTarget.classList.toggle("hidden", !supported || !collapsed)
+    this.sidebarTarget.classList.toggle("pointer-events-none", !supported || collapsed)
+    this.sidebarTarget.classList.toggle("opacity-0", !supported || collapsed)
+    this.sidebarTarget.setAttribute("aria-hidden", (!supported || collapsed).toString())
+    this.sidebarTarget.toggleAttribute("inert", !supported || collapsed)
+  }
+
+  private _persistSidebarPrefsForScope(scope: SidebarScope): void {
+    this._sidebarPrefsRecord = saveSidebarPrefsRecord(this._sidebarPrefsRecord)
+    this._sidebarScope = scope
+  }
+
+  private _startSidebarResizeDrag(event: MouseEvent, initialWidth: number, scope: SidebarScope): void {
+    if (event.button !== 0) return
+    event.preventDefault()
+    this._isSidebarDragging = true
+
+    const startX = event.clientX
+    const startWidth = initialWidth
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const delta = startX - moveEvent.clientX
+      this._sidebarPrefs.widthPx = clampSidebarWidth(startWidth + delta, window.innerWidth || DEFAULT_SIDEBAR_WIDTH_PX)
+      this._applySidebarLayout()
+    }
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove)
+      document.removeEventListener("mouseup", onUp)
+      document.body.style.userSelect = ""
+      document.body.style.cursor = ""
+      this._isSidebarDragging = false
+      this._persistSidebarPrefsForScope(scope)
+      this._applySidebarLayout()
+    }
+
+    document.body.style.userSelect = "none"
+    document.body.style.cursor = "col-resize"
+    document.addEventListener("mousemove", onMove)
+    document.addEventListener("mouseup", onUp)
+  }
+
+  private _activeSidebarScope() {
+    return sidebarScopeForTabType(this.store.activeTab?.type)
+  }
+
+  private _syncSidebarPrefsForActiveTab(): void {
+    if (this._isSidebarDragging) return
+    const scope = this._activeSidebarScope()
+    if (scope === this._sidebarScope) return
+    this._sidebarPrefsRecord = loadSidebarPrefsRecord()
+    this._sidebarScope = scope
   }
 
   _panelFromEvent(e: Event): Panel | null {

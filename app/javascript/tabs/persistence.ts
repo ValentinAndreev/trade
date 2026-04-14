@@ -12,6 +12,15 @@ export function loadTabs(): Tab[] {
       const tabs = JSON.parse(stored)
       if (Array.isArray(tabs)) {
         const normalized = (tabs as Tab[]).map(tab => {
+          if (
+            (tab.type === "chart" || tab.type === "data" || tab.type === "research")
+            && tab.sidebarPane !== "settings"
+            && tab.sidebarPane !== "llm"
+          ) {
+            tab.sidebarPane = "settings"
+          } else if (tab.type !== "chart" && tab.type !== "data" && tab.type !== "research") {
+            delete tab.sidebarPane
+          }
           if (tab.type === "data" && tab.dataConfig && !Array.isArray(tab.dataConfig.systems)) {
             tab.dataConfig.systems = []
           }

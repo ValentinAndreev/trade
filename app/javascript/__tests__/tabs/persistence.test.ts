@@ -3,9 +3,21 @@ import { describe, it, expect, beforeEach } from "vitest"
 import { loadTabs, saveTabs, loadActiveTabId, saveActiveTabId, calcNextId } from "../../tabs/persistence"
 import type { Tab } from "../../types/store"
 
+function createLocalStorageMock(): Storage {
+  const store = new Map<string, string>()
+  return {
+    get length() { return store.size },
+    clear: () => store.clear(),
+    getItem: key => store.get(key) ?? null,
+    key: index => Array.from(store.keys())[index] ?? null,
+    removeItem: key => { store.delete(key) },
+    setItem: (key, value) => { store.set(key, String(value)) },
+  }
+}
+
 describe("persistence", () => {
   beforeEach(() => {
-    localStorage.clear()
+    ;(globalThis as typeof globalThis & { localStorage: Storage }).localStorage = createLocalStorageMock()
   })
 
   describe("loadTabs", () => {
@@ -18,6 +30,7 @@ describe("persistence", () => {
         id: "tab-1",
         name: "Test",
         type: "chart",
+        sidebarPane: "llm",
         panels: [{
           id: "p-1",
           timeframe: "1m",
@@ -34,6 +47,7 @@ describe("persistence", () => {
       expect(result).toHaveLength(1)
       expect(result[0].id).toBe("tab-1")
       expect(result[0].type).toBe("chart")
+      expect(result[0].sidebarPane).toBe("llm")
       expect(result[0].panels[0].overlays[0].symbol).toBe("BTCUSD")
     })
 
@@ -54,6 +68,19 @@ describe("persistence", () => {
       const result = loadTabs()
       expect(result[0].type).toBe("data")
       expect(result[0].dataConfig?.symbols).toEqual(["BTCUSD"])
+      expect(result[0].sidebarPane).toBe("settings")
+    })
+
+    it("defaults sidebarPane for chart/data/research tabs when missing", () => {
+      const tabs = [
+        { id: "tab-chart", name: "Chart", type: "chart", panels: [] },
+        { id: "tab-data", name: "Data", type: "data", panels: [], dataConfig: { symbols: [], timeframe: "1m", columns: [], conditions: [], chartLinks: [] } },
+        { id: "tab-research", name: "Research", type: "research", panels: [] },
+      ]
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+
+      const result = loadTabs()
+      expect(result.map(tab => tab.sidebarPane)).toEqual(["settings", "settings", "settings"])
     })
 
     it("hydrates missing research config for persisted research tabs", () => {
@@ -119,6 +146,9 @@ describe("persistence", () => {
       expect(result[0].systemEditorConfig?.systemYaml).toBe("")
       expect(result[0].systemEditorConfig?.assistantChatId).toBeNull()
       expect(result[0].systemEditorConfig?.assistantSettingsProvider).toBeNull()
+      expect(result[0].systemEditorConfig?.sidebarPane).toBe("llm")
+      expect(result[0].systemEditorConfig?.sidebarWidth).toBe(384)
+      expect(result[0].systemEditorConfig?.sidebarCollapsed).toBe(false)
     })
 
     it("hydrates missing assistant chat id on persisted editor config", () => {
@@ -143,6 +173,37 @@ describe("persistence", () => {
 
       expect(result[0].systemEditorConfig?.assistantChatId).toBeNull()
       expect(result[0].systemEditorConfig?.assistantSettingsProvider).toBe("gemini")
+    })
+
+    it("does not inject tab.sidebarPane for system editor tabs", () => {
+      const tabs = [{
+        id: "tab-1",
+        name: "System editor",
+        type: "system_editor",
+        panels: [],
+      }]
+
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+      const result = loadTabs()
+
+      expect(result[0].sidebarPane).toBeUndefined()
+      expect(result[0].systemEditorConfig?.sidebarPane).toBe("llm")
+    })
+
+    it("drops legacy tab.sidebarPane from persisted system editor tabs", () => {
+      const tabs = [{
+        id: "tab-1",
+        name: "System editor",
+        type: "system_editor",
+        sidebarPane: "settings",
+        panels: [],
+      }]
+
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+      const result = loadTabs()
+
+      expect(result[0].sidebarPane).toBeUndefined()
+      expect(result[0].systemEditorConfig?.sidebarPane).toBe("llm")
     })
   })
 

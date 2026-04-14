@@ -5,6 +5,7 @@ class LlmSetting < ApplicationRecord
     openai
     anthropic
     gemini
+    ollama
     openrouter
     mistral
     xai

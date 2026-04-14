@@ -1,5 +1,6 @@
 import { Controller } from "@hotwired/stimulus"
 import {
+  checkLlmConnection,
   createAssistantChat,
   deleteAssistantChat,
   fetchAssistantChat,
@@ -12,6 +13,7 @@ import {
   type AssistantChatPayload,
   type AssistantChatSummary,
   type AssistantDraftPayload,
+  type LlmConnectionCheckPayload,
   type LlmSettingsDraft,
   type LlmSettingsPayload,
 } from "../system_editor/assistant_api"
@@ -31,7 +33,9 @@ import { showToast } from "../services/toast"
 import {
   buildStarterSystemYaml,
   hydrateSystemEditorState,
+  SYSTEM_EDITOR_DEFAULT_SIDEBAR_WIDTH_PX,
 } from "../system_editor/state"
+import { clampSidebarWidth } from "../tabs/sidebar_prefs"
 import { AssistantChatSubscription } from "../system_editor/chat_subscription"
 import {
   currentFileNameHTML,
@@ -91,6 +95,8 @@ export default class extends Controller {
   private assistantSettingsDraft: LlmSettingsDraft | null = null
   private assistantSettingsOpen = false
   private assistantSettingsSaving = false
+  private assistantSettingsChecking = false
+  private assistantSettingsCheck: LlmConnectionCheckPayload | null = null
   private assistantScrollToBottomPending = false
   private assistantScrollSnapshot: { top: number; pinnedToBottom: boolean } | null = null
   private assistantChatSubscription: AssistantChatSubscription | null = null
@@ -514,10 +520,60 @@ export default class extends Controller {
     })
   }
 
+  switchSidebarPane(e: Event) {
+    if (!this.state) return
+
+    const pane = (e.currentTarget as HTMLElement).dataset.sidebarPaneValue
+    if (pane !== "settings" && pane !== "llm") return
+    if (this.state.sidebarPane === pane) return
+
+    this.state.sidebarPane = pane
+    this._persistState()
+    this._renderSafely()
+  }
+
+  toggleSidebarCollapse() {
+    if (!this.state || this.state.sidebarCollapsed) return
+
+    this.state.sidebarCollapsed = true
+    this._persistState()
+    this._applySidebarLayout()
+  }
+
+  reopenSidebar() {
+    if (!this.state || !this.state.sidebarCollapsed) return
+
+    this.state.sidebarCollapsed = false
+    this.state.sidebarWidth = this._clampSidebarWidth(this.state.sidebarWidth || SYSTEM_EDITOR_DEFAULT_SIDEBAR_WIDTH_PX)
+    this._persistState()
+    this._applySidebarLayout()
+  }
+
+  startSidebarResize(e: Event) {
+    const mouseEvent = e as MouseEvent
+    if (!this.state || mouseEvent.button !== 0 || this.state.sidebarCollapsed) return
+    this._startSidebarResizeDrag(mouseEvent, this.state.sidebarWidth || SYSTEM_EDITOR_DEFAULT_SIDEBAR_WIDTH_PX)
+  }
+
+  startSidebarReopenResize(e: Event) {
+    const mouseEvent = e as MouseEvent
+    if (!this.state || mouseEvent.button !== 0) return
+
+    const width = this._clampSidebarWidth(this.state.sidebarWidth || SYSTEM_EDITOR_DEFAULT_SIDEBAR_WIDTH_PX)
+    if (this.state.sidebarCollapsed) {
+      this.state.sidebarCollapsed = false
+      this.state.sidebarWidth = width
+      this._applySidebarLayout()
+    }
+
+    this._startSidebarResizeDrag(mouseEvent, width)
+  }
+
   // Assistant actions
 
   openAssistantSettings() {
     this.assistantSettingsDraft = this._assistantSettingsDraftValue()
+    this.assistantSettingsCheck = null
     this.assistantSettingsOpen = true
     this._renderSafely()
   }
@@ -580,6 +636,7 @@ export default class extends Controller {
     if (!this.assistantSettingsDraft) {
       this.assistantSettingsDraft = this._assistantSettingsDraftValue()
     }
+    this.assistantSettingsCheck = null
 
     const target = e.currentTarget as HTMLInputElement | HTMLSelectElement
     const field = target.dataset.field || ""
@@ -637,11 +694,43 @@ export default class extends Controller {
       }
       this.assistantSettingsDraft = this._assistantSettingsDraftValue(result.data.setting.provider)
       this.assistantSettingsOpen = false
+      this.assistantSettingsCheck = null
       this.assistantError = null
       this._renderSafely()
       showToast("Assistant settings saved", "success")
     } finally {
       this.assistantSettingsSaving = false
+      this._renderSafely()
+    }
+  }
+
+  async checkAssistantConnection() {
+    if (!this.assistantSettingsDraft || this.assistantSettingsChecking) {
+      if (!this.assistantSettingsDraft) this.assistantSettingsDraft = this._assistantSettingsDraftValue()
+    }
+    if (!this.assistantSettingsDraft) return
+
+    this.assistantSettingsChecking = true
+    this.assistantSettingsCheck = null
+    this._renderSafely()
+
+    try {
+      const result = await checkLlmConnection(this.assistantSettingsDraft)
+      if (!result.ok || !result.data) {
+        this.assistantSettingsCheck = result.data
+          || {
+            ok: false,
+            message: result.error || "Connection check failed",
+            normalized_api_base: this.assistantSettingsDraft.api_base || null,
+            checked_url: null,
+            models: [],
+          }
+        return
+      }
+
+      this.assistantSettingsCheck = result.data
+    } finally {
+      this.assistantSettingsChecking = false
       this._renderSafely()
     }
   }
@@ -959,6 +1048,8 @@ export default class extends Controller {
       assistantSettingsDraft: this.assistantSettingsDraft,
       assistantSettingsOpen: this.assistantSettingsOpen,
       assistantSettingsSaving: this.assistantSettingsSaving,
+      assistantSettingsChecking: this.assistantSettingsChecking,
+      assistantSettingsCheck: this.assistantSettingsCheck,
       assistantExpandedReasoningIds: Array.from(this.assistantExpandedReasoningIds),
       renameDialog: this.renameDialog,
       confirmDialog: this.confirmDialog,
@@ -977,6 +1068,7 @@ export default class extends Controller {
       showToast("System editor render failed")
     }
 
+    this._applySidebarLayout()
     this.editor.restoreSnapshot()
     this.editor.syncScroll()
     this.autocomplete.sync(this.editor.yamlTextarea())
@@ -1113,7 +1205,7 @@ export default class extends Controller {
     const saved = this._settingForProvider(provider)
     const defaultModel = saved?.model
       || this._modelSuggestionsFor(provider)[0]
-      || "gemini-3-flash-preview"
+      || this._defaultModelForProvider(provider)
 
     return {
       provider,
@@ -1133,9 +1225,20 @@ export default class extends Controller {
     return this.assistantSettings?.settings_by_provider?.[provider] || null
   }
 
+  private _defaultModelForProvider(provider: string): string {
+    return provider === "ollama" ? "" : "gemini-3-flash-preview"
+  }
+
+  private _providerRequiresApiKey(provider: string, apiBase?: string | null): boolean {
+    if (provider === "ollama") return false
+    if (provider === "openai" && apiBase?.trim()) return false
+    return true
+  }
+
   private _assistantConfigured(): boolean {
     const setting = this._settingForProvider(this._selectedAssistantProvider())
-    return Boolean(setting?.api_key_present && setting.model.trim())
+    if (!setting?.model?.trim()) return false
+    return !this._providerRequiresApiKey(this._selectedAssistantProvider(), setting.api_base) || Boolean(setting.api_key_present)
   }
 
   private _assistantEditorContext() {
@@ -1388,6 +1491,68 @@ export default class extends Controller {
   private _replaceCatalogEntry(previousPath: string, entry: ResearchCatalogEntry): ResearchCatalogEntry[] {
     const others = this.catalog.filter(item => item.relative_path !== previousPath && item.relative_path !== entry.relative_path)
     return [...others, entry].sort((l, r) => l.name.localeCompare(r.name))
+  }
+
+  private _applySidebarLayout() {
+    if (!this.state) return
+
+    const frame = this._role<HTMLElement>("sidebar-frame")
+    const handle = this._role<HTMLElement>("sidebar-resize-handle")
+    const rail = this._role<HTMLElement>("sidebar-reopen-rail")
+    if (!frame || !handle || !rail) return
+
+    this.state.sidebarWidth = this._clampSidebarWidth(this.state.sidebarWidth || SYSTEM_EDITOR_DEFAULT_SIDEBAR_WIDTH_PX)
+    frame.style.width = `${this.state.sidebarWidth}px`
+
+    if (this.state.sidebarCollapsed) {
+      frame.classList.add("hidden")
+      handle.classList.add("hidden")
+      rail.classList.remove("hidden")
+      return
+    }
+
+    frame.classList.remove("hidden")
+    handle.classList.remove("hidden")
+    rail.classList.add("hidden")
+  }
+
+  private _clampSidebarWidth(width: number): number {
+    const viewportWidth = this.element.clientWidth || window.innerWidth || SYSTEM_EDITOR_DEFAULT_SIDEBAR_WIDTH_PX
+    return clampSidebarWidth(width, viewportWidth)
+  }
+
+  private _startSidebarResizeDrag(event: MouseEvent, initialWidth: number) {
+    if (!this.state || event.button !== 0) return
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startWidth = this._clampSidebarWidth(initialWidth)
+    const body = document.body
+    const previousCursor = body.style.cursor
+    const previousUserSelect = body.style.userSelect
+
+    body.style.cursor = "col-resize"
+    body.style.userSelect = "none"
+
+    const onMove = (moveEvent: MouseEvent) => {
+      if (!this.state) return
+      this.state.sidebarCollapsed = false
+      this.state.sidebarWidth = this._clampSidebarWidth(startWidth + (startX - moveEvent.clientX))
+      this._applySidebarLayout()
+    }
+
+    const finish = () => {
+      document.removeEventListener("mousemove", onMove)
+      document.removeEventListener("mouseup", finish)
+      body.style.cursor = previousCursor
+      body.style.userSelect = previousUserSelect
+      this._persistState()
+    }
+
+    document.addEventListener("mousemove", onMove)
+    document.addEventListener("mouseup", finish)
   }
 
   private _persistState() {

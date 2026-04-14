@@ -3,6 +3,7 @@ import type {
   AssistantChatMessage,
   AssistantChatSummary,
   AssistantDraftPayload,
+  LlmConnectionCheckPayload,
   LlmSettingPayload,
   LlmSettingsDraft,
   LlmSettingsPayload,
@@ -20,6 +21,7 @@ import type {
 import type { SystemEditorConfig } from "../types/store"
 import { renderFileManagerModal } from "../research/file_manager"
 import { getConditionExpressionMetadata } from "./condition_expression"
+import { sidebarShellHTML } from "../templates/sidebar_shell_templates"
 
 type SystemEditorTemplateArgs = {
   tabId: string
@@ -48,6 +50,8 @@ type SystemEditorTemplateArgs = {
   assistantSettingsDraft: LlmSettingsDraft | null
   assistantSettingsOpen: boolean
   assistantSettingsSaving: boolean
+  assistantSettingsChecking: boolean
+  assistantSettingsCheck: LlmConnectionCheckPayload | null
   assistantExpandedReasoningIds: number[]
   renameDialog: {
     title: string
@@ -112,6 +116,8 @@ export function renderSystemEditorHTML({
   assistantSettingsDraft,
   assistantSettingsOpen,
   assistantSettingsSaving,
+  assistantSettingsChecking,
+  assistantSettingsCheck,
   assistantExpandedReasoningIds,
   renameDialog,
   confirmDialog,
@@ -124,8 +130,10 @@ export function renderSystemEditorHTML({
   const selectedProvider = state.assistantSettingsProvider || assistantSettingsDraft?.provider || assistantSettings?.setting.provider || "gemini"
   const modelSuggestions = assistantSettings?.model_suggestions_by_provider?.[selectedProvider] || []
   const selectedProviderSetting = assistantSettings?.settings_by_provider?.[selectedProvider] || null
-  const configured = Boolean(selectedProviderSetting?.api_key_present && selectedProviderSetting.model.trim())
+  const configured = assistantConfiguredForProvider(selectedProvider, selectedProviderSetting)
   const modelListId = `system-editor-model-suggestions-${escapeHTML(tabId)}`
+  const sidebarTitle = state.systemId || "System editor"
+  const sidebarSubtitle = sourceFileName || "Unsaved draft"
 
   return `
     <div class="flex h-full min-h-0 flex-col overflow-hidden bg-[${BG_PRIMARY}] text-white">
@@ -173,9 +181,9 @@ export function renderSystemEditorHTML({
         </div>
       </div>
 
-      <div class="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
-        <section class="min-h-0 min-w-0 border-b border-[${BORDER_COLOR}] lg:border-b-0 lg:border-r">
-          <div class="flex h-full min-h-0 flex-col gap-4 p-4">
+      <div class="flex min-h-0 flex-1">
+        <section class="min-h-0 min-w-0 flex-1 p-4">
+          <div class="flex h-full min-h-0 flex-col gap-4">
             <div class="min-h-0 flex-1 overflow-hidden rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
               <div class="border-b border-[${BORDER_COLOR}] px-4 py-2 text-xs uppercase tracking-[0.18em] text-gray-500">
                 System YAML
@@ -196,84 +204,59 @@ export function renderSystemEditorHTML({
                 >${escapeHTML(state.systemYaml)}</textarea>
               </div>
             </div>
-
-            <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] p-4">
-              <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Diagnostics</div>
-              <div data-role="diagnostics-list" class="mt-3 flex max-h-44 flex-col gap-2 overflow-auto">
-                ${diagnosticsHTML(diagnostics)}
-              </div>
-            </div>
           </div>
         </section>
 
-        <section class="min-h-0 min-w-0">
-          <div class="flex h-full min-h-0 flex-col p-4">
-            <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
-              <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-3">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div class="text-xs uppercase tracking-[0.18em] text-gray-500">LLM assistant</div>
-                    <div class="mt-1 text-sm text-gray-300">${assistantStatusHTML(assistantSettings, configured, selectedProvider, selectedProviderSetting)}</div>
-                  </div>
-                  <div class="flex flex-wrap items-center justify-end gap-2">
-                    <select
-                      data-role="assistant-chat-select"
-                      data-action="change->system-editor#selectAssistantChat"
-                      class="h-10 min-w-44 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white"
-                      ${assistantChatsLoading ? "disabled" : ""}
-                    >
-                      ${assistantChats.length
-                        ? assistantChats.map(chat => assistantChatOptionHTML(chat, state.assistantChatId)).join("")
-                        : assistantChatEmptyOptionHTML(assistantChatsLoading)}
-                    </select>
-                    ${toolbarButton("New", "click->system-editor#createAssistantChat", assistantLoading || !configured)}
-                    ${toolbarButton("Rename", "click->system-editor#renameAssistantChat", assistantLoading || !assistantCurrentChat)}
-                    ${toolbarButton("Delete", "click->system-editor#deleteAssistantChat", assistantLoading || !assistantCurrentChat, "border-red-500/30 text-red-200 hover:bg-red-500/10 hover:text-red-100")}
-                  </div>
-                </div>
-                ${assistantCurrentChat ? `
-                  <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-400">
-                    <span>${escapeHTML(assistantCurrentChat.title)}</span>
-                    ${assistantCurrentChat.source_path ? `<span class="font-mono text-gray-300">${escapeHTML(assistantCurrentChat.source_path)}</span>` : ""}
-                  </div>
-                ` : ""}
-                ${assistantError ? `
-                  <div class="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                    ${escapeHTML(assistantError)}
-                  </div>
-                ` : ""}
-              </div>
-
-              <div data-role="assistant-messages" class="min-h-0 flex-1 overflow-auto bg-[${BG_PANEL}] px-4 py-4">
-                ${assistantMessagesHTML({
-                  configured: !!configured,
-                  loading: assistantLoading,
-                  currentChat: assistantCurrentChat,
-                  messages: assistantMessages,
-                  expandedReasoningIds: assistantExpandedReasoningIds,
-                })}
-              </div>
-
-              <div class="border-t border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-4">
-                <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] p-3">
-                  <textarea
-                    data-role="assistant-input"
-                    data-action="input->system-editor#updateAssistantInput keydown->system-editor#handleAssistantInputKeydown"
-                    class="min-h-28 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none"
-                    placeholder="${configured ? "Ask the assistant to generate, explain, or fix the system YAML..." : "Configure provider, model, and API key in Settings before using the assistant."}"
-                    ${configured ? "" : "disabled"}
-                  >${escapeHTML(assistantInput)}</textarea>
-                  <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
-                    <div class="text-xs text-gray-500">
-                      Send with Ctrl/Cmd+Enter. Drafts are only applied to the editor when you confirm.
-                    </div>
-                    ${toolbarButton(assistantLoading ? "Sending..." : "Send", "click->system-editor#sendAssistantMessage", assistantLoading || !configured || !assistantInput.trim(), "min-w-24", `data-role="assistant-send-button"`)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+        <div
+          data-role="sidebar-reopen-rail"
+          data-action="click->system-editor#reopenSidebar mousedown->system-editor#startSidebarReopenResize"
+          class="hidden w-2 shrink-0 cursor-col-resize bg-[#141427] transition-colors hover:bg-blue-500/40"
+          title="Open sidebar"
+        ></div>
+        <div
+          data-role="sidebar-resize-handle"
+          data-action="mousedown->system-editor#startSidebarResize"
+          class="hidden w-1.5 shrink-0 cursor-col-resize bg-[#2a2a3e] transition-colors hover:bg-[#5a5a7e]"
+          title="Resize sidebar"
+        ></div>
+        <aside
+          data-role="sidebar-frame"
+          class="hidden shrink-0 min-h-0 overflow-hidden border-l border-[${BORDER_COLOR}] bg-[#12122a]"
+          style="width:${state.sidebarWidth}px"
+        >
+          ${sidebarShellHTML({
+            ctrl: "system-editor",
+            tabType: "system_editor",
+            title: sidebarTitle,
+            subtitle: sidebarSubtitle,
+            activePane: state.sidebarPane,
+            settingsPaneClassName: "",
+            llmPaneClassName: "",
+            settingsContent: systemEditorSettingsPaneHTML({
+              sourceFileName,
+              hasUnsavedChanges,
+              validation,
+              validating,
+              diagnostics,
+              isOnline,
+            }),
+            llmContent: systemEditorAssistantPaneHTML({
+              configured,
+              assistantSettings,
+              selectedProvider,
+              selectedProviderSetting,
+              assistantChats,
+              assistantCurrentChat,
+              assistantChatsLoading,
+              assistantLoading,
+              assistantError,
+              assistantMessages,
+              assistantExpandedReasoningIds,
+              assistantInput,
+              state,
+            }),
+          })}
+        </aside>
       </div>
 
       ${assistantSettingsOpen ? assistantSettingsModalHTML({
@@ -283,6 +266,8 @@ export function renderSystemEditorHTML({
         modelSuggestions,
         selectedProviderSetting,
         saving: assistantSettingsSaving,
+        checking: assistantSettingsChecking,
+        checkResult: assistantSettingsCheck,
       }) : ""}
 
       ${renameDialog ? renameDialogHTML(renameDialog) : ""}
@@ -467,6 +452,75 @@ function buildFunctionDetail(fn: ResearchConditionExpressionFunction): string {
   return ` (${escapeHTML(positions)} must be a positive integer literal)`
 }
 
+function systemEditorSettingsPaneHTML({
+  sourceFileName,
+  hasUnsavedChanges,
+  validation,
+  validating,
+  diagnostics,
+  isOnline,
+}: {
+  sourceFileName: string | null
+  hasUnsavedChanges: boolean
+  validation: ResearchValidationResponse | null
+  validating: boolean
+  diagnostics: ResearchDslDiagnostic[]
+  isOnline: boolean
+}): string {
+  const validationClass = validation?.ok && !diagnostics.length
+    ? "text-emerald-300"
+    : diagnostics.length
+      ? "text-red-300"
+      : "text-gray-300"
+
+  return `
+    <div class="flex min-h-0 flex-1 flex-col bg-[#12122a]">
+      <div class="border-b border-[${BORDER_COLOR}] px-4 py-4">
+        <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Editor context</div>
+        <div class="mt-3 grid gap-3 text-sm">
+          ${settingsRowHTML("File", currentFileNameHTML(sourceFileName, "font-mono text-sm text-white"))}
+          ${settingsRowHTML("Buffer", `<span class="${hasUnsavedChanges ? "text-amber-300" : "text-emerald-300"}">${hasUnsavedChanges ? "Unsaved changes" : "Saved"}</span>`)}
+          ${settingsRowHTML("Validation", `<span class="${validationClass}">${escapeHTML(statusLabel(validation, validating))}</span>`)}
+          ${settingsRowHTML("Connection", `<span class="${isOnline ? "text-emerald-300" : "text-red-300"}">${isOnline ? "Server online" : "Server offline"}</span>`)}
+        </div>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          ${toolbarButton(validating ? "Validating..." : "Validate", "click->system-editor#validateNow", !isOnline || validating, "h-9 px-3 text-xs")}
+          ${toolbarButton("Assistant settings", "click->system-editor#openAssistantSettings", false, "h-9 px-3 text-xs")}
+          ${toolbarButton("Open in Test", "click->system-editor#openInTest", !isOnline || !sourceFileName || hasUnsavedChanges, "h-9 px-3 text-xs")}
+        </div>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-auto px-4 py-4">
+        <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Diagnostics</div>
+        <div data-role="diagnostics-list" class="mt-3 flex flex-col gap-2">
+          ${diagnosticsHTML(diagnostics)}
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function settingsRowHTML(label: string, valueHTML: string): string {
+  return `
+    <div class="rounded-xl border border-white/10 bg-white/5 px-3 py-3">
+      <div class="text-[11px] uppercase tracking-[0.16em] text-gray-500">${escapeHTML(label)}</div>
+      <div class="mt-2 text-sm text-gray-200">${valueHTML}</div>
+    </div>
+  `
+}
+
+function providerRequiresApiKey(provider: string, apiBase?: string | null): boolean {
+  if (provider === "ollama") return false
+  if (provider === "openai" && apiBase?.trim()) return false
+  return true
+}
+
+function assistantConfiguredForProvider(provider: string, setting: LlmSettingPayload | null): boolean {
+  if (!setting?.model?.trim()) return false
+  return !providerRequiresApiKey(provider, setting.api_base) || Boolean(setting.api_key_present)
+}
+
 function assistantStatusHTML(
   settings: LlmSettingsPayload | null,
   configured: boolean | string,
@@ -474,7 +528,11 @@ function assistantStatusHTML(
   providerSetting: LlmSettingPayload | null,
 ): string {
   if (!settings) return "Assistant settings are unavailable"
-  if (!configured) return "Configure provider, model, and API key in Settings"
+  if (!configured) {
+    return providerRequiresApiKey(provider, providerSetting?.api_base)
+      ? "Configure provider, model, and API key in Settings"
+      : "Configure model and base URL in Settings"
+  }
 
   const model = providerSetting?.model || settings.model_suggestions_by_provider?.[provider]?.[0] || ""
   return `${escapeHTML(provider)} / <span class="font-mono text-white">${escapeHTML(model)}</span>`
@@ -484,15 +542,121 @@ function assistantChatOptionHTML(chat: AssistantChatSummary, selectedChatId: num
   return selectOptionHTML(String(chat.id), chat.title, selectedChatId === chat.id)
 }
 
-function assistantChatEmptyOptionHTML(loading: boolean): string {
+function assistantChatEmptyOptionHTML(loading: boolean, selected = true): string {
   const label = loading ? "Loading chats..." : "No chats"
   return `
     <option
       value=""
-      disabled
-      selected
+      ${selected ? "selected" : ""}
       style="background-color: ${BG_INPUT}; color: #ffffff;"
     >${escapeHTML(label)}</option>
+  `
+}
+
+function systemEditorAssistantPaneHTML({
+  configured,
+  assistantSettings,
+  selectedProvider,
+  selectedProviderSetting,
+  assistantChats,
+  assistantCurrentChat,
+  assistantChatsLoading,
+  assistantLoading,
+  assistantError,
+  assistantMessages,
+  assistantExpandedReasoningIds,
+  assistantInput,
+  state,
+}: {
+  configured: boolean
+  assistantSettings: LlmSettingsPayload | null
+  selectedProvider: string
+  selectedProviderSetting: LlmSettingPayload | null
+  assistantChats: AssistantChatSummary[]
+  assistantCurrentChat: AssistantChatSummary | null
+  assistantChatsLoading: boolean
+  assistantLoading: boolean
+  assistantError: string | null
+  assistantMessages: AssistantChatMessage[]
+  assistantExpandedReasoningIds: number[]
+  assistantInput: string
+  state: SystemEditorConfig
+}): string {
+  const selectedChatId = state.assistantChatId
+  const chatOptions = assistantChats.length
+    ? assistantChats.map(chat => assistantChatOptionHTML(chat, selectedChatId)).join("")
+    : assistantChatEmptyOptionHTML(assistantChatsLoading, !selectedChatId)
+  const assistantPlaceholder = configured
+    ? "Ask the assistant to generate, explain, or fix the system YAML..."
+    : (providerRequiresApiKey(selectedProvider, selectedProviderSetting?.api_base)
+        ? "Configure provider, model, and API key in Settings before using the assistant."
+        : "Configure model and base URL in Settings before using the assistant.")
+
+  return `
+    <div class="flex min-h-0 flex-1 flex-col bg-[${BG_MODAL}]">
+      <div class="border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-3">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-xs uppercase tracking-[0.18em] text-gray-500">LLM assistant</div>
+            <div class="mt-1 text-sm text-gray-300">${assistantStatusHTML(assistantSettings, configured, selectedProvider, selectedProviderSetting)}</div>
+          </div>
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <select
+              data-role="assistant-chat-select"
+              data-action="change->system-editor#selectAssistantChat"
+              class="h-10 min-w-0 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white md:min-w-44"
+              ${assistantChatsLoading ? "disabled" : ""}
+            >
+              ${chatOptions}
+            </select>
+            ${toolbarButton("New", "click->system-editor#createAssistantChat", assistantLoading || !configured, "h-10 px-3 text-xs")}
+            ${toolbarButton("Rename", "click->system-editor#renameAssistantChat", assistantLoading || !assistantCurrentChat, "h-10 px-3 text-xs")}
+            ${toolbarButton("Delete", "click->system-editor#deleteAssistantChat", assistantLoading || !assistantCurrentChat, "h-10 border-red-500/30 px-3 text-xs text-red-200 hover:bg-red-500/10 hover:text-red-100")}
+          </div>
+        </div>
+
+        ${assistantCurrentChat ? `
+          <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-400">
+            <span>${escapeHTML(assistantCurrentChat.title)}</span>
+            ${assistantCurrentChat.source_path ? `<span class="font-mono text-gray-300">${escapeHTML(assistantCurrentChat.source_path)}</span>` : ""}
+          </div>
+        ` : ""}
+
+        ${assistantError ? `
+          <div class="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+            ${escapeHTML(assistantError)}
+          </div>
+        ` : ""}
+      </div>
+
+      <div data-role="assistant-messages" class="min-h-0 flex-1 overflow-auto bg-[${BG_PANEL}] px-4 py-4">
+        ${assistantMessagesHTML({
+          configured,
+          loading: assistantLoading,
+          currentChat: assistantCurrentChat,
+          messages: assistantMessages,
+          expandedReasoningIds: assistantExpandedReasoningIds,
+        })}
+      </div>
+
+      <div class="border-t border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-4 py-4">
+        <div class="rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] p-3">
+          <textarea
+            data-role="assistant-input"
+            data-action="input->system-editor#updateAssistantInput keydown->system-editor#handleAssistantInputKeydown"
+            class="min-h-28 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none"
+            placeholder="${escapeHTML(assistantPlaceholder)}"
+            ${configured ? "" : "disabled"}
+          >${escapeHTML(assistantInput)}</textarea>
+          <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div class="text-xs text-gray-500">
+              Send with Ctrl/Cmd+Enter. Drafts are applied to the editor only after explicit confirmation.
+            </div>
+            ${toolbarButton(assistantLoading ? "Sending..." : "Send", "click->system-editor#sendAssistantMessage", assistantLoading || !configured || !assistantInput.trim(), "min-w-24", `data-role="assistant-send-button"`)}
+          </div>
+        </div>
+      </div>
+    </div>
   `
 }
 
@@ -627,6 +791,8 @@ function assistantSettingsModalHTML({
   modelSuggestions,
   selectedProviderSetting,
   saving,
+  checking,
+  checkResult,
 }: {
   modelListId: string
   settingsDraft: LlmSettingsDraft | null
@@ -634,6 +800,8 @@ function assistantSettingsModalHTML({
   modelSuggestions: string[]
   selectedProviderSetting: LlmSettingPayload | null
   saving: boolean
+  checking: boolean
+  checkResult: LlmConnectionCheckPayload | null
 }): string {
   const draft = settingsDraft || {
     provider: "gemini",
@@ -643,9 +811,16 @@ function assistantSettingsModalHTML({
     temperature: "0.2",
     max_output_tokens: "4000",
   }
-  const keyStatus = selectedProviderSetting?.api_key_present
-    ? "Saved key exists for this provider. Leave the field blank to keep it."
-    : "No saved key for this provider yet."
+  const keyStatus = providerRequiresApiKey(draft.provider, draft.api_base)
+    ? (selectedProviderSetting?.api_key_present
+        ? "Saved key exists for this provider. Leave the field blank to keep it."
+        : "No saved key for this provider yet.")
+    : "API key is optional for local or custom OpenAI-compatible endpoints."
+  const apiKeyPlaceholder = providerRequiresApiKey(draft.provider, draft.api_base)
+    ? "Leave blank to keep the saved key"
+    : "Optional for authenticated proxy"
+  const baseUrlHint = baseUrlHintHTML(draft.provider)
+  const checkBanner = connectionCheckBannerHTML(checkResult)
 
   return `
     <div
@@ -698,7 +873,7 @@ function assistantSettingsModalHTML({
               data-field="assistantSettings.apiKey"
               data-action="input->system-editor#updateAssistantSettingsField"
               class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
-              placeholder="Leave blank to keep the saved key"
+              placeholder="${escapeHTML(apiKeyPlaceholder)}"
               autocomplete="off"
             >
             <div class="mt-2 text-xs text-gray-500">${escapeHTML(keyStatus)}</div>
@@ -712,8 +887,9 @@ function assistantSettingsModalHTML({
               data-field="assistantSettings.apiBase"
               data-action="input->system-editor#updateAssistantSettingsField"
               class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
-              placeholder="Optional override"
+              placeholder="${escapeHTML(defaultApiBasePlaceholder(draft.provider))}"
             >
+            <div class="mt-2 text-xs leading-5 text-gray-500">${baseUrlHint}</div>
           </label>
 
           <label class="text-sm text-gray-300">
@@ -745,16 +921,57 @@ function assistantSettingsModalHTML({
           </label>
         </div>
 
+        ${checkBanner ? `<div class="px-6 pb-5">${checkBanner}</div>` : ""}
+
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-[${BORDER_COLOR}] px-6 py-4">
           <div class="text-xs leading-5 text-gray-500">
             Keys are stored server-side per user. The editor keeps drafts local until you explicitly save the YAML file.
           </div>
           <div class="flex items-center gap-2">
             ${toolbarButton("Cancel", "click->system-editor#closeAssistantSettings", saving)}
+            ${toolbarButton(checking ? "Checking..." : "Check connection", "click->system-editor#checkAssistantConnection", saving || checking)}
             ${toolbarButton(saving ? "Saving..." : "Save settings", "click->system-editor#saveAssistantSettings", saving)}
           </div>
         </div>
       </div>
+    </div>
+  `
+}
+
+function defaultApiBasePlaceholder(provider: string): string {
+  if (provider === "ollama") return "http://127.0.0.1:11434/v1"
+  if (provider === "openai") return "https://api.openai.com/v1 or http://127.0.0.1:8080/v1"
+  return "Optional override"
+}
+
+function baseUrlHintHTML(provider: string): string {
+  if (provider === "ollama") {
+    return "Ollama usually listens at <span class=\"font-mono text-gray-300\">http://127.0.0.1:11434/v1</span>. Host and port must match the running Ollama endpoint."
+  }
+
+  if (provider === "openai") {
+    return "For OpenAI-compatible local servers such as <span class=\"font-mono text-gray-300\">llama-server</span>, use <span class=\"font-mono text-gray-300\">http://127.0.0.1:8080/v1</span> on the same machine, or your LAN IP with the same port from another host. If the server was started with <span class=\"font-mono text-gray-300\">--host 0.0.0.0 --port 8080</span>, the client should still use <span class=\"font-mono text-gray-300\">127.0.0.1</span> or a real IP, not <span class=\"font-mono text-gray-300\">0.0.0.0</span>."
+  }
+
+  return "If you use a custom endpoint, Base URL must exactly match the running server, typically including <span class=\"font-mono text-gray-300\">/v1</span> for OpenAI-compatible APIs."
+}
+
+function connectionCheckBannerHTML(result: LlmConnectionCheckPayload | null): string {
+  if (!result) return ""
+
+  const toneClass = result.ok
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+    : "border-red-500/30 bg-red-500/10 text-red-100"
+
+  const metaLines = [
+    result.normalized_api_base ? `Base URL: ${result.normalized_api_base}` : "",
+    result.checked_url ? `Checked: ${result.checked_url}` : "",
+  ].filter(Boolean)
+
+  return `
+    <div class="rounded-xl border ${toneClass} px-4 py-3 text-sm">
+      <div>${escapeHTML(result.message)}</div>
+      ${metaLines.length ? `<div class="mt-2 space-y-1 text-xs opacity-80">${metaLines.map(line => `<div class="font-mono">${escapeHTML(line)}</div>`).join("")}</div>` : ""}
     </div>
   `
 }

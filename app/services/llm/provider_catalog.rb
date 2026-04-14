@@ -6,6 +6,7 @@ module Llm
       { value: 'openai', label: 'OpenAI' },
       { value: 'anthropic', label: 'Anthropic' },
       { value: 'gemini', label: 'Google Gemini' },
+      { value: 'ollama', label: 'Ollama' },
       { value: 'openrouter', label: 'OpenRouter' },
       { value: 'mistral', label: 'Mistral' },
       { value: 'xai', label: 'xAI' },

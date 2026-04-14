@@ -1,5 +1,7 @@
 import type { SystemEditorConfig } from "../types/store"
 
+export const SYSTEM_EDITOR_DEFAULT_SIDEBAR_WIDTH_PX = 384
+
 export function buildDefaultSystemEditorState(): SystemEditorConfig {
   return {
     systemId: "custom_system",
@@ -10,6 +12,9 @@ export function buildDefaultSystemEditorState(): SystemEditorConfig {
     searchQuery: "",
     assistantChatId: null,
     assistantSettingsProvider: null,
+    sidebarPane: "llm",
+    sidebarWidth: SYSTEM_EDITOR_DEFAULT_SIDEBAR_WIDTH_PX,
+    sidebarCollapsed: false,
   }
 }
 
@@ -31,6 +36,10 @@ export function normalizeSystemEditorState(state: SystemEditorConfig): void {
   if (typeof state.assistantSettingsProvider !== "string" && state.assistantSettingsProvider !== null) {
     state.assistantSettingsProvider = null
   }
+  if (state.sidebarPane !== "settings" && state.sidebarPane !== "llm") state.sidebarPane = "llm"
+  if (!Number.isFinite(state.sidebarWidth)) state.sidebarWidth = SYSTEM_EDITOR_DEFAULT_SIDEBAR_WIDTH_PX
+  state.sidebarWidth = Math.max(320, Math.min(720, state.sidebarWidth))
+  state.sidebarCollapsed = state.sidebarCollapsed === true
 }
 
 export function buildStarterSystemYaml(systemId = "custom_system"): string {

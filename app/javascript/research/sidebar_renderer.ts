@@ -15,6 +15,10 @@ export default class ResearchSidebarRenderer {
     private ctrl: string,
   ) {}
 
+  setSidebarEl(sidebarEl: HTMLElement): void {
+    this.sidebarEl = sidebarEl
+  }
+
   render(
     config: ResearchConfig,
     symbols: string[],

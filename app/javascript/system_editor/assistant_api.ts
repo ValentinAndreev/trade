@@ -24,6 +24,14 @@ export interface LlmSettingsPayload {
   settings_by_provider: Record<string, LlmSettingPayload>
 }
 
+export interface LlmConnectionCheckPayload {
+  ok: boolean
+  message: string
+  normalized_api_base: string | null
+  checked_url: string | null
+  models: string[]
+}
+
 export interface LlmSettingsDraft {
   provider: string
   model: string
@@ -134,6 +142,23 @@ export async function fetchLlmSettings(provider?: string | null): Promise<ApiRes
 
 export async function saveLlmSettings(payload: LlmSettingsDraft): Promise<ApiResult<LlmSettingsPayload>> {
   return buildResult<LlmSettingsPayload>(await apiFetch("/api/llm_settings", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      llm_setting: {
+        provider: payload.provider,
+        model: payload.model,
+        api_key: payload.api_key,
+        api_base: payload.api_base || null,
+        temperature: payload.temperature,
+        max_output_tokens: payload.max_output_tokens,
+      },
+    }),
+  }))
+}
+
+export async function checkLlmConnection(payload: LlmSettingsDraft): Promise<ApiResult<LlmConnectionCheckPayload>> {
+  return buildResult<LlmConnectionCheckPayload>(await apiFetch("/api/llm_settings/check", {
     method: "POST",
     headers: jsonHeaders(),
     body: JSON.stringify({

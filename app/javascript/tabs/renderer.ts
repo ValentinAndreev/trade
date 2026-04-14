@@ -4,7 +4,8 @@ import ResearchSidebarRenderer from "../research/sidebar_renderer"
 import type { ResearchCatalogEntry, ResearchValidatedSystem } from "../research/dsl"
 import PanelRenderer from "./panel_renderer"
 import { tabButtonHTML, addTabButtonHTML } from "../templates/panel_templates"
-import type { Tab, Panel } from "../types/store"
+import { assistantEmptyStateHTML, sidebarShellHTML } from "../templates/sidebar_shell_templates"
+import type { Tab, Panel, SidebarPane } from "../types/store"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 
 export interface ChartTabOption {
@@ -36,6 +37,40 @@ export interface TabRenderOpts {
   researchFilePickerDirectoryPath?: string
   researchFilePickerSelectedPath?: string | null
   researchValidationSystem?: ResearchValidatedSystem | null
+  activeSidebarPane: SidebarPane
+}
+
+type WorkspaceAssistantKind = "chart" | "data" | "research"
+type WorkspaceRenderer = (activeTab: Tab | undefined, opts: TabRenderOpts) => void
+
+const WORKSPACE_ASSISTANT_EMPTY_STATES: Record<WorkspaceAssistantKind, { title: string; body: string; bullets: string[] }> = {
+  chart: {
+    title: "Chart assistant",
+    body: "The assistant tab will orchestrate chart setup through internal tools instead of free-form analysis.",
+    bullets: [
+      "Build chart layouts, overlays, indicators, and labels.",
+      "Create linked data tabs from the active chart context.",
+      "Propose changes through preview and apply.",
+    ],
+  },
+  data: {
+    title: "Data assistant",
+    body: "The shared assistant shell is ready. Next step is wiring tools for data tabs so it can build selections, add modules, and draft filters without mutating state silently.",
+    bullets: [
+      "Context will come from the active data tab and linked chart tabs.",
+      "Changes should flow through draft, preview, and apply.",
+      "Research artifacts and project context will attach here later.",
+    ],
+  },
+  research: {
+    title: "Research assistant",
+    body: "This tab will use the LLM primarily for run analysis, comparisons, and artifact handling rather than replacing the DSL editor.",
+    bullets: [
+      "Analyze runs and summarize differences.",
+      "Trigger research tools and attach resulting artifacts.",
+      "Reuse project context without carrying the whole chat log.",
+    ],
+  },
 }
 
 export default class TabRenderer {
@@ -58,63 +93,171 @@ export default class TabRenderer {
   }
 
   render(opts: TabRenderOpts): void {
-    const { tabs, activeTabId, selectedPanelId, selectedOverlayId, symbols, timeframes, labelFn, indicators, labelModeActive, lineModeActive, vpEnabled, vpOpacity, hlModeActive, vlModeActive } = opts
+    const { tabs, activeTabId, labelFn } = opts
 
     this._renderTabBar(tabs, activeTabId, labelFn)
 
     const activeTab = tabs.find(t => t.id === activeTabId)
+    this._sidebarRendererFor(activeTab?.type)(activeTab, opts)
+  }
 
-    const hasLinkedData = tabs.some(t => t.type === "data" && t.dataConfig?.chartLinks?.length)
+  private _renderSidebarShell(activeTab: Tab, activePane: SidebarPane, subtitle: string): void {
+    this.sidebarEl.hidden = false
+    this.sidebarEl.innerHTML = sidebarShellHTML({
+      ctrl: this.ctrl,
+      tabType: activeTab.type,
+      title: activeTab.name || this._defaultTitle(activeTab),
+      subtitle,
+      activePane,
+    })
+  }
 
-    if (activeTab?.type === "data") {
-      this.sidebarEl.hidden = false
-      this.panels.renderDataTab(tabs, activeTabId)
-      if (activeTab.dataConfig) {
-        this.dataSidebar.setColumns(activeTab.dataConfig.columns)
-        this.dataSidebar.setConditions(activeTab.dataConfig.conditions)
-        this.dataSidebar.setSystems(activeTab.dataConfig.systems ?? [])
-      }
-      this.dataSidebar.render(activeTab, symbols, timeframes, opts.chartTabOptions || [])
-    } else if (activeTab?.type === "research") {
-      this.sidebarEl.hidden = false
-      this.panels.renderDataTab(tabs, activeTabId)
-      if (activeTab.researchConfig) {
-        this.researchSidebar.render(
-          activeTab.researchConfig,
-          symbols,
-          timeframes,
-          opts.researchCatalog || [],
-          opts.researchDirectories || [],
-          opts.researchFilePickerOpen || false,
-          opts.researchFilePickerQuery || "",
-          opts.researchFilePickerDirectoryPath || "",
-          opts.researchFilePickerSelectedPath || activeTab.researchConfig.systemPath || null,
-          opts.researchValidationSystem || null,
-        )
-      } else {
-        this.sidebarEl.innerHTML = ""
-      }
-    } else if (activeTab?.type === "system_editor") {
-      this.sidebarEl.hidden = true
-      this.sidebarEl.innerHTML = ""
-      this.panels.renderDataTab(tabs, activeTabId)
-    } else if (activeTab?.type === "system_stats") {
-      this.sidebarEl.hidden = true
-      this.sidebarEl.innerHTML = ""
-      this.panels.renderDataTab(tabs, activeTabId)
-    } else {
-      this.sidebarEl.hidden = false
-      this.panels.render(tabs, activeTabId, selectedPanelId)
-      if (hasLinkedData) this.panels.renderDataTab(tabs, activeTabId)
+  private _settingsPane(): HTMLElement | null {
+    return this.sidebarEl.querySelector<HTMLElement>("[data-sidebar-pane='settings']")
+  }
 
-      let panel: Panel | null = null
-      for (const tab of tabs) {
-        panel = tab.panels.find(p => p.id === selectedPanelId) ?? null
-        if (panel) break
-      }
-      this.sidebar.setLinkedSystems(activeTabId ?? "", tabs)
-      this.sidebar.render(panel, selectedOverlayId, symbols, timeframes, indicators, labelModeActive, lineModeActive, vpEnabled, vpOpacity, hlModeActive, vlModeActive)
+  private _llmPane(): HTMLElement | null {
+    return this.sidebarEl.querySelector<HTMLElement>("[data-sidebar-pane='llm']")
+  }
+
+  private _sidebarRendererFor(tabType: Tab["type"] | null | undefined): WorkspaceRenderer {
+    switch (tabType) {
+    case "data":
+      return this._renderDataWorkspace.bind(this)
+    case "research":
+      return this._renderResearchWorkspace.bind(this)
+    case "system_editor":
+    case "system_stats":
+      return this._renderTabWithoutSharedSidebar.bind(this)
+    case "chart":
+    default:
+      return this._renderChartWorkspace.bind(this)
     }
+  }
+
+  private _renderDataWorkspace(activeTab: Tab | undefined, opts: TabRenderOpts): void {
+    if (!activeTab || activeTab.type !== "data") return
+
+    this._renderSidebarShell(activeTab, opts.activeSidebarPane, this._sidebarSubtitle(activeTab))
+    this.panels.renderDataTab(opts.tabs, opts.activeTabId)
+
+    const settingsPane = this._settingsPane()
+    const llmPane = this._llmPane()
+    if (!settingsPane || !llmPane) return
+
+    if (activeTab.dataConfig) {
+      this.dataSidebar.sidebarEl = settingsPane
+      this.dataSidebar.setColumns(activeTab.dataConfig.columns)
+      this.dataSidebar.setConditions(activeTab.dataConfig.conditions)
+      this.dataSidebar.setSystems(activeTab.dataConfig.systems ?? [])
+    }
+    this.dataSidebar.render(activeTab, opts.symbols, opts.timeframes, opts.chartTabOptions || [])
+    this._renderAssistantPlaceholder(llmPane, "data")
+  }
+
+  private _renderResearchWorkspace(activeTab: Tab | undefined, opts: TabRenderOpts): void {
+    if (!activeTab || activeTab.type !== "research") return
+
+    this._renderSidebarShell(activeTab, opts.activeSidebarPane, this._sidebarSubtitle(activeTab))
+    this.panels.renderDataTab(opts.tabs, opts.activeTabId)
+
+    const settingsPane = this._settingsPane()
+    const llmPane = this._llmPane()
+    if (!settingsPane || !llmPane) return
+
+    if (activeTab.researchConfig) {
+      this.researchSidebar.setSidebarEl(settingsPane)
+      this.researchSidebar.render(
+        activeTab.researchConfig,
+        opts.symbols,
+        opts.timeframes,
+        opts.researchCatalog || [],
+        opts.researchDirectories || [],
+        opts.researchFilePickerOpen || false,
+        opts.researchFilePickerQuery || "",
+        opts.researchFilePickerDirectoryPath || "",
+        opts.researchFilePickerSelectedPath || activeTab.researchConfig.systemPath || null,
+        opts.researchValidationSystem || null,
+      )
+    } else {
+      settingsPane.innerHTML = ""
+    }
+    this._renderAssistantPlaceholder(llmPane, "research")
+  }
+
+  private _renderChartWorkspace(activeTab: Tab | undefined, opts: TabRenderOpts): void {
+    if (activeTab) this._renderSidebarShell(activeTab, opts.activeSidebarPane, this._sidebarSubtitle(activeTab))
+    this.panels.render(opts.tabs, opts.activeTabId, opts.selectedPanelId)
+    const hasLinkedData = opts.tabs.some(t => t.type === "data" && t.dataConfig?.chartLinks?.length)
+    if (hasLinkedData) this.panels.renderDataTab(opts.tabs, opts.activeTabId)
+
+    const settingsPane = this._settingsPane()
+    const llmPane = this._llmPane()
+    if (!settingsPane || !llmPane) return
+
+    let panel: Panel | null = null
+    for (const tab of opts.tabs) {
+      panel = tab.panels.find(p => p.id === opts.selectedPanelId) ?? null
+      if (panel) break
+    }
+    this.sidebar.sidebarEl = settingsPane
+    this.sidebar.setLinkedSystems(opts.activeTabId ?? "", opts.tabs)
+    this.sidebar.render(
+      panel,
+      opts.selectedOverlayId,
+      opts.symbols,
+      opts.timeframes,
+      opts.indicators,
+      opts.labelModeActive,
+      opts.lineModeActive,
+      opts.vpEnabled,
+      opts.vpOpacity,
+      opts.hlModeActive,
+      opts.vlModeActive,
+    )
+    this._renderAssistantPlaceholder(llmPane, "chart")
+  }
+
+  // ARCH DEBT: system_editor and system_stats bypass the shared sidebar shell entirely.
+  // Their sidebar is embedded in panel HTML and managed by system_editor_controller.
+  // See tabs_controller._tabSupportsGlobalSidebar for the full explanation.
+  private _renderTabWithoutSharedSidebar(_activeTab: Tab | undefined, opts: TabRenderOpts): void {
+    this.sidebarEl.innerHTML = ""
+    this.panels.renderDataTab(opts.tabs, opts.activeTabId)
+  }
+
+  private _renderAssistantPlaceholder(target: HTMLElement, kind: WorkspaceAssistantKind): void {
+    target.innerHTML = assistantEmptyStateHTML(WORKSPACE_ASSISTANT_EMPTY_STATES[kind])
+  }
+
+  private _defaultTitle(tab: Tab): string {
+    if (tab.type === "research") return "Test/Optimization"
+    if (tab.type === "data") return "Data"
+    if (tab.type === "system_editor") return "System editor"
+    if (tab.type === "system_stats") return "Stats"
+    return "Chart"
+  }
+
+  private _sidebarSubtitle(tab: Tab): string {
+    if (tab.type === "research") {
+      const config = tab.researchConfig
+      return [config?.symbol, config?.timeframe, config?.systemId || "No system"].filter(Boolean).join(" / ")
+    }
+    if (tab.type === "data") {
+      const config = tab.dataConfig
+      const parts = [
+        config?.symbols?.[0] || "No symbol",
+        config?.timeframe || "",
+        `${config?.columns?.length || 0} columns`,
+      ].filter(Boolean)
+      return parts.join(" / ")
+    }
+    if (tab.type === "chart") {
+      const symbol = tab.panels[0]?.overlays[0]?.symbol || "No symbol"
+      const timeframe = tab.panels[0]?.timeframe || ""
+      return [symbol, timeframe].filter(Boolean).join(" / ")
+    }
+    return ""
   }
 
   _renderTabBar(tabs: Tab[], activeTabId: string | null, labelFn?: (tab: Tab) => string): void {

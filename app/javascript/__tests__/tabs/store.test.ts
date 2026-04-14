@@ -116,6 +116,7 @@ describe("TabStore", () => {
       const tab = store.addSystemEditorTab()
 
       expect(tab.type).toBe("system_editor")
+      expect(tab.sidebarPane).toBeUndefined()
       expect(tab.systemEditorConfig?.systemId).toBe("custom_system")
       expect(tab.systemEditorConfig?.sourceSystemId).toBeNull()
       expect(tab.systemEditorConfig?.systemYaml).toBe("")
@@ -123,6 +124,14 @@ describe("TabStore", () => {
       expect(tab.systemEditorConfig?.assistantSettingsProvider).toBeNull()
       expect(store.tabLabel(tab)).toBe("System editor")
       expect(store.activeTabId).toBe(tab.id)
+    })
+
+    it("does not allow shared sidebar pane updates for system editor tabs", () => {
+      const tab = store.addSystemEditorTab()
+
+      expect(store.setTabSidebarPane(tab.id, "settings")).toBe(false)
+      expect(tab.sidebarPane).toBeUndefined()
+      expect(tab.systemEditorConfig?.sidebarPane).toBe("llm")
     })
   })
 

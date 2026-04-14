@@ -6,6 +6,7 @@ module Llm
       'openai' => :openai_api_key,
       'anthropic' => :anthropic_api_key,
       'gemini' => :gemini_api_key,
+      'ollama' => :ollama_api_key,
       'openrouter' => :openrouter_api_key,
       'mistral' => :mistral_api_key,
       'xai' => :xai_api_key,
@@ -17,6 +18,7 @@ module Llm
       'openai' => :openai_api_base,
       'anthropic' => :anthropic_api_base,
       'gemini' => :gemini_api_base,
+      'ollama' => :ollama_api_base,
       'openrouter' => :openrouter_api_base,
       'deepseek' => :deepseek_api_base
     }.freeze

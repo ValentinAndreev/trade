@@ -1,4 +1,10 @@
 import { loadTabs, saveTabs, loadActiveTabId, saveActiveTabId } from "../tabs/persistence"
+import {
+  loadSidebarPrefsRecord,
+  saveSidebarPrefsRecord,
+  type SidebarPrefs,
+  type SidebarPrefsRecord,
+} from "../tabs/sidebar_prefs"
 import { jsonHeaders } from "../utils/api_helpers"
 import type { PresetInfo } from "../types/markets"
 import type { Tab } from "../types/store"
@@ -7,13 +13,15 @@ const ACTIVE_PRESET_KEY = "active-preset"
 const NAV_PAGE_KEY = "nav-active-page"
 
 /** Increment when the preset schema changes. */
-export const PRESET_VERSION = 2
+export const PRESET_VERSION = 3
 
 export interface PresetPayload {
   version: number
   tabs: Tab[]
   activeTabId: string | null
   navPage: string
+  sidebarPrefs?: SidebarPrefs
+  sidebarPrefsByScope: SidebarPrefsRecord
   dashboardSymbols?: unknown
   marketsSymbols?: unknown
 }
@@ -80,6 +88,7 @@ export async function collectState(): Promise<PresetPayload> {
   const tabs = loadTabs()
   const activeTabId = loadActiveTabId()
   const navPage = localStorage.getItem(NAV_PAGE_KEY) || "main"
+  const sidebarPrefsByScope = loadSidebarPrefsRecord()
 
   let dashboardSymbols = null
   let marketsSymbols = null
@@ -92,7 +101,7 @@ export async function collectState(): Promise<PresetPayload> {
     }
   } catch { /* offline */ }
 
-  return { version: PRESET_VERSION, tabs, activeTabId, navPage, dashboardSymbols, marketsSymbols }
+  return { version: PRESET_VERSION, tabs, activeTabId, navPage, sidebarPrefsByScope, dashboardSymbols, marketsSymbols }
 }
 
 export async function applyState(payload: Partial<PresetPayload> | null): Promise<void> {
@@ -101,6 +110,14 @@ export async function applyState(payload: Partial<PresetPayload> | null): Promis
   if (payload.tabs) saveTabs(payload.tabs)
   if (payload.activeTabId) saveActiveTabId(payload.activeTabId)
   if (payload.navPage) localStorage.setItem(NAV_PAGE_KEY, payload.navPage)
+  if (payload.sidebarPrefsByScope) saveSidebarPrefsRecord(payload.sidebarPrefsByScope)
+  else if (payload.sidebarPrefs) {
+    saveSidebarPrefsRecord({
+      chart: payload.sidebarPrefs,
+      data: payload.sidebarPrefs,
+      research: payload.sidebarPrefs,
+    })
+  }
 
   if (payload.dashboardSymbols || payload.marketsSymbols) {
     try {
@@ -121,6 +138,7 @@ export async function applyState(payload: Partial<PresetPayload> | null): Promis
 export async function resetState(): Promise<void> {
   localStorage.removeItem("chart-tabs")
   localStorage.removeItem("chart-active-tab")
+  localStorage.removeItem("chart-sidebar-prefs")
   localStorage.removeItem(NAV_PAGE_KEY)
   setActivePreset(null)
 

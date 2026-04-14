@@ -10,6 +10,14 @@ vi.mock("../../tabs/persistence", () => ({
   loadActiveTabId: vi.fn(() => null),
   saveActiveTabId: vi.fn(),
 }))
+vi.mock("../../tabs/sidebar_prefs", () => ({
+  loadSidebarPrefsRecord: vi.fn(() => ({
+    chart: { widthPx: 352, collapsed: false },
+    data: { widthPx: 400, collapsed: false },
+    research: { widthPx: 448, collapsed: true },
+  })),
+  saveSidebarPrefsRecord: vi.fn(),
+}))
 
 import {
   getActivePreset, setActivePreset, listPresets,
@@ -17,11 +25,24 @@ import {
   PRESET_VERSION,
 } from "../../services/presets"
 import { saveTabs, saveActiveTabId } from "../../tabs/persistence"
+import { loadSidebarPrefsRecord, saveSidebarPrefsRecord } from "../../tabs/sidebar_prefs"
+
+function createLocalStorageMock(): Storage {
+  const store = new Map<string, string>()
+  return {
+    get length() { return store.size },
+    clear: () => store.clear(),
+    getItem: key => store.get(key) ?? null,
+    key: index => Array.from(store.keys())[index] ?? null,
+    removeItem: key => { store.delete(key) },
+    setItem: (key, value) => { store.set(key, String(value)) },
+  }
+}
 
 describe("presets service", () => {
   beforeEach(() => {
-    localStorage.clear()
     vi.restoreAllMocks()
+    vi.stubGlobal("localStorage", createLocalStorageMock())
     vi.stubGlobal("fetch", vi.fn())
   })
 
@@ -115,6 +136,12 @@ describe("presets service", () => {
       expect(result).toHaveProperty("tabs")
       expect(result).toHaveProperty("activeTabId")
       expect(result.navPage).toBe("main")
+      expect(result.sidebarPrefsByScope).toEqual({
+        chart: { widthPx: 352, collapsed: false },
+        data: { widthPx: 400, collapsed: false },
+        research: { widthPx: 448, collapsed: true },
+      })
+      expect(loadSidebarPrefsRecord).toHaveBeenCalled()
     })
 
     it("reads navPage from localStorage", async () => {
@@ -158,6 +185,30 @@ describe("presets service", () => {
       expect(localStorage.getItem("nav-active-page")).toBe("chart")
     })
 
+    it("restores sidebar prefs by scope", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 200 }))
+      const sidebarPrefsByScope = {
+        chart: { widthPx: 360, collapsed: false },
+        data: { widthPx: 420, collapsed: true },
+        research: { widthPx: 500, collapsed: false },
+      }
+
+      await applyState({ version: PRESET_VERSION, tabs: [], activeTabId: null, navPage: "main", sidebarPrefsByScope })
+      expect(saveSidebarPrefsRecord).toHaveBeenCalledWith(sidebarPrefsByScope)
+    })
+
+    it("restores legacy global sidebar prefs for backwards compatibility", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 200 }))
+      const sidebarPrefs = { widthPx: 380, collapsed: true }
+
+      await applyState({ version: 2, tabs: [], activeTabId: null, navPage: "main", sidebarPrefs })
+      expect(saveSidebarPrefsRecord).toHaveBeenCalledWith({
+        chart: sidebarPrefs,
+        data: sidebarPrefs,
+        research: sidebarPrefs,
+      })
+    })
+
     it("syncs server symbols when present", async () => {
       vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 200 }))
       await applyState({ version: PRESET_VERSION, tabs: [], activeTabId: null, navPage: "main", dashboardSymbols: ["BTC"] })
@@ -169,6 +220,7 @@ describe("presets service", () => {
     it("clears all localStorage keys", async () => {
       localStorage.setItem("chart-tabs", "[1]")
       localStorage.setItem("chart-active-tab", "tab-1")
+      localStorage.setItem("chart-sidebar-prefs", "{\"chart\":{\"widthPx\":352,\"collapsed\":false}}")
       localStorage.setItem("nav-active-page", "chart")
       setActivePreset({ id: 1, name: "X" })
       vi.mocked(fetch).mockResolvedValue(new Response("", { status: 200 }))
@@ -176,6 +228,7 @@ describe("presets service", () => {
       await resetState()
       expect(localStorage.getItem("chart-tabs")).toBeNull()
       expect(localStorage.getItem("chart-active-tab")).toBeNull()
+      expect(localStorage.getItem("chart-sidebar-prefs")).toBeNull()
       expect(localStorage.getItem("nav-active-page")).toBeNull()
       expect(getActivePreset()).toBeNull()
     })

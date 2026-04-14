@@ -52,6 +52,7 @@ export default class TabStore {
       id: `tab-${this._nextTabId++}`,
       name: null,
       type: "chart",
+      sidebarPane: "settings",
       primaryPanelId: panelId,
       maximizedPanelId: null,
       panels: [{
@@ -111,6 +112,15 @@ export default class TabStore {
     const tab = this.tabs.find(t => t.id === tabId)
     if (!tab) return false
     tab.name = name || null
+    this._save()
+    return true
+  }
+
+  setTabSidebarPane(tabId: string, pane: "settings" | "llm"): boolean {
+    const tab = this.tabs.find(t => t.id === tabId)
+    if (!tab) return false
+    if (tab.type !== "chart" && tab.type !== "data" && tab.type !== "research") return false
+    tab.sidebarPane = pane
     this._save()
     return true
   }
@@ -589,6 +599,7 @@ export default class TabStore {
       id: `tab-${this._nextTabId++}`,
       name: `Data${dataTabCount + 1}`,
       type: "data",
+      sidebarPane: "settings",
       panels: [],
       dataConfig: {
         symbols,
@@ -664,6 +675,7 @@ export default class TabStore {
       id: `tab-${this._nextTabId++}`,
       name: researchCount === 0 ? "Test/Optimization" : `Test/Optimization ${researchCount + 1}`,
       type: "research",
+      sidebarPane: "settings",
       panels: [],
       researchConfig: buildDefaultResearchState({
         symbols: [symbol],

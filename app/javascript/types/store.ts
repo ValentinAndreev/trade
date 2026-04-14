@@ -1,4 +1,5 @@
 export type TabType = "chart" | "data" | "system_stats" | "research" | "system_editor"
+export type SidebarPane = "settings" | "llm"
 
 export type ResearchMetricKey =
   | "netProfit"
@@ -50,6 +51,9 @@ export interface SystemEditorConfig {
   searchQuery: string
   assistantChatId: number | null
   assistantSettingsProvider: string | null
+  sidebarPane: SidebarPane
+  sidebarWidth: number
+  sidebarCollapsed: boolean
 }
 
 export interface ResearchRunPayload {
@@ -66,6 +70,7 @@ export interface Tab {
   id: string;
   name: string | null;
   type: TabType;
+  sidebarPane?: SidebarPane;
   panels: Panel[];
   maximizedPanelId?: string | null;
   dataConfig?: DataConfig;
