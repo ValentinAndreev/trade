@@ -22,9 +22,10 @@ export function loginButtonHTML(): string {
   return `<button data-action="click->auth#showLoginForm" class="text-gray-400 hover:text-white text-sm px-2 py-1 rounded hover:bg-[#2a2a3e] transition-colors">Login</button>`
 }
 
-export function loginFormHTML(): string {
+export function loginFormHTML(required = false): string {
   return `
     <h3 class="text-white text-lg font-semibold mb-4">Login</h3>
+    ${required ? '<p class="text-gray-400 text-sm mb-4">Login or register to use the app.</p>' : ""}
     <form data-action="submit->auth#doLogin">
       <input name="username" placeholder="Username" autocomplete="username" class="${INPUT_CLASS}" />
       <input name="password" type="password" placeholder="Password" autocomplete="current-password" class="${INPUT_CLASS}" />
@@ -32,15 +33,16 @@ export function loginFormHTML(): string {
       <div class="flex gap-2">
         <button type="submit" class="${BTN_PRIMARY}">Login</button>
         <button type="button" data-action="click->auth#showRegisterForm" class="${BTN_LINK}">Register</button>
-        <button type="button" data-action="click->auth#closeModal" class="${BTN_CANCEL}">Cancel</button>
+        ${required ? "" : `<button type="button" data-action="click->auth#closeModal" class="${BTN_CANCEL}">Cancel</button>`}
       </div>
     </form>
   `
 }
 
-export function registerFormHTML(): string {
+export function registerFormHTML(required = false): string {
   return `
     <h3 class="text-white text-lg font-semibold mb-4">Register</h3>
+    ${required ? '<p class="text-gray-400 text-sm mb-4">Create an account to use the app.</p>' : ""}
     <form data-action="submit->auth#doRegister">
       <input name="username" placeholder="Username" autocomplete="username" class="${INPUT_CLASS}" />
       <input name="password" type="password" placeholder="Password (min 4 chars)" autocomplete="new-password" class="${INPUT_CLASS}" />
@@ -48,7 +50,7 @@ export function registerFormHTML(): string {
       <div class="flex gap-2">
         <button type="submit" class="${BTN_SUCCESS}">Register</button>
         <button type="button" data-action="click->auth#showLoginForm" class="${BTN_LINK}">Back to Login</button>
-        <button type="button" data-action="click->auth#closeModal" class="${BTN_CANCEL}">Cancel</button>
+        ${required ? "" : `<button type="button" data-action="click->auth#closeModal" class="${BTN_CANCEL}">Cancel</button>`}
       </div>
     </form>
   `

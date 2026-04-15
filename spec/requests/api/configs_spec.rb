@@ -3,7 +3,11 @@
 require 'rails_helper'
 
 RSpec.describe 'Api::Configs' do
+  let!(:user) { create(:user, password: 'password123') }
+
   describe 'GET /api/configs' do
+    before { sign_in(user) }
+
     it 'returns symbols and timeframes' do
       get '/api/configs'
       expect(response).to have_http_status(:ok)

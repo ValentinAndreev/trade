@@ -1,0 +1,25 @@
+module Api
+  class LlmSettingsController < ApplicationController
+    def show: () -> void
+    def create: () -> void
+    def check: () -> void
+    def launch: () -> void
+    def stop: () -> void
+
+    private
+
+    def setting_params: () -> ActionController::Parameters
+    def selected_setting: () -> LlmSetting
+    def normalized_provider: (String? value, ?fallback: String?) -> String
+    def response_payload: (LlmSetting setting) -> Hash[Symbol, untyped]
+    def default_provider: () -> String
+    def default_temperature: () -> Float
+    def default_max_output_tokens: () -> Integer
+    def defaults_json: () -> Hash[Symbol, untyped]
+    def settings_by_provider_json: () -> Hash[String, Hash[Symbol, untyped]]
+    def launch_status_json: (LlmSetting setting) -> Hash[Symbol, untyped]?
+    def build_setting_from_params: (?persist: bool) -> LlmSetting
+    def setting_attributes_for: (String provider) -> Hash[String, untyped]
+    def render_unprocessable_entity: (Llm::Error error) -> void
+  end
+end

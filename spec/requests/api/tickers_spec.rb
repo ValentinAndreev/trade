@@ -3,6 +3,7 @@
 require 'rails_helper'
 
 RSpec.describe 'Api::Tickers', :symbol_store do
+  let!(:user) { create(:user, password: 'password123') }
   let(:bitfinex_ticker_response) do
     [
       [ 'tBTCUSD', 0, 0, 0, 0, 500.0, 0.01, 50_000.0, 1000.0, 51_000.0, 49_000.0 ]
@@ -10,6 +11,7 @@ RSpec.describe 'Api::Tickers', :symbol_store do
   end
 
   before do
+    sign_in(user)
     stub_request(:get, %r{api-pub\.bitfinex\.com/v2/tickers})
       .to_return(status: 200, body: bitfinex_ticker_response.to_json, headers: { 'Content-Type' => 'application/json' })
     Rails.cache.clear

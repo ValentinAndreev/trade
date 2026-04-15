@@ -1,0 +1,8 @@
+module Llm
+  class RuntimeContext
+    API_KEY_OPTIONS: Hash[String, Symbol]
+    API_BASE_OPTIONS: Hash[String, Symbol]
+
+    def self.build: (LlmSetting setting) -> untyped
+  end
+end

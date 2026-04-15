@@ -1,0 +1,11 @@
+module Llm
+  class PromptLibrary
+    def self.render: (String | Symbol path, **untyped locals) -> String
+    def self.load_yaml: (String | Symbol path) -> Hash[untyped, untyped]
+
+    private
+
+    def self.prompt_path: (String | Symbol path, default_extension: String) -> Pathname
+    def self.read_cached: (Pathname resolved_path) -> String
+  end
+end

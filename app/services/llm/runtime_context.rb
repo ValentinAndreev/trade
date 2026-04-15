@@ -18,18 +18,22 @@ module Llm
       'anthropic' => :anthropic_api_base,
       'gemini' => :gemini_api_base,
       'openrouter' => :openrouter_api_base,
-      'deepseek' => :deepseek_api_base
+      'deepseek' => :deepseek_api_base,
+      'ollama' => :ollama_api_base,
+      'llama' => :ollama_api_base
     }.freeze
 
     class << self
       def build(setting)
+        runtime_provider = Llm::ProviderCatalog.runtime_provider(setting.provider)
+
         RubyLLM.context do |config|
           config.default_model = setting.model
 
-          api_key_option = API_KEY_OPTIONS[setting.provider]
+          api_key_option = API_KEY_OPTIONS[runtime_provider]
           config.public_send("#{api_key_option}=", setting.api_key) if api_key_option && setting.api_key.present?
 
-          api_base_option = API_BASE_OPTIONS[setting.provider]
+          api_base_option = API_BASE_OPTIONS[runtime_provider]
           config.public_send("#{api_base_option}=", setting.api_base) if api_base_option && setting.api_base.present?
         end
       end

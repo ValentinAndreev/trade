@@ -19,6 +19,8 @@ export const BG_TOOLBAR  = "#10101f"   // toolbar / status bar
 export const BG_INPUT    = "#0f1020"   // input / textarea
 export const BG_PANEL    = "#0d0e1c"   // darker panel / aside
 export const TEXT_MUTED  = "#9ca3af"   // muted text / labels
+export const MODAL_GLASS_STYLE = "background-color: rgba(17, 18, 35, 0.82); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);"
+export const POPOVER_GLASS_STYLE = "background-color: rgba(17, 18, 35, 0.78); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);"
 
 export const CHART_THEME: DeepPartial<ChartOptions> = {
   layout: { background: { color: BG_PRIMARY }, textColor: "#e0e0e0" },

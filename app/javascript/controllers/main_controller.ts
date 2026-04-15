@@ -1,5 +1,6 @@
 import { Controller } from "@hotwired/stimulus"
 import { apiFetch } from "../services/api_fetch"
+import auth from "../services/auth"
 import connectionMonitor from "../services/connection_monitor"
 import { showToast } from "../services/toast"
 import { TICKER_POLL_INTERVAL_MS } from "../config/constants"
@@ -21,19 +22,44 @@ export default class extends Controller {
   private _marketsInterval: ReturnType<typeof setInterval> | null = null
   private _marketsAvailable: Record<string, string[]> = {}
   private _marketsLabels: Record<string, string> = {}
+  private _onAuthChange = () => {
+    if (auth.isLoggedIn) {
+      this._startPolling()
+    } else {
+      this._stopPolling()
+      if (this.hasGridTarget) this.gridTarget.innerHTML = ""
+      if (this.hasIndicesGridTarget) this.indicesGridTarget.innerHTML = ""
+      if (this.hasForexGridTarget) this.forexGridTarget.innerHTML = ""
+      if (this.hasCommoditiesGridTarget) this.commoditiesGridTarget.innerHTML = ""
+    }
+  }
 
   connect() {
-    this._fetchAndRender()
-    this._fetchMarkets()
-    this._interval = setInterval(() => this._fetchAndRender(), TICKER_POLL_INTERVAL_MS)
-    this._marketsInterval = setInterval(() => this._fetchMarkets(), TICKER_POLL_INTERVAL_MS)
+    window.addEventListener("auth:change", this._onAuthChange)
+    this._onAuthChange()
     document.addEventListener("click", this._closeDropdown)
   }
 
   disconnect() {
+    this._stopPolling()
+    window.removeEventListener("auth:change", this._onAuthChange)
+    document.removeEventListener("click", this._closeDropdown)
+  }
+
+  _startPolling() {
+    if (this._interval || this._marketsInterval) return
+
+    this._fetchAndRender()
+    this._fetchMarkets()
+    this._interval = setInterval(() => this._fetchAndRender(), TICKER_POLL_INTERVAL_MS)
+    this._marketsInterval = setInterval(() => this._fetchMarkets(), TICKER_POLL_INTERVAL_MS)
+  }
+
+  _stopPolling() {
     if (this._interval) clearInterval(this._interval)
     if (this._marketsInterval) clearInterval(this._marketsInterval)
-    document.removeEventListener("click", this._closeDropdown)
+    this._interval = null
+    this._marketsInterval = null
   }
 
   _closeDropdown = (e: MouseEvent) => {

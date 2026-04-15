@@ -1,0 +1,28 @@
+module Llm
+  class LlamaServerManager
+    FORBIDDEN_EXTRA_ARGS: Array[String]
+
+    def initialize: (LlmSetting setting) -> void
+    def status: () -> Hash[Symbol, untyped]
+    def launch!: () -> Hash[Symbol, untyped]
+    def stop!: () -> Hash[Symbol, untyped]
+
+    private
+
+    @setting: LlmSetting
+
+    def setting: () -> LlmSetting
+    def llama_provider?: () -> bool
+    def unsupported_status: () -> Hash[Symbol, untyped]
+    def validate_config!: (Hash[String, untyped] config) -> void
+    def build_command: (Hash[String, untyped] config) -> Array[String]
+    def next_log_path: () -> String
+    def process_alive?: (Integer pid) -> bool
+    def wait_for_exit: (Integer pid, ?timeout: Numeric) -> void
+    def endpoint_reachable?: () -> bool
+    def status_message: (running: bool, reachable: bool, config: Hash[String, untyped]) -> String
+
+    def self.build_api_base: (Hash[untyped, untyped] config) -> String
+    def self.normalize_config: (Hash[untyped, untyped]? config) -> Hash[String, untyped]
+  end
+end

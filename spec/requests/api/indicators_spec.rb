@@ -3,7 +3,11 @@
 require 'rails_helper'
 
 RSpec.describe 'Api::Indicators' do
+  let!(:user) { create(:user, password: 'password123') }
+
   describe 'GET /api/indicators' do
+    before { sign_in(user) }
+
     it 'returns available indicators' do
       get '/api/indicators'
       expect(response).to have_http_status(:ok)
@@ -17,6 +21,7 @@ RSpec.describe 'Api::Indicators' do
 
   describe 'POST /api/indicators/:type/compute' do
     before do
+      sign_in(user)
       Rails.cache.clear
       50.times do |i|
         create(:candle, symbol: 'BTCUSD', timeframe: '1m',

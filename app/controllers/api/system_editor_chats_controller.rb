@@ -36,7 +36,7 @@ class Api::SystemEditorChatsController < Api::ApplicationController
   def create_message
     provider = params[:provider].presence
     setting = provider ? current_user.llm_setting_for(provider) : current_user.active_llm_setting
-    return render json: { error: 'LLM settings are not configured' }, status: :unprocessable_content unless setting&.api_key.present?
+    return render json: { error: 'LLM settings are not configured' }, status: :unprocessable_content unless llm_setting_configured?(setting)
 
     result = Llm::SystemEditor::ChatRunner.new(
       user: current_user,
@@ -48,7 +48,7 @@ class Api::SystemEditorChatsController < Api::ApplicationController
     )
 
     render json: chat_payload(result.chat)
-  rescue RubyLLM::Error, ArgumentError => e
+  rescue RubyLLM::Error, Llm::Error => e
     render json: { error: e.message }, status: :unprocessable_content
   end
 
@@ -67,6 +67,8 @@ class Api::SystemEditorChatsController < Api::ApplicationController
       diagnostics: %i[message line column length code path]
     )
   end
+
+  def llm_setting_configured?(setting) = Llm::ProviderCatalog.setting_configured?(setting)
 
   def chat_payload(chat) = Llm::SystemEditor::ChatPayloadBuilder.call(chat)
 end

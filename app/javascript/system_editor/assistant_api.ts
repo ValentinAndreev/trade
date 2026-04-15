@@ -9,16 +9,56 @@ export interface LlmSettingPayload {
   temperature: number
   max_output_tokens: number
   api_key_present: boolean
+  api_key_required: boolean
+  launch_config: LlmLaunchConfigPayload
 }
 
 export interface LlmProviderOption {
   value: string
   label: string
+  api_key_required: boolean
+  default_model: string
+  default_api_base: string | null
+  launchable: boolean
+}
+
+export interface LlmLaunchConfigPayload {
+  binary_path: string
+  model_path: string
+  bind_host: string
+  client_host: string
+  port: number
+  extra_args: string
+}
+
+export interface LlmLaunchStatusPayload {
+  supported: boolean
+  configured: boolean
+  running: boolean
+  reachable: boolean
+  pid: number | null
+  api_base: string | null
+  log_path: string | null
+  started_at: string | null
+  message: string | null
+}
+
+export interface LlmConnectionCheckPayload {
+  ok: boolean
+  checked_url: string | null
+  models: string[]
+  error: string | null
 }
 
 export interface LlmSettingsPayload {
   setting: LlmSettingPayload
+  defaults: {
+    provider: string
+    temperature: number
+    max_output_tokens: number
+  }
   providers: LlmProviderOption[]
+  launch_status: LlmLaunchStatusPayload | null
   model_suggestions: string[]
   model_suggestions_by_provider: Record<string, string[]>
   settings_by_provider: Record<string, LlmSettingPayload>
@@ -31,6 +71,12 @@ export interface LlmSettingsDraft {
   api_base: string
   temperature: string
   max_output_tokens: string
+  launch_binary_path: string
+  launch_model_path: string
+  launch_bind_host: string
+  launch_client_host: string
+  launch_port: string
+  launch_extra_args: string
 }
 
 export interface AssistantChatSummary {
@@ -132,6 +178,17 @@ export async function fetchLlmSettings(provider?: string | null): Promise<ApiRes
   return buildResult<LlmSettingsPayload>(await apiFetch(url, { headers: jsonHeaders() }, { silent: true }))
 }
 
+function buildLaunchConfig(payload: LlmSettingsDraft) {
+  return {
+    binary_path: payload.launch_binary_path,
+    model_path: payload.launch_model_path,
+    bind_host: payload.launch_bind_host,
+    client_host: payload.launch_client_host,
+    port: payload.launch_port,
+    extra_args: payload.launch_extra_args,
+  }
+}
+
 export async function saveLlmSettings(payload: LlmSettingsDraft): Promise<ApiResult<LlmSettingsPayload>> {
   return buildResult<LlmSettingsPayload>(await apiFetch("/api/llm_settings", {
     method: "POST",
@@ -144,8 +201,51 @@ export async function saveLlmSettings(payload: LlmSettingsDraft): Promise<ApiRes
         api_base: payload.api_base || null,
         temperature: payload.temperature,
         max_output_tokens: payload.max_output_tokens,
+        launch_config: buildLaunchConfig(payload),
       },
     }),
+  }))
+}
+
+export async function checkLlmConnection(payload: LlmSettingsDraft): Promise<ApiResult<{ connection: LlmConnectionCheckPayload }>> {
+  return buildResult<{ connection: LlmConnectionCheckPayload }>(await apiFetch("/api/llm_settings/check", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      llm_setting: {
+        provider: payload.provider,
+        model: payload.model,
+        api_key: payload.api_key,
+        api_base: payload.api_base || null,
+        launch_config: buildLaunchConfig(payload),
+      },
+    }),
+  }))
+}
+
+export async function launchLlamaServer(payload: LlmSettingsDraft): Promise<ApiResult<LlmSettingsPayload>> {
+  return buildResult<LlmSettingsPayload>(await apiFetch("/api/llm_settings/launch", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      llm_setting: {
+        provider: payload.provider,
+        model: payload.model,
+        api_key: payload.api_key,
+        api_base: payload.api_base || null,
+        temperature: payload.temperature,
+        max_output_tokens: payload.max_output_tokens,
+        launch_config: buildLaunchConfig(payload),
+      },
+    }),
+  }))
+}
+
+export async function stopLlamaServer(provider: string): Promise<ApiResult<LlmSettingsPayload>> {
+  return buildResult<LlmSettingsPayload>(await apiFetch("/api/llm_settings/stop", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ provider }),
   }))
 }
 

@@ -1,0 +1,12 @@
+class LlmConfig < ApplicationConfig
+  FALLBACK_PROVIDER: String
+
+  def default_provider: () -> String
+  def default_temperature: () -> Float
+  def default_max_output_tokens: () -> Integer
+  def llama_default_binary_path: () -> String
+  def llama_default_bind_host: () -> String
+  def llama_default_client_host: () -> String
+  def llama_default_port: () -> Integer
+  def llama_allowed_binary_names: () -> Array[String]
+end

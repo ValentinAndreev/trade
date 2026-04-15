@@ -137,5 +137,39 @@ RSpec.describe 'Api::SystemEditorChats' do
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body['error']).to include('LLM settings')
     end
+
+    it 'allows sending with a local endpoint that does not require an API key' do
+      chat = user.ai_chats.create!(title: 'Alpha chat', source_path: 'systems/alpha.yml', system_id: 'alpha')
+      user.llm_settings.create!(
+        provider: 'openai',
+        model: 'qwen3.5_9B',
+        api_base: 'http://127.0.0.1:8080/v1',
+        temperature: 0.2,
+        max_output_tokens: 4000
+      )
+
+      runner = instance_double(Llm::SystemEditor::ChatRunner)
+      allow(Llm::SystemEditor::ChatRunner).to receive(:new).and_return(runner)
+      allow(runner).to receive(:call) do
+        chat.ai_messages.create!(role: 'user', content: 'What model are you?')
+        assistant_message = chat.ai_messages.create!(role: 'assistant', content: 'qwen3.5_9B')
+        Result.new(chat: chat.reload, assistant_message:)
+      end
+
+      post "/api/system_editor_chats/#{chat.id}/messages", params: {
+        provider: 'openai',
+        content: 'What model are you?',
+        editor_context: {
+          system_yaml: "id: alpha\nname: Alpha",
+          system_id: 'alpha',
+          source_path: 'systems/alpha.yml',
+          yaml_hash: 'abc123',
+          diagnostics: []
+        }
+      }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['messages'].map { |message| message['role'] }).to eq(%w[user assistant])
+    end
   end
 end

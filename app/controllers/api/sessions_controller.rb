@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class Api::SessionsController < Api::ApplicationController
+  skip_before_action :require_auth
+
   def create
     user = User.find_by(username: params[:username])
 

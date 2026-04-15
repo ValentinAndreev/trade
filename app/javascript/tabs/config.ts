@@ -13,7 +13,7 @@ export async function fetchConfig(): Promise<AppConfig> {
       apiFetch("/api/configs", {}, { silent: true }),
       apiFetch("/api/indicators", {}, { silent: true }).catch(() => null),
     ])
-    if (!configResp) return { symbols: [], timeframes: [], indicators: [] }
+    if (!configResp || !configResp.ok) return { symbols: [], timeframes: [], indicators: [] }
     const data = await configResp.json()
     let indicators = []
     if (indicatorsResp && indicatorsResp.ok) {

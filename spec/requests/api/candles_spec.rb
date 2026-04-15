@@ -3,8 +3,11 @@
 require 'rails_helper'
 
 RSpec.describe 'Api::Candles' do
+  let!(:user) { create(:user, password: 'password123') }
+
   describe 'GET /api/candles' do
     before do
+      sign_in(user)
       Rails.cache.clear
       5.times do |i|
         create(:candle, symbol: 'BTCUSD', timeframe: '1m',

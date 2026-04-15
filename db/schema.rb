@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_11_223955) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_15_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "timescaledb"
@@ -109,6 +109,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_11_223955) do
     t.string "api_base"
     t.text "api_key"
     t.datetime "created_at", null: false
+    t.jsonb "launch_config", default: {}, null: false
+    t.jsonb "launch_state", default: {}, null: false
     t.integer "max_output_tokens", default: 4000, null: false
     t.string "model", default: "gemini-3-flash-preview", null: false
     t.string "provider", default: "gemini", null: false

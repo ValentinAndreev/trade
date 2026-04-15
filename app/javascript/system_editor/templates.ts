@@ -1,8 +1,9 @@
-import { BG_HOVER, BG_INPUT, BG_MODAL, BG_PANEL, BG_PRIMARY, BG_SURFACE, BG_TOOLBAR, BORDER_COLOR } from "../config/theme"
+import { BG_HOVER, BG_INPUT, BG_MODAL, BG_PANEL, BG_PRIMARY, BG_SURFACE, BG_TOOLBAR, BORDER_COLOR, MODAL_GLASS_STYLE, POPOVER_GLASS_STYLE } from "../config/theme"
 import type {
   AssistantChatMessage,
   AssistantChatSummary,
   AssistantDraftPayload,
+  LlmConnectionCheckPayload,
   LlmSettingPayload,
   LlmSettingsDraft,
   LlmSettingsPayload,
@@ -48,6 +49,10 @@ type SystemEditorTemplateArgs = {
   assistantSettingsDraft: LlmSettingsDraft | null
   assistantSettingsOpen: boolean
   assistantSettingsSaving: boolean
+  assistantConnectionCheck: LlmConnectionCheckPayload | null
+  assistantConnectionChecking: boolean
+  assistantLaunchStarting: boolean
+  assistantLaunchStopping: boolean
   assistantExpandedReasoningIds: number[]
   renameDialog: {
     title: string
@@ -112,6 +117,10 @@ export function renderSystemEditorHTML({
   assistantSettingsDraft,
   assistantSettingsOpen,
   assistantSettingsSaving,
+  assistantConnectionCheck,
+  assistantConnectionChecking,
+  assistantLaunchStarting,
+  assistantLaunchStopping,
   assistantExpandedReasoningIds,
   renameDialog,
   confirmDialog,
@@ -121,10 +130,18 @@ export function renderSystemEditorHTML({
   const offline = !isOnline
   const conditionExpressionMetadata = getConditionExpressionMetadata()
   const providerOptions = assistantSettings?.providers || []
-  const selectedProvider = state.assistantSettingsProvider || assistantSettingsDraft?.provider || assistantSettings?.setting.provider || "gemini"
+  const selectedProvider = state.assistantSettingsProvider
+    || assistantSettingsDraft?.provider
+    || assistantSettings?.setting.provider
+    || assistantSettings?.defaults.provider
+    || providerOptions[0]?.value
+    || ""
   const modelSuggestions = assistantSettings?.model_suggestions_by_provider?.[selectedProvider] || []
   const selectedProviderSetting = assistantSettings?.settings_by_provider?.[selectedProvider] || null
-  const configured = Boolean(selectedProviderSetting?.api_key_present && selectedProviderSetting.model.trim())
+  const configured = Boolean(
+    selectedProviderSetting?.model.trim()
+    && (selectedProviderSetting.api_key_present || !selectedProviderSetting.api_key_required),
+  )
   const modelListId = `system-editor-model-suggestions-${escapeHTML(tabId)}`
 
   return `
@@ -278,10 +295,15 @@ export function renderSystemEditorHTML({
 
       ${assistantSettingsOpen ? assistantSettingsModalHTML({
         modelListId,
+        settings: assistantSettings,
         settingsDraft: assistantSettingsDraft,
         providerOptions,
         modelSuggestions,
         selectedProviderSetting,
+        connectionCheck: assistantConnectionCheck,
+        connectionChecking: assistantConnectionChecking,
+        launchStarting: assistantLaunchStarting,
+        launchStopping: assistantLaunchStopping,
         saving: assistantSettingsSaving,
       }) : ""}
 
@@ -330,7 +352,7 @@ function helpPopoverHTML(metadata: ResearchConditionExpressionMetadata | null): 
         class="flex h-10 w-10 items-center justify-center rounded-full border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] text-sm text-gray-200 hover:bg-[${BG_HOVER}] hover:text-white"
         aria-label="Condition syntax help"
       >?</button>
-      <div class="pointer-events-none absolute right-0 top-[calc(100%+0.5rem)] z-20 hidden w-[30rem] max-w-[calc(100vw-2rem)] rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] p-4 text-left shadow-[0_24px_48px_rgba(0,0,0,0.36)] group-hover:block">
+      <div class="pointer-events-none absolute right-0 top-[calc(100%+0.5rem)] z-20 hidden w-[30rem] max-w-[calc(100vw-2rem)] rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] p-4 text-left shadow-[0_24px_48px_rgba(0,0,0,0.36)] group-hover:block" style="${POPOVER_GLASS_STYLE}">
         ${conditionHelpPopoverBody(metadata)}
       </div>
     </div>
@@ -474,7 +496,7 @@ function assistantStatusHTML(
   providerSetting: LlmSettingPayload | null,
 ): string {
   if (!settings) return "Assistant settings are unavailable"
-  if (!configured) return "Configure provider, model, and API key in Settings"
+  if (!configured) return "Configure provider, model, and API key when required in Settings"
 
   const model = providerSetting?.model || settings.model_suggestions_by_provider?.[provider]?.[0] || ""
   return `${escapeHTML(provider)} / <span class="font-mono text-white">${escapeHTML(model)}</span>`
@@ -512,7 +534,7 @@ function assistantMessagesHTML({
   if (!configured) {
     return emptyAssistantStateHTML(
       "Settings required",
-      "Choose a provider, set a model, and save an API key before starting a chat.",
+      "Choose a provider, set a model, and save an API key when the selected endpoint requires one.",
       "Open Settings",
       "click->system-editor#openAssistantSettings",
     )
@@ -622,30 +644,61 @@ function assistantReasoningHTML(reasoning: string, messageId: number, expanded: 
 
 function assistantSettingsModalHTML({
   modelListId,
+  settings,
   settingsDraft,
   providerOptions,
   modelSuggestions,
   selectedProviderSetting,
+  connectionCheck,
+  connectionChecking,
+  launchStarting,
+  launchStopping,
   saving,
 }: {
   modelListId: string
+  settings: LlmSettingsPayload | null
   settingsDraft: LlmSettingsDraft | null
-  providerOptions: Array<{ value: string; label: string }>
+  providerOptions: Array<{ value: string; label: string; api_key_required: boolean; default_model: string; default_api_base: string | null; launchable: boolean }>
   modelSuggestions: string[]
   selectedProviderSetting: LlmSettingPayload | null
+  connectionCheck: LlmConnectionCheckPayload | null
+  connectionChecking: boolean
+  launchStarting: boolean
+  launchStopping: boolean
   saving: boolean
 }): string {
+  const defaultProvider = settings?.defaults.provider || providerOptions[0]?.value || ""
+  const defaultProviderOption = providerOptions.find(option => option.value === defaultProvider) || null
   const draft = settingsDraft || {
-    provider: "gemini",
-    model: "gemini-3-flash-preview",
+    provider: defaultProvider,
+    model: defaultProviderOption?.default_model || "",
     api_key: "",
-    api_base: "",
-    temperature: "0.2",
-    max_output_tokens: "4000",
+    api_base: defaultProviderOption?.default_api_base || "",
+    temperature: String(settings?.defaults.temperature ?? ""),
+    max_output_tokens: String(settings?.defaults.max_output_tokens ?? ""),
+    launch_binary_path: "",
+    launch_model_path: "",
+    launch_bind_host: "0.0.0.0",
+    launch_client_host: "127.0.0.1",
+    launch_port: "8080",
+    launch_extra_args: "",
   }
-  const keyStatus = selectedProviderSetting?.api_key_present
-    ? "Saved key exists for this provider. Leave the field blank to keep it."
-    : "No saved key for this provider yet."
+  const selectedProviderOption = providerOptions.find(option => option.value === draft.provider) || null
+  const launchable = selectedProviderOption?.launchable === true
+  const apiKeyRequired = assistantApiKeyRequired(selectedProviderOption, draft.api_base)
+  const keyStatus = apiKeyRequired
+    ? (selectedProviderSetting?.api_key_present
+      ? "Saved key exists for this provider. Leave the field blank to keep it."
+      : "No saved key for this provider yet.")
+    : "This provider/base URL does not require an API key."
+  const apiBasePlaceholder = selectedProviderOption?.default_api_base || "Optional override"
+  const modelPlaceholder = selectedProviderOption?.default_model || "Enter model id"
+  const launchStatus = launchable && settings?.setting.provider === draft.provider ? settings.launch_status : null
+  const effectiveApiBase = launchable
+    ? `http://${draft.launch_client_host || "127.0.0.1"}:${draft.launch_port || "8080"}/v1`
+    : draft.api_base
+  const launchStatusTone = launchStatus?.reachable ? "text-emerald-300" : launchStatus?.running ? "text-amber-300" : "text-gray-400"
+  const connectionTone = connectionCheck?.ok ? "text-emerald-300" : "text-red-300"
 
   return `
     <div
@@ -655,7 +708,8 @@ function assistantSettingsModalHTML({
     >
       <div
         data-action="click->system-editor#stopAssistantSettingsPropagation"
-        class="w-full max-w-2xl rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_28px_64px_rgba(0,0,0,0.48)]"
+        class="w-full max-w-2xl max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_28px_64px_rgba(0,0,0,0.48)]"
+        style="${MODAL_GLASS_STYLE}"
       >
         <div class="border-b border-[${BORDER_COLOR}] px-6 py-4">
           <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Assistant settings</div>
@@ -683,7 +737,7 @@ function assistantSettingsModalHTML({
               data-field="assistantSettings.model"
               data-action="input->system-editor#updateAssistantSettingsField"
               class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
-              placeholder="gemini-3-flash-preview"
+              placeholder="${escapeHTML(modelPlaceholder)}"
             >
             <datalist id="${modelListId}">
               ${modelSuggestions.map(model => `<option value="${escapeHTML(model)}"></option>`).join("")}
@@ -698,7 +752,7 @@ function assistantSettingsModalHTML({
               data-field="assistantSettings.apiKey"
               data-action="input->system-editor#updateAssistantSettingsField"
               class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
-              placeholder="Leave blank to keep the saved key"
+              placeholder="${apiKeyRequired ? "Leave blank to keep the saved key" : "Optional for this endpoint"}"
               autocomplete="off"
             >
             <div class="mt-2 text-xs text-gray-500">${escapeHTML(keyStatus)}</div>
@@ -708,12 +762,16 @@ function assistantSettingsModalHTML({
             <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Base URL</div>
             <input
               type="text"
-              value="${escapeHTML(draft.api_base)}"
+              value="${escapeHTML(launchable ? effectiveApiBase : draft.api_base)}"
               data-field="assistantSettings.apiBase"
               data-action="input->system-editor#updateAssistantSettingsField"
-              class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
-              placeholder="Optional override"
+              class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white ${launchable ? "opacity-70" : ""}"
+              placeholder="${escapeHTML(apiBasePlaceholder)}"
+              ${launchable ? "readonly" : ""}
             >
+            <div class="mt-2 text-xs text-gray-500">${launchable
+              ? `For llama.cpp this URL is derived from client host and port below. The app uses <span class="font-mono text-gray-300">${escapeHTML(effectiveApiBase)}</span>.`
+              : `For local servers use the client-reachable URL, for example <span class="font-mono text-gray-300">http://127.0.0.1:8080/v1</span>. Do not use <span class="font-mono text-gray-300">0.0.0.0</span> in the app.`}</div>
           </label>
 
           <label class="text-sm text-gray-300">
@@ -744,6 +802,113 @@ function assistantSettingsModalHTML({
             >
           </label>
         </div>
+
+        ${launchable ? `
+          <div class="border-t border-[${BORDER_COLOR}] px-6 py-5">
+            <div class="mb-4 text-xs uppercase tracking-[0.18em] text-gray-500">llama.cpp launch</div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="text-sm text-gray-300 md:col-span-2">
+                <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Binary path</div>
+                <input
+                  type="text"
+                  value="${escapeHTML(draft.launch_binary_path)}"
+                  data-field="assistantSettings.launchBinaryPath"
+                  data-action="input->system-editor#updateAssistantSettingsField"
+                  class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+                  placeholder="~/llama.cpp/build/bin/llama-server"
+                >
+              </label>
+
+              <label class="text-sm text-gray-300 md:col-span-2">
+                <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Model path</div>
+                <input
+                  type="text"
+                  value="${escapeHTML(draft.launch_model_path)}"
+                  data-field="assistantSettings.launchModelPath"
+                  data-action="input->system-editor#updateAssistantSettingsField"
+                  class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+                  placeholder="~/models/Qwen3.5-9B-Q6_K.gguf"
+                >
+              </label>
+
+              <label class="text-sm text-gray-300">
+                <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Bind host</div>
+                <input
+                  type="text"
+                  value="${escapeHTML(draft.launch_bind_host)}"
+                  data-field="assistantSettings.launchBindHost"
+                  data-action="input->system-editor#updateAssistantSettingsField"
+                  class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+                  placeholder="0.0.0.0"
+                >
+              </label>
+
+              <label class="text-sm text-gray-300">
+                <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Port</div>
+                <input
+                  type="number"
+                  value="${escapeHTML(draft.launch_port)}"
+                  min="1"
+                  max="65535"
+                  step="1"
+                  data-field="assistantSettings.launchPort"
+                  data-action="input->system-editor#updateAssistantSettingsField"
+                  class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+                >
+              </label>
+
+              <label class="text-sm text-gray-300">
+                <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Client host</div>
+                <input
+                  type="text"
+                  value="${escapeHTML(draft.launch_client_host)}"
+                  data-field="assistantSettings.launchClientHost"
+                  data-action="input->system-editor#updateAssistantSettingsField"
+                  class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+                  placeholder="127.0.0.1"
+                >
+                <div class="mt-2 text-xs text-gray-500">Use a client-reachable host here. If the server binds to <span class="font-mono text-gray-300">0.0.0.0</span>, the app should still usually connect via <span class="font-mono text-gray-300">127.0.0.1</span>.</div>
+              </label>
+
+              <label class="text-sm text-gray-300 md:col-span-2">
+                <div class="mb-2 text-xs uppercase tracking-[0.18em] text-gray-500">Extra args</div>
+                <input
+                  type="text"
+                  value="${escapeHTML(draft.launch_extra_args)}"
+                  data-field="assistantSettings.launchExtraArgs"
+                  data-action="input->system-editor#updateAssistantSettingsField"
+                  class="h-11 w-full rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-white"
+                  placeholder="-ngl 99 -c 16384 -t 8 -b 512 --flash-attn auto"
+                >
+                <div class="mt-2 text-xs text-gray-500">Do not include <span class="font-mono text-gray-300">-m</span>, <span class="font-mono text-gray-300">--host</span>, or <span class="font-mono text-gray-300">--port</span> here; they come from the dedicated fields.</div>
+              </label>
+            </div>
+
+            <div class="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Server status</div>
+                  <div class="mt-1 ${launchStatusTone}">${escapeHTML(launchStatus?.message || "No launch status yet")}</div>
+                  ${launchStatus?.pid ? `<div class="mt-1 text-xs text-gray-500">PID <span class="font-mono text-gray-300">${launchStatus.pid}</span></div>` : ""}
+                  ${launchStatus?.log_path ? `<div class="mt-1 text-xs text-gray-500">Log <span class="font-mono text-gray-300">${escapeHTML(launchStatus.log_path)}</span></div>` : ""}
+                </div>
+                <div class="flex items-center gap-2">
+                  ${toolbarButton(connectionChecking ? "Checking..." : "Check", "click->system-editor#checkAssistantConnection", saving || connectionChecking || launchStarting || launchStopping)}
+                  ${toolbarButton(launchStarting ? "Launching..." : "Launch", "click->system-editor#launchAssistantServer", saving || connectionChecking || launchStarting || launchStopping)}
+                  ${toolbarButton(launchStopping ? "Stopping..." : "Stop", "click->system-editor#stopAssistantServer", saving || connectionChecking || launchStarting || launchStopping || !launchStatus?.running)}
+                </div>
+              </div>
+              ${connectionCheck ? `
+                <div class="mt-3 border-t border-white/10 pt-3 text-xs">
+                  <div class="${connectionTone}">${escapeHTML(connectionCheck.ok ? "Endpoint reachable" : (connectionCheck.error || "Endpoint is not reachable"))}</div>
+                  ${connectionCheck.checked_url ? `<div class="mt-1 text-gray-500">Checked <span class="font-mono text-gray-300">${escapeHTML(connectionCheck.checked_url)}</span></div>` : ""}
+                  ${connectionCheck.models.length ? `<div class="mt-1 text-gray-500">Models: <span class="font-mono text-gray-300">${escapeHTML(connectionCheck.models.join(", "))}</span></div>` : ""}
+                </div>
+              ` : ""}
+            </div>
+          </div>
+        ` : ""}
 
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-[${BORDER_COLOR}] px-6 py-4">
           <div class="text-xs leading-5 text-gray-500">
@@ -780,6 +945,7 @@ function confirmDialogHTML(dialog: {
       <div
         data-action="click->system-editor#stopConfirmDialogPropagation"
         class="w-full max-w-lg rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_28px_64px_rgba(0,0,0,0.48)]"
+        style="${MODAL_GLASS_STYLE}"
       >
         <div class="border-b border-[${BORDER_COLOR}] px-6 py-4">
           <div class="text-xs uppercase tracking-[0.18em] ${accentClass}">${caption}</div>
@@ -813,6 +979,7 @@ function renameDialogHTML(dialog: {
       <div
         data-action="click->system-editor#stopRenameDialogPropagation"
         class="w-full max-w-lg rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_28px_64px_rgba(0,0,0,0.48)]"
+        style="${MODAL_GLASS_STYLE}"
       >
         <div class="border-b border-[${BORDER_COLOR}] px-6 py-4">
           <div class="text-xs uppercase tracking-[0.18em] text-gray-500">Rename chat</div>
@@ -851,6 +1018,22 @@ function formatAssistantTimestamp(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+function assistantApiKeyRequired(
+  provider: { api_key_required: boolean } | null,
+  apiBase: string,
+): boolean {
+  if (!provider) return true
+  if (provider.api_key_required === false) return false
+  if (!apiBase.trim()) return true
+
+  try {
+    const url = new URL(apiBase)
+    return !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(url.hostname)
+  } catch {
+    return true
+  }
 }
 
 function renderAssistantMessageContent(content: string, allowYamlApply = false): string {

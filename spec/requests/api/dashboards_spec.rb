@@ -3,6 +3,10 @@
 require 'rails_helper'
 
 RSpec.describe 'Api::Dashboards', :symbol_store do
+  let!(:user) { create(:user, password: 'password123') }
+
+  before { sign_in(user) }
+
   describe 'POST /api/dashboard/add' do
     it 'adds a known symbol' do
       symbol = BitfinexConfig.available_symbols.first

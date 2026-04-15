@@ -1,0 +1,18 @@
+class LlmSetting < ApplicationRecord
+  attr_accessor provider: String
+  attr_accessor model: String
+  attr_accessor api_base: String?
+  attr_accessor api_key: String?
+  attr_accessor temperature: Numeric
+  attr_accessor max_output_tokens: Integer
+  attr_accessor launch_config: Hash[untyped, untyped]
+  attr_accessor launch_state: Hash[untyped, untyped]
+
+  def user: () -> User
+  def as_api_json: () -> Hash[Symbol, untyped]
+
+  private
+
+  def normalize_launch_fields: () -> void
+  def normalized_launch_config: () -> Hash[String, untyped]
+end

@@ -4,7 +4,12 @@ module Llm
   class SystemEditorAgent < RubyLLM::Agent
     chat_model AiChat
     inputs :editor_context
-    instructions
+    instructions(
+      prompt: 'instructions',
+      locals: {
+        editor_context: -> { editor_context }
+      }
+    )
 
     tools do
       [

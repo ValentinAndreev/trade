@@ -1,0 +1,15 @@
+module Llm
+  module SystemEditor
+    class KnowledgeBase
+      PROMPT_NAMESPACE: String
+
+      def self.dsl: () -> Hash[untyped, untyped]
+      def self.modules: () -> Hash[untyped, untyped]
+      def self.examples: () -> Hash[untyped, untyped]
+
+      private
+
+      def self.load_yaml: (String file_name) -> Hash[untyped, untyped]
+    end
+  end
+end

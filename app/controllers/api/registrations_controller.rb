@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class Api::RegistrationsController < Api::ApplicationController
+  skip_before_action :require_auth
+
   def create
     user = User.new(username: params[:username], password: params[:password])
 

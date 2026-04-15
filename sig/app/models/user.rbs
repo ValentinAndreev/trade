@@ -3,7 +3,11 @@ class User < ApplicationRecord
   attr_accessor password_digest: String
 
   def presets: () -> untyped
+  def ai_chats: () -> untyped
+  def llm_settings: () -> untyped
   def default_preset: () -> Preset?
+  def active_llm_setting: () -> LlmSetting?
+  def llm_setting_for: (String | Symbol provider) -> LlmSetting?
   def as_api_json: (?include_presets: bool) -> user_api
   def authenticate: (String password) -> (User | false)
 end

@@ -1,0 +1,20 @@
+module Llm
+  class ProviderCatalog
+    PROVIDERS: Array[Hash[Symbol, untyped]]
+
+    def self.options: () -> Array[Hash[Symbol, untyped]]
+    def self.values: () -> Array[String]
+    def self.provider_for: (String | Symbol value) -> Hash[Symbol, untyped]?
+    def self.supported?: (String | Symbol value) -> bool
+    def self.runtime_provider: (String | Symbol provider) -> String
+    def self.launchable?: (String | Symbol provider) -> bool
+    def self.default_model: (String | Symbol provider) -> String
+    def self.default_api_base: (String | Symbol provider) -> String?
+    def self.api_key_required?: (String | Symbol provider, ?String? api_base) -> bool
+    def self.setting_configured?: (LlmSetting? setting) -> bool
+    def self.local_endpoint?: (String | Symbol provider, ?String? api_base) -> bool
+    def self.tool_calling_enabled?: (provider: String | Symbol, model: String | Symbol, ?api_base: String?) -> bool
+    def self.suggestions_by_provider: (?limit: Integer) -> Hash[String, Array[String]]
+    def self.suggestions: (String | Symbol provider, ?limit: Integer) -> Array[String]
+  end
+end

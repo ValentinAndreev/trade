@@ -1,4 +1,4 @@
-import { BORDER_COLOR, BG_MODAL, BG_SURFACE, BG_TOOLBAR, BG_INPUT, BG_PANEL } from "../config/theme"
+import { BORDER_COLOR, BG_MODAL, BG_SURFACE, BG_TOOLBAR, BG_INPUT, BG_PANEL, MODAL_GLASS_STYLE } from "../config/theme"
 import type { ResearchCatalogEntry } from "./dsl"
 import { escapeHTML } from "../utils/dom"
 
@@ -68,6 +68,7 @@ export function renderFileManagerModal({
       <div
         data-file-manager-modal="true"
         class="flex h-[min(85vh,820px)] w-[min(1100px,96vw)] min-h-[520px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_20px_80px_rgba(0,0,0,0.55)]"
+        style="${MODAL_GLASS_STYLE}"
         data-action="click->${ctrl}#stopFileManagerPropagation"
       >
         <div class="flex items-center gap-3 border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-5 py-4">

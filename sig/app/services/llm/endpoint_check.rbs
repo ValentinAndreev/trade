@@ -1,0 +1,14 @@
+module Llm
+  class EndpointCheck
+    OPEN_TIMEOUT: Integer
+    READ_TIMEOUT: Integer
+
+    def self.call: (provider: String, api_base: String?, ?api_key: String?) -> Hash[Symbol, untyped]
+
+    private
+
+    def self.models_url: (String? api_base) -> String?
+    def self.parse_models: (String body) -> Array[String]
+    def self.extract_error: (String body, String fallback) -> String
+  end
+end

@@ -3,6 +3,8 @@
 class Api::ApplicationController < ActionController::API
   include ActionController::Cookies
 
+  before_action :require_auth
+
   rescue_from ArgumentError, with: :bad_request
   rescue_from ActionController::ParameterMissing, with: :bad_request
   rescue_from Candle::IndicatorCalculator::UnknownIndicatorError, with: :bad_request

@@ -43,7 +43,11 @@ Rails.application.routes.draw do
     post 'research/directories/delete', to: 'research/systems#destroy_directory'
     post 'research/run', to: 'research/runs#create'
     post 'research/cancel', to: 'research/runs#cancel'
-    resource :llm_settings, only: %i[show create]
+    resource :llm_settings, only: %i[show create] do
+      post :check
+      post :launch
+      post :stop
+    end
     resources :system_editor_chats, only: %i[index create show update destroy] do
       member do
         post :messages, action: :create_message

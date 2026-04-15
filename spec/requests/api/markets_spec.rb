@@ -3,9 +3,11 @@
 require 'rails_helper'
 
 RSpec.describe 'Api::Markets', :symbol_store do
+  let!(:user) { create(:user, password: 'password123') }
   let(:yahoo_client) { instance_double(Utils::YahooFinanceClient) }
 
   before do
+    sign_in(user)
     allow(Utils::YahooFinanceClient).to receive(:new).and_return(yahoo_client)
   end
 

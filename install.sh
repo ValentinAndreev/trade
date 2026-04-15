@@ -171,6 +171,10 @@ step "Database setup"
 bin/rails db:prepare
 ok "database ready (created/migrated as needed)"
 
+step "Database seed"
+bin/rails db:seed
+ok "seed data loaded"
+
 # ── TimescaleDB objects (hypertable + continuous aggregates) ──
 
 step "TimescaleDB verification"

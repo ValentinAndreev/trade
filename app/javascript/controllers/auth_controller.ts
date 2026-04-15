@@ -14,9 +14,11 @@ export default class extends Controller {
   static targets = ["userArea"]
   declare userAreaTarget: HTMLElement
   declare hasUserAreaTarget: boolean
+  private authRequiredModal = false
 
   connect() {
     window.addEventListener("auth:change", this._onAuthChange)
+    this.authRequiredModal = (this.element as HTMLElement).dataset.authRequired === "true"
     auth.init()
   }
 
@@ -26,6 +28,7 @@ export default class extends Controller {
 
   _onAuthChange = () => {
     this._render()
+    this._syncRequiredAuthModal()
   }
 
   _render() {
@@ -40,11 +43,11 @@ export default class extends Controller {
   }
 
   showLoginForm() {
-    this._showModal(loginFormHTML())
+    this._showModal(loginFormHTML(this.authRequiredModal), !this.authRequiredModal)
   }
 
   showRegisterForm() {
-    this._showModal(registerFormHTML())
+    this._showModal(registerFormHTML(this.authRequiredModal), !this.authRequiredModal)
   }
 
   async doLogin(e: Event) {
@@ -130,20 +133,25 @@ export default class extends Controller {
     this._showModal(presetPickerHTML(presets))
   }
 
-  _showModal(html: string): void {
+  _showModal(html: string, dismissible = true): void {
     let modal = this.element.querySelector("[data-auth-modal]")
     if (!modal) {
       modal = document.createElement("div")
       modal.setAttribute("data-auth-modal", "")
       modal.className = "fixed inset-0 z-[9999] flex items-center justify-center bg-black/60"
-      modal.addEventListener("click", (e) => { if (e.target === modal) this.closeModal() })
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal && modal instanceof HTMLElement && modal.dataset.dismissible === "true") this.closeModal()
+      })
       this.element.appendChild(modal)
     }
+    if (modal instanceof HTMLElement) modal.dataset.dismissible = dismissible ? "true" : "false"
     modal.innerHTML = `<div class="bg-[#1a1a2e] border border-[#2a2a3e] rounded-lg p-6 w-96 max-w-[90vw] shadow-xl">${html}</div>`
     modal.classList.remove("hidden")
   }
 
   closeModal() {
+    if (this.authRequiredModal && !auth.isLoggedIn) return
+
     const modal = this.element.querySelector("[data-auth-modal]")
     if (modal) modal.remove()
   }
@@ -154,5 +162,19 @@ export default class extends Controller {
       el.textContent = msg
       el.classList.remove("hidden")
     }
+  }
+
+  _syncRequiredAuthModal(): void {
+    if (!auth._ready) return
+
+    if (auth.isLoggedIn) {
+      this.authRequiredModal = false
+      return
+    }
+
+    if ((this.element as HTMLElement).dataset.authRequired !== "true") return
+
+    this.authRequiredModal = true
+    this._showModal(loginFormHTML(true), false)
   }
 }

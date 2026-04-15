@@ -3,6 +3,8 @@
 module Llm
   module SystemEditor
     class KnowledgeBase
+      PROMPT_NAMESPACE = 'llm/system_editor'.freeze
+
       class << self
         def dsl = load_yaml('dsl.yml')
         def modules = load_yaml('modules.yml')
@@ -11,10 +13,7 @@ module Llm
         private
 
         def load_yaml(file_name)
-          YAML.safe_load(
-            File.read(Rails.root.join('app/prompts/llm/system_editor_agent', file_name)),
-            aliases: false
-          ) || {}
+          Llm::PromptLibrary.load_yaml("#{PROMPT_NAMESPACE}/#{file_name}")
         end
       end
     end

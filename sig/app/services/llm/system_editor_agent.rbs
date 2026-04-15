@@ -1,0 +1,4 @@
+module Llm
+  class SystemEditorAgent < RubyLLM::Agent
+  end
+end

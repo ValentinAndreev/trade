@@ -3,6 +3,7 @@
 require 'rails_helper'
 
 RSpec.describe 'Api::Research' do
+  let!(:user) { create(:user, password: 'password123') }
   let(:yaml_system) do
     <<~YAML
       id: price_ema_cross
@@ -29,6 +30,7 @@ RSpec.describe 'Api::Research' do
   let(:close_values) { [ 100, 101, 102, 101, 99, 97, 98, 100, 103, 104, 102, 99, 96, 97, 100, 104 ] }
 
   before do
+    sign_in(user)
     Rails.cache.clear
     Research::CancellationRegistry.reset!
 

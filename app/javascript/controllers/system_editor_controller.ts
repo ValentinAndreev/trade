@@ -1,16 +1,20 @@
 import { Controller } from "@hotwired/stimulus"
 import {
+  checkLlmConnection,
   createAssistantChat,
   deleteAssistantChat,
   fetchAssistantChat,
   fetchAssistantChats,
   fetchLlmSettings,
+  launchLlamaServer,
   renameAssistantChat,
   saveLlmSettings,
   sendAssistantMessage,
+  stopLlamaServer,
   type AssistantChatMessage,
   type AssistantChatPayload,
   type AssistantChatSummary,
+  type LlmConnectionCheckPayload,
   type AssistantDraftPayload,
   type LlmSettingsDraft,
   type LlmSettingsPayload,
@@ -91,6 +95,10 @@ export default class extends Controller {
   private assistantSettingsDraft: LlmSettingsDraft | null = null
   private assistantSettingsOpen = false
   private assistantSettingsSaving = false
+  private assistantConnectionCheck: LlmConnectionCheckPayload | null = null
+  private assistantConnectionChecking = false
+  private assistantLaunchStarting = false
+  private assistantLaunchStopping = false
   private assistantScrollToBottomPending = false
   private assistantScrollSnapshot: { top: number; pinnedToBottom: boolean } | null = null
   private assistantChatSubscription: AssistantChatSubscription | null = null
@@ -112,8 +120,17 @@ export default class extends Controller {
     }
   }
 
+  private _onKeydown = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return
+    if (this.confirmDialog) { this.closeConfirmDialog(); return }
+    if (this.renameDialog) { this.closeRenameDialog(); return }
+    if (this.assistantSettingsOpen) { this.closeAssistantSettings(); return }
+    if (this.filePicker.open) { this.closeFilePicker(); return }
+  }
+
   async connect() {
     window.addEventListener("connection:change", this._onConnectionChange)
+    window.addEventListener("keydown", this._onKeydown)
     this.autocomplete = new YamlAutocomplete()
     this.editor = new EditorCore(this.element as HTMLElement)
     this.validator = new ValidationModule((result, validating, updatedId) => {
@@ -167,6 +184,7 @@ export default class extends Controller {
     this.autocomplete.destroy()
     this._disconnectAssistantChatSubscription()
     window.removeEventListener("connection:change", this._onConnectionChange)
+    window.removeEventListener("keydown", this._onKeydown)
   }
 
   configValueChanged() {
@@ -516,7 +534,8 @@ export default class extends Controller {
 
   // Assistant actions
 
-  openAssistantSettings() {
+  async openAssistantSettings() {
+    if (!this.assistantSettings) await this._loadAssistantSettings()
     this.assistantSettingsDraft = this._assistantSettingsDraftValue()
     this.assistantSettingsOpen = true
     this._renderSafely()
@@ -524,6 +543,7 @@ export default class extends Controller {
 
   closeAssistantSettings() {
     this.assistantSettingsOpen = false
+    this.assistantConnectionCheck = null
     this._renderSafely()
   }
 
@@ -584,6 +604,7 @@ export default class extends Controller {
     const target = e.currentTarget as HTMLInputElement | HTMLSelectElement
     const field = target.dataset.field || ""
     const value = target.value
+    this.assistantConnectionCheck = null
 
     switch (field) {
     case "assistantSettings.provider":
@@ -593,6 +614,7 @@ export default class extends Controller {
       }
       this.assistantSettingsDraft = this._assistantSettingsDraftValue(value)
       this._renderSafely()
+      void this._loadAssistantSettings(true)
       break
     case "assistantSettings.model":
       this.assistantSettingsDraft.model = value
@@ -609,8 +631,105 @@ export default class extends Controller {
     case "assistantSettings.maxOutputTokens":
       this.assistantSettingsDraft.max_output_tokens = value
       break
+    case "assistantSettings.launchBinaryPath":
+      this.assistantSettingsDraft.launch_binary_path = value
+      break
+    case "assistantSettings.launchModelPath":
+      this.assistantSettingsDraft.launch_model_path = value
+      break
+    case "assistantSettings.launchBindHost":
+      this.assistantSettingsDraft.launch_bind_host = value
+      break
+    case "assistantSettings.launchClientHost":
+      this.assistantSettingsDraft.launch_client_host = value
+      break
+    case "assistantSettings.launchPort":
+      this.assistantSettingsDraft.launch_port = value
+      break
+    case "assistantSettings.launchExtraArgs":
+      this.assistantSettingsDraft.launch_extra_args = value
+      break
     default:
       break
+    }
+  }
+
+  async checkAssistantConnection() {
+    if (!this.assistantSettingsDraft) {
+      this.assistantSettingsDraft = this._assistantSettingsDraftValue()
+    }
+
+    this.assistantConnectionChecking = true
+    this.assistantConnectionCheck = null
+    this._renderSafely()
+
+    try {
+      const result = await checkLlmConnection(this.assistantSettingsDraft)
+      if (!result.ok || !result.data) {
+        this.assistantError = result.error || "Connection check failed"
+        showToast(this.assistantError)
+        return
+      }
+
+      this.assistantConnectionCheck = result.data.connection
+      this.assistantError = null
+      showToast(result.data.connection.ok ? "LLM endpoint is reachable" : (result.data.connection.error || "LLM endpoint is not reachable"), result.data.connection.ok ? "success" : "error")
+    } finally {
+      this.assistantConnectionChecking = false
+      this._renderSafely()
+    }
+  }
+
+  async launchAssistantServer() {
+    if (!this.assistantSettingsDraft) {
+      this.assistantSettingsDraft = this._assistantSettingsDraftValue()
+    }
+
+    this.assistantLaunchStarting = true
+    this._renderSafely()
+
+    try {
+      const result = await launchLlamaServer(this.assistantSettingsDraft)
+      if (!result.ok || !result.data) {
+        this.assistantError = result.error || "Server launch failed"
+        showToast(this.assistantError)
+        return
+      }
+
+      this.assistantSettings = result.data
+      this.assistantSettingsDraft = this._assistantSettingsDraftValue(result.data.setting.provider)
+      this.assistantError = null
+      this.assistantConnectionCheck = null
+      showToast(result.data.launch_status?.message || "llama.cpp server started", "success")
+    } finally {
+      this.assistantLaunchStarting = false
+      this._renderSafely()
+    }
+  }
+
+  async stopAssistantServer() {
+    const provider = this.assistantSettingsDraft?.provider || this._selectedAssistantProvider()
+    if (!provider) return
+
+    this.assistantLaunchStopping = true
+    this._renderSafely()
+
+    try {
+      const result = await stopLlamaServer(provider)
+      if (!result.ok || !result.data) {
+        this.assistantError = result.error || "Server stop failed"
+        showToast(this.assistantError)
+        return
+      }
+
+      this.assistantSettings = result.data
+      this.assistantSettingsDraft = this._assistantSettingsDraftValue(result.data.setting.provider)
+      this.assistantError = null
+      this.assistantConnectionCheck = null
+      showToast(result.data.launch_status?.message || "llama.cpp server stopped", "success")
+    } finally {
+      this.assistantLaunchStopping = false
+      this._renderSafely()
     }
   }
 
@@ -959,6 +1078,10 @@ export default class extends Controller {
       assistantSettingsDraft: this.assistantSettingsDraft,
       assistantSettingsOpen: this.assistantSettingsOpen,
       assistantSettingsSaving: this.assistantSettingsSaving,
+      assistantConnectionCheck: this.assistantConnectionCheck,
+      assistantConnectionChecking: this.assistantConnectionChecking,
+      assistantLaunchStarting: this.assistantLaunchStarting,
+      assistantLaunchStopping: this.assistantLaunchStopping,
       assistantExpandedReasoningIds: Array.from(this.assistantExpandedReasoningIds),
       renameDialog: this.renameDialog,
       confirmDialog: this.confirmDialog,
@@ -1110,23 +1233,40 @@ export default class extends Controller {
   }
 
   private _assistantSettingsDraftValue(provider = this._selectedAssistantProvider()): LlmSettingsDraft {
-    const saved = this._settingForProvider(provider)
+    const defaults = this.assistantSettings?.defaults
+    const resolvedProvider = provider || defaults?.provider || this.assistantSettings?.providers[0]?.value || ""
+    const selectedSetting = this.assistantSettings?.setting.provider === resolvedProvider ? this.assistantSettings.setting : null
+    const saved = this._settingForProvider(resolvedProvider) || selectedSetting
+    const providerOption = this._providerOption(resolvedProvider)
+    const suggestedModel = this._modelSuggestionsFor(resolvedProvider)[0]
     const defaultModel = saved?.model
-      || this._modelSuggestionsFor(provider)[0]
-      || "gemini-3-flash-preview"
+      || suggestedModel
+      || providerOption?.default_model
+      || ""
+    const launchConfig = saved?.launch_config
 
     return {
-      provider,
+      provider: resolvedProvider,
       model: defaultModel,
       api_key: "",
-      api_base: saved?.api_base || "",
-      temperature: String(saved?.temperature ?? 0.2),
-      max_output_tokens: String(saved?.max_output_tokens ?? 4000),
+      api_base: saved?.api_base || providerOption?.default_api_base || "",
+      temperature: String(saved?.temperature ?? defaults?.temperature ?? ""),
+      max_output_tokens: String(saved?.max_output_tokens ?? defaults?.max_output_tokens ?? ""),
+      launch_binary_path: launchConfig?.binary_path || "",
+      launch_model_path: launchConfig?.model_path || "",
+      launch_bind_host: launchConfig?.bind_host || "0.0.0.0",
+      launch_client_host: launchConfig?.client_host || "127.0.0.1",
+      launch_port: String(launchConfig?.port ?? 8080),
+      launch_extra_args: launchConfig?.extra_args || "",
     }
   }
 
   private _modelSuggestionsFor(provider: string): string[] {
     return this.assistantSettings?.model_suggestions_by_provider?.[provider] || []
+  }
+
+  private _providerOption(provider: string) {
+    return this.assistantSettings?.providers.find(option => option.value === provider) || null
   }
 
   private _settingForProvider(provider: string) {
@@ -1135,7 +1275,9 @@ export default class extends Controller {
 
   private _assistantConfigured(): boolean {
     const setting = this._settingForProvider(this._selectedAssistantProvider())
-    return Boolean(setting?.api_key_present && setting.model.trim())
+    if (!setting?.model.trim()) return false
+
+    return Boolean(setting.api_key_present || !setting.api_key_required)
   }
 
   private _assistantEditorContext() {
@@ -1150,7 +1292,7 @@ export default class extends Controller {
     }
   }
 
-  private async _loadAssistantSettings() {
+  private async _loadAssistantSettings(resetDraft = false) {
     const result = await fetchLlmSettings(this.state?.assistantSettingsProvider)
     if (!result.ok || !result.data) {
       this.assistantSettings = null
@@ -1167,8 +1309,8 @@ export default class extends Controller {
       this.state.assistantSettingsProvider = result.data.setting.provider || null
       this._persistState()
     }
-    if (!this.assistantSettingsDraft) {
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue()
+    if (resetDraft || !this.assistantSettingsDraft) {
+      this.assistantSettingsDraft = this._assistantSettingsDraftValue(result.data.setting.provider)
     }
     this._renderSafely()
   }
@@ -1177,7 +1319,9 @@ export default class extends Controller {
     return this.state?.assistantSettingsProvider
       || this.assistantSettingsDraft?.provider
       || this.assistantSettings?.setting.provider
-      || "gemini"
+      || this.assistantSettings?.defaults.provider
+      || this.assistantSettings?.providers[0]?.value
+      || ""
   }
 
   private async _ensureAssistantChatSubscription(chatId: number) {

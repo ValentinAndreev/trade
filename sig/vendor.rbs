@@ -77,3 +77,8 @@ module ActionController
   class API < ActionController::Base
   end
 end
+
+module RubyLLM
+  class Agent
+  end
+end

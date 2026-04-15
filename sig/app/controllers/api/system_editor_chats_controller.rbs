@@ -1,0 +1,19 @@
+module Api
+  class SystemEditorChatsController < ApplicationController
+    def index: () -> void
+    def create: () -> void
+    def show: () -> void
+    def update: () -> void
+    def destroy: () -> void
+    def create_message: () -> void
+
+    private
+
+    @chat: untyped
+
+    def set_chat: () -> untyped
+    def editor_context_params: () -> ActionController::Parameters
+    def llm_setting_configured?: (LlmSetting? setting) -> bool
+    def chat_payload: (untyped chat) -> Hash[Symbol, untyped]
+  end
+end
