@@ -5,6 +5,10 @@ class AiChat < ApplicationRecord
 
   belongs_to :user
 
+  has_one :last_preview_message,
+    -> { where(role: %w[user assistant]).where.not(content: [ nil, '' ]).order(created_at: :desc, id: :desc) },
+    class_name: 'AiMessage'
+
   validates :title, presence: true, length: { maximum: 120 }
 
   scope :recent, -> { order(updated_at: :desc, id: :desc) }
@@ -13,16 +17,11 @@ class AiChat < ApplicationRecord
 
   def visible_messages = ai_messages.where(role: %w[user assistant]).order(:created_at, :id)
 
-  def latest_preview = visible_messages.where.not(content: [ nil, '' ]).order(:created_at, :id).last&.content
+  def latest_preview = last_preview_message&.content
 
   private
 
   def ensure_title = self.title = title.to_s.strip.presence || default_title
 
-  def default_title
-    base = system_id.presence || source_path.to_s.split('/').last.to_s.delete_suffix('.yml')
-    return 'New chat' if base.blank?
-
-    base.tr('_-', ' ').split.map(&:capitalize).join(' ')
-  end
+  def default_title = 'New chat'
 end

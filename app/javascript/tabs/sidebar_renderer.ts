@@ -136,7 +136,7 @@ export default class SidebarRenderer {
     const currentSymbol = selectedOverlay?.symbol || ""
     const chartType = selectedOverlay?.chartType || "Candlestick"
     const colorScheme = selectedOverlay?.colorScheme ?? 0
-    const opacity = typeof selectedOverlay?.opacity === "number" ? selectedOverlay.opacity : 1
+    const opacity = selectedOverlay?.opacity ?? 1
     const opacityPercent = Math.round(Math.max(0, Math.min(1, opacity)) * 100)
 
     const priceActive = mode === "price"

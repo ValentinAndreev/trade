@@ -12,7 +12,7 @@ RSpec.describe Llm::ProviderCatalog do
   describe '.suggestions' do
     it 'does not expose OpenAI catalog suggestions for llama.cpp' do
       model = double(provider: 'openai', supports_functions?: true, id: 'gpt-4.1-mini')
-      allow(RubyLLM).to receive(:models).and_return(double(all: [model]))
+      allow(RubyLLM).to receive(:models).and_return(double(all: [ model ]))
 
       expect(described_class.suggestions('llama')).to eq([])
     end

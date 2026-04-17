@@ -14,7 +14,7 @@ module Llm
       end
 
       def normalize_config(config)
-        raw = config.is_a?(Hash) ? config.deep_stringify_keys : {}
+        raw = config.to_h.deep_stringify_keys
         port = raw['port'].to_i
 
         {
@@ -138,7 +138,7 @@ module Llm
 
       real_binary_path = File.realpath(expanded_binary_path)
       allowed_binary_names = Array(LlmConfig.llama_allowed_binary_names)
-      actual_binary_names = [File.basename(expanded_binary_path), File.basename(real_binary_path)].uniq
+      actual_binary_names = [ File.basename(expanded_binary_path), File.basename(real_binary_path) ].uniq
       unless actual_binary_names.all? { |name| allowed_binary_names.include?(name) }
         raise Llm::Error, "llama binary must resolve to #{allowed_binary_names.join(', ')}"
       end

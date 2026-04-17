@@ -1,25 +1,5 @@
 import { Controller } from "@hotwired/stimulus"
 import {
-  checkLlmConnection,
-  createAssistantChat,
-  deleteAssistantChat,
-  fetchAssistantChat,
-  fetchAssistantChats,
-  fetchLlmSettings,
-  launchLlamaServer,
-  renameAssistantChat,
-  saveLlmSettings,
-  sendAssistantMessage,
-  stopLlamaServer,
-  type AssistantChatMessage,
-  type AssistantChatPayload,
-  type AssistantChatSummary,
-  type LlmConnectionCheckPayload,
-  type AssistantDraftPayload,
-  type LlmSettingsDraft,
-  type LlmSettingsPayload,
-} from "../system_editor/assistant_api"
-import {
   deleteResearchSystem,
   fetchResearchCatalog,
   fetchResearchEditorMetadata,
@@ -36,7 +16,6 @@ import {
   buildStarterSystemYaml,
   hydrateSystemEditorState,
 } from "../system_editor/state"
-import { AssistantChatSubscription } from "../system_editor/chat_subscription"
 import {
   currentFileNameHTML,
   diagnosticsHTML,
@@ -55,18 +34,11 @@ import { setHighlightConfig } from "../system_editor/yaml_highlighter"
 import type { SystemEditorConfig } from "../types/store"
 
 type ConfirmDialogState = {
-  action: "delete-system" | "delete-chat" | "delete-file-entry" | "apply-draft-overwrite"
-  tone: "danger" | "warning"
+  action: "delete-system" | "delete-file-entry"
+  tone: "danger"
   title: string
   body: string
   confirmLabel: string
-}
-
-type RenameDialogState = {
-  title: string
-  body: string
-  confirmLabel: string
-  value: string
 }
 
 export default class extends Controller {
@@ -82,29 +54,6 @@ export default class extends Controller {
   private localDiagnostics: ResearchDslDiagnostic[] = []
   private validating = false
   private saving = false
-
-  private assistantChats: AssistantChatSummary[] = []
-  private assistantCurrentChat: AssistantChatSummary | null = null
-  private assistantMessages: AssistantChatMessage[] = []
-  private assistantDraft: AssistantDraftPayload | null = null
-  private assistantInput = ""
-  private assistantLoading = false
-  private assistantChatsLoading = false
-  private assistantError: string | null = null
-  private assistantSettings: LlmSettingsPayload | null = null
-  private assistantSettingsDraft: LlmSettingsDraft | null = null
-  private assistantSettingsOpen = false
-  private assistantSettingsSaving = false
-  private assistantConnectionCheck: LlmConnectionCheckPayload | null = null
-  private assistantConnectionChecking = false
-  private assistantLaunchStarting = false
-  private assistantLaunchStopping = false
-  private assistantScrollToBottomPending = false
-  private assistantScrollSnapshot: { top: number; pinnedToBottom: boolean } | null = null
-  private assistantChatSubscription: AssistantChatSubscription | null = null
-  private assistantSubscribedChatId: number | null = null
-  private assistantExpandedReasoningIds = new Set<number>()
-  private renameDialog: RenameDialogState | null = null
   private confirmDialog: ConfirmDialogState | null = null
 
   private editor!: EditorCore
@@ -114,17 +63,11 @@ export default class extends Controller {
 
   private _onConnectionChange = () => {
     this._renderSafely()
-    if (monitor.isOnline) {
-      void this._loadAssistantSettings()
-      void this._loadAssistantChats()
-    }
   }
 
   private _onKeydown = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return
     if (this.confirmDialog) { this.closeConfirmDialog(); return }
-    if (this.renameDialog) { this.closeRenameDialog(); return }
-    if (this.assistantSettingsOpen) { this.closeAssistantSettings(); return }
     if (this.filePicker.open) { this.closeFilePicker(); return }
   }
 
@@ -138,8 +81,8 @@ export default class extends Controller {
       if (result !== undefined) this.validation = result
       if (updatedId && this.state) {
         this.state.systemId = updatedId
-        this._persistState()
       }
+      this._persistState()
       if (!this._refreshDynamicView()) this._renderSafely()
     })
     this.filePicker = new FilePickerModule(this.element as HTMLElement, {
@@ -172,17 +115,12 @@ export default class extends Controller {
     this._persistState()
     this._renderSafely()
 
-    await Promise.allSettled([
-      this.validator.run(this.state, true),
-      this._loadAssistantSettings(),
-      this._loadAssistantChats(),
-    ])
+    await this.validator.run(this.state, true)
   }
 
   disconnect() {
     this.validator.cancel()
     this.autocomplete.destroy()
-    this._disconnectAssistantChatSubscription()
     window.removeEventListener("connection:change", this._onConnectionChange)
     window.removeEventListener("keydown", this._onKeydown)
   }
@@ -195,17 +133,13 @@ export default class extends Controller {
     if (JSON.stringify(previousState) === JSON.stringify(next)) return
 
     this.state = next
+    this.validation = null
     this._ensureLoadedYaml()
     this._refreshLocalDiagnostics()
+    this._persistState()
     this._renderSafely()
     void this.validator.run(this.state, true)
-
-    if (previousState?.assistantChatId !== next.assistantChatId && next.assistantChatId) {
-      void this._loadAssistantChat(next.assistantChatId)
-    }
   }
-
-  // File picker actions
 
   openFilePicker() {
     this.filePicker.openPicker(this._currentDirectoryPath(), this.state?.sourcePath || null)
@@ -266,8 +200,6 @@ export default class extends Controller {
     this._renderSafely()
   }
 
-  // System actions
-
   newSystem() {
     if (!this.state) return
 
@@ -285,8 +217,9 @@ export default class extends Controller {
 
   resetSystem() {
     if (!this.state?.sourceSystemId) return
-    const entry = this.catalog.find(item => item.relative_path === this.state?.sourcePath)
-      || this.catalog.find(item => item.id === this.state?.sourceSystemId)
+    const state = this.state
+    const entry = this.catalog.find(item => item.relative_path === state.sourcePath)
+      || this.catalog.find(item => item.id === state.sourceSystemId)
     if (!entry) return
 
     this.state.systemId = entry.id
@@ -294,6 +227,7 @@ export default class extends Controller {
     this.state.sourcePath = entry.relative_path
     this.state.directoryPath = relativeDirname(entry.relative_path)
     this.state.systemYaml = entry.yaml
+    this.validation = null
     this._refreshLocalDiagnostics()
     this._persistState()
     this._renderSafely()
@@ -306,6 +240,7 @@ export default class extends Controller {
     if (!textarea) return
 
     this.state.systemYaml = textarea.value
+    this.validation = null
     this._refreshLocalDiagnostics()
     this._persistState()
     this.autocomplete.handleInput(textarea)
@@ -371,7 +306,7 @@ export default class extends Controller {
   }
 
   async renameSystem() {
-    if (!this.state?.sourcePath || !this.state?.sourceSystemId) return
+    if (!this.state?.sourcePath || !this.state.sourceSystemId) return
 
     const nextId = window.prompt("New system id", this.state.sourceSystemId)?.trim()
     if (!nextId || nextId === this.state.sourceSystemId) return
@@ -414,7 +349,7 @@ export default class extends Controller {
   }
 
   deleteSystem() {
-    if (!this.state?.sourcePath || !this.state?.sourceSystemId) return
+    if (!this.state?.sourcePath || !this.state.sourceSystemId) return
 
     const sourceFileName = this._currentEntry()?.relative_path || this.state.sourcePath
     this.confirmDialog = {
@@ -426,8 +361,6 @@ export default class extends Controller {
     }
     this._renderSafely()
   }
-
-  // Editor keyboard/search actions
 
   findNext() {
     this.editor.findMatch(1, this.state)
@@ -523,6 +456,20 @@ export default class extends Controller {
     }))
   }
 
+  openAssistant() {
+    this.element.dispatchEvent(new CustomEvent("systemeditor:openAssistant", {
+      bubbles: true,
+      detail: { tabId: this.tabIdValue },
+    }))
+  }
+
+  linkAssistantTarget() {
+    this.element.dispatchEvent(new CustomEvent("systemeditor:linkAssistantTarget", {
+      bubbles: true,
+      detail: { tabId: this.tabIdValue },
+    }))
+  }
+
   focusDiagnostic(e: Event) {
     const button = e.currentTarget as HTMLElement
     this.editor.focusDiagnostic({
@@ -532,40 +479,12 @@ export default class extends Controller {
     })
   }
 
-  // Assistant actions
-
-  async openAssistantSettings() {
-    if (!this.assistantSettings) await this._loadAssistantSettings()
-    this.assistantSettingsDraft = this._assistantSettingsDraftValue()
-    this.assistantSettingsOpen = true
-    this._renderSafely()
-  }
-
-  closeAssistantSettings() {
-    this.assistantSettingsOpen = false
-    this.assistantConnectionCheck = null
-    this._renderSafely()
-  }
-
   closeConfirmDialog() {
     this.confirmDialog = null
     this._renderSafely()
   }
 
-  closeRenameDialog() {
-    this.renameDialog = null
-    this._renderSafely()
-  }
-
-  stopAssistantSettingsPropagation(e: Event) {
-    e.stopPropagation()
-  }
-
   stopConfirmDialogPropagation(e: Event) {
-    e.stopPropagation()
-  }
-
-  stopRenameDialogPropagation(e: Event) {
     e.stopPropagation()
   }
 
@@ -581,414 +500,13 @@ export default class extends Controller {
       return
     }
 
-    if (action === "delete-chat") {
-      await this._performDeleteAssistantChat()
-      return
-    }
-
     if (action === "delete-file-entry") {
       await this._performDeleteFileManagerEntry()
-      return
-    }
-
-    if (action === "apply-draft-overwrite") {
-      this._commitAssistantDraft()
     }
   }
-
-  updateAssistantSettingsField(e: Event) {
-    if (!this.assistantSettingsDraft) {
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue()
-    }
-
-    const target = e.currentTarget as HTMLInputElement | HTMLSelectElement
-    const field = target.dataset.field || ""
-    const value = target.value
-    this.assistantConnectionCheck = null
-
-    switch (field) {
-    case "assistantSettings.provider":
-      if (this.state) {
-        this.state.assistantSettingsProvider = value || null
-        this._persistState()
-      }
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue(value)
-      this._renderSafely()
-      void this._loadAssistantSettings(true)
-      break
-    case "assistantSettings.model":
-      this.assistantSettingsDraft.model = value
-      break
-    case "assistantSettings.apiKey":
-      this.assistantSettingsDraft.api_key = value
-      break
-    case "assistantSettings.apiBase":
-      this.assistantSettingsDraft.api_base = value
-      break
-    case "assistantSettings.temperature":
-      this.assistantSettingsDraft.temperature = value
-      break
-    case "assistantSettings.maxOutputTokens":
-      this.assistantSettingsDraft.max_output_tokens = value
-      break
-    case "assistantSettings.launchBinaryPath":
-      this.assistantSettingsDraft.launch_binary_path = value
-      break
-    case "assistantSettings.launchModelPath":
-      this.assistantSettingsDraft.launch_model_path = value
-      break
-    case "assistantSettings.launchBindHost":
-      this.assistantSettingsDraft.launch_bind_host = value
-      break
-    case "assistantSettings.launchClientHost":
-      this.assistantSettingsDraft.launch_client_host = value
-      break
-    case "assistantSettings.launchPort":
-      this.assistantSettingsDraft.launch_port = value
-      break
-    case "assistantSettings.launchExtraArgs":
-      this.assistantSettingsDraft.launch_extra_args = value
-      break
-    default:
-      break
-    }
-  }
-
-  async checkAssistantConnection() {
-    if (!this.assistantSettingsDraft) {
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue()
-    }
-
-    this.assistantConnectionChecking = true
-    this.assistantConnectionCheck = null
-    this._renderSafely()
-
-    try {
-      const result = await checkLlmConnection(this.assistantSettingsDraft)
-      if (!result.ok || !result.data) {
-        this.assistantError = result.error || "Connection check failed"
-        showToast(this.assistantError)
-        return
-      }
-
-      this.assistantConnectionCheck = result.data.connection
-      this.assistantError = null
-      showToast(result.data.connection.ok ? "LLM endpoint is reachable" : (result.data.connection.error || "LLM endpoint is not reachable"), result.data.connection.ok ? "success" : "error")
-    } finally {
-      this.assistantConnectionChecking = false
-      this._renderSafely()
-    }
-  }
-
-  async launchAssistantServer() {
-    if (!this.assistantSettingsDraft) {
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue()
-    }
-
-    this.assistantLaunchStarting = true
-    this._renderSafely()
-
-    try {
-      const result = await launchLlamaServer(this.assistantSettingsDraft)
-      if (!result.ok || !result.data) {
-        this.assistantError = result.error || "Server launch failed"
-        showToast(this.assistantError)
-        return
-      }
-
-      this.assistantSettings = result.data
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue(result.data.setting.provider)
-      this.assistantError = null
-      this.assistantConnectionCheck = null
-      showToast(result.data.launch_status?.message || "llama.cpp server started", "success")
-    } finally {
-      this.assistantLaunchStarting = false
-      this._renderSafely()
-    }
-  }
-
-  async stopAssistantServer() {
-    const provider = this.assistantSettingsDraft?.provider || this._selectedAssistantProvider()
-    if (!provider) return
-
-    this.assistantLaunchStopping = true
-    this._renderSafely()
-
-    try {
-      const result = await stopLlamaServer(provider)
-      if (!result.ok || !result.data) {
-        this.assistantError = result.error || "Server stop failed"
-        showToast(this.assistantError)
-        return
-      }
-
-      this.assistantSettings = result.data
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue(result.data.setting.provider)
-      this.assistantError = null
-      this.assistantConnectionCheck = null
-      showToast(result.data.launch_status?.message || "llama.cpp server stopped", "success")
-    } finally {
-      this.assistantLaunchStopping = false
-      this._renderSafely()
-    }
-  }
-
-  async saveAssistantSettings() {
-    if (!this.assistantSettingsDraft) {
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue()
-    }
-
-    this.assistantSettingsSaving = true
-    this._renderSafely()
-
-    try {
-      const result = await saveLlmSettings(this.assistantSettingsDraft)
-      if (!result.ok || !result.data) {
-        this.assistantError = result.error || "Settings save failed"
-        showToast(this.assistantError)
-        return
-      }
-
-      this.assistantSettings = result.data
-      if (this.state) {
-        this.state.assistantSettingsProvider = result.data.setting.provider || null
-        this._persistState()
-      }
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue(result.data.setting.provider)
-      this.assistantSettingsOpen = false
-      this.assistantError = null
-      this._renderSafely()
-      showToast("Assistant settings saved", "success")
-    } finally {
-      this.assistantSettingsSaving = false
-      this._renderSafely()
-    }
-  }
-
-  updateAssistantInput(e: Event) {
-    this.assistantInput = (e.currentTarget as HTMLTextAreaElement).value
-    this._syncAssistantSendButton()
-  }
-
-  handleAssistantInputKeydown(e: KeyboardEvent) {
-    if (!(e.metaKey || e.ctrlKey) || e.key !== "Enter") return
-    e.preventDefault()
-    void this.sendAssistantMessage()
-  }
-
-  async createAssistantChat() {
-    if (!this._assistantConfigured()) {
-      this.openAssistantSettings()
-      return
-    }
-
-    const chat = await this._createAssistantChat()
-    if (!chat) return
-
-    this._applyAssistantChatPayload(chat)
-    this._renderSafely()
-  }
-
-  async selectAssistantChat(e: Event) {
-    const chatId = Number((e.currentTarget as HTMLSelectElement).value)
-    if (!chatId) {
-      this._clearAssistantSelection()
-      this._renderSafely()
-      return
-    }
-
-    await this._loadAssistantChat(chatId)
-  }
-
-  async renameAssistantChat() {
-    if (!this.assistantCurrentChat) return
-
-    this.renameDialog = {
-      title: "Rename saved chat",
-      body: "Update the title for this conversation.",
-      confirmLabel: "Save title",
-      value: this.assistantCurrentChat.title,
-    }
-    this._renderSafely()
-  }
-
-  deleteAssistantChat() {
-    if (!this.assistantCurrentChat) return
-
-    this.confirmDialog = {
-      action: "delete-chat",
-      tone: "danger",
-      title: "Delete saved chat?",
-      body: `The chat "${this.assistantCurrentChat.title}" will be removed from local history. This action cannot be undone.`,
-      confirmLabel: "Delete chat",
-    }
-    this._renderSafely()
-  }
-
-  toggleAssistantReasoning(e: Event) {
-    const details = e.currentTarget as HTMLDetailsElement
-    const messageId = Number(details.dataset.messageId)
-    if (!messageId) return
-
-    if (details.open) {
-      this.assistantExpandedReasoningIds.add(messageId)
-    } else {
-      this.assistantExpandedReasoningIds.delete(messageId)
-    }
-  }
-
-  updateRenameDialogValue(e: Event) {
-    if (!this.renameDialog) return
-
-    this.renameDialog.value = (e.currentTarget as HTMLInputElement).value
-    this._renderSafely()
-  }
-
-  handleRenameDialogKeydown(e: KeyboardEvent) {
-    if (e.key !== "Enter") return
-
-    e.preventDefault()
-    void this.submitRenameDialog()
-  }
-
-  async submitRenameDialog() {
-    if (!this.assistantCurrentChat || !this.renameDialog) return
-
-    const nextTitle = this.renameDialog.value.trim()
-    const currentTitle = this.assistantCurrentChat.title
-    this.renameDialog = null
-    this._renderSafely()
-
-    if (!nextTitle || nextTitle === currentTitle) return
-
-    const result = await renameAssistantChat(this.assistantCurrentChat.id, nextTitle)
-    if (!result.ok || !result.data) {
-      this.assistantError = result.error || "Chat rename failed"
-      showToast(this.assistantError)
-      this._renderSafely()
-      return
-    }
-
-    this._applyAssistantChatPayload(result.data)
-    this._renderSafely()
-    showToast("Chat renamed", "success")
-  }
-
-  async sendAssistantMessage() {
-    if (!this.state || this.assistantLoading) return
-
-    const content = this.assistantInput.trim()
-    if (!content) return
-
-    if (!this._assistantConfigured()) {
-      this.openAssistantSettings()
-      return
-    }
-
-    const currentChat = this.assistantCurrentChat
-    const chatPayload = currentChat ? null : await this._createAssistantChat()
-    const chatId = currentChat?.id || chatPayload?.chat.id
-    if (!chatId) return
-
-    if (chatPayload) {
-      this._applyAssistantChatPayload(chatPayload)
-    }
-
-    this.assistantInput = ""
-    this._appendOptimisticUserMessage(content)
-    this.assistantLoading = true
-    this.assistantError = null
-    this.assistantScrollToBottomPending = true
-    this._renderSafely()
-    await this._ensureAssistantChatSubscription(chatId)
-
-    try {
-      const result = await sendAssistantMessage(chatId, {
-        provider: this._selectedAssistantProvider(),
-        content,
-        editor_context: this._assistantEditorContext(),
-      })
-
-      if (!result.ok || !result.data) {
-        this._dropOptimisticUserMessages()
-        this.assistantInput = content
-        this.assistantError = result.error || "Assistant request failed"
-        showToast(this.assistantError)
-        return
-      }
-
-      this._applyAssistantChatPayload(result.data)
-      this._renderSafely()
-    } finally {
-      this.assistantLoading = false
-      this._renderSafely()
-    }
-  }
-
-  applyAssistantDraft() {
-    if (!this.state || !this.assistantDraft) return
-
-    const currentHash = hashText(this.state.systemYaml)
-    const sourceHash = this.assistantDraft.source_yaml_hash
-    if (sourceHash && sourceHash !== currentHash) {
-      this.confirmDialog = {
-        action: "apply-draft-overwrite",
-        tone: "warning",
-        title: "Overwrite current YAML with assistant draft?",
-        body: "The editor changed after the assistant generated this draft. Applying it now will replace your current YAML buffer.",
-        confirmLabel: "Apply draft",
-      }
-      this._renderSafely()
-      return
-    }
-
-    this._commitAssistantDraft()
-  }
-
-  applyAssistantMessageDraft(e: Event) {
-    const messageId = Number((e.currentTarget as HTMLElement).dataset.messageId)
-    if (!messageId) return
-
-    const message = this.assistantMessages.find(item => item.id === messageId)
-    const draft = this._assistantDraftFromMetadata(message?.metadata)
-    if (!draft) return
-
-    this.assistantDraft = draft
-    this.applyAssistantDraft()
-  }
-
-  applyAssistantYamlSnippet(e: Event) {
-    const encodedYaml = (e.currentTarget as HTMLElement).dataset.yaml
-    if (!encodedYaml) return
-
-    const yaml = decodeURIComponent(encodedYaml)
-    this.assistantDraft = {
-      yaml,
-      source_yaml_hash: null,
-      validation: {
-        ok: false,
-        diagnostics: [],
-        system: null,
-      },
-    }
-    this.applyAssistantDraft()
-  }
-
-  private _commitAssistantDraft() {
-    if (!this.state || !this.assistantDraft) return
-
-    this.state.systemYaml = this.assistantDraft.yaml
-    this._refreshLocalDiagnostics()
-    this._persistState()
-    this._renderSafely()
-    showToast("Assistant draft applied to editor", "success")
-    void this.validator.run(this.state, true)
-  }
-
-  // Private helpers
 
   private async _performDeleteSystem() {
-    if (!this.state?.sourcePath || !this.state?.sourceSystemId) return
+    if (!this.state?.sourcePath || !this.state.sourceSystemId) return
 
     const sourcePath = this.state.sourcePath
     const sourceFileName = this._currentEntry()?.relative_path || sourcePath
@@ -1026,24 +544,6 @@ export default class extends Controller {
     }
   }
 
-  private async _performDeleteAssistantChat() {
-    if (!this.assistantCurrentChat) return
-
-    const deletingId = this.assistantCurrentChat.id
-    const result = await deleteAssistantChat(deletingId)
-    if (!result.ok) {
-      this.assistantError = result.error || "Chat delete failed"
-      showToast(this.assistantError)
-      this._renderSafely()
-      return
-    }
-
-    this.assistantChats = this.assistantChats.filter(chat => chat.id !== deletingId)
-    this._clearAssistantSelection()
-    this._renderSafely()
-    showToast("Chat deleted", "success")
-  }
-
   private async _performDeleteFileManagerEntry() {
     await this.filePicker.deleteEntry()
   }
@@ -1052,9 +552,9 @@ export default class extends Controller {
     if (!this.state) return
 
     this.element.innerHTML = renderSystemEditorHTML({
-      tabId: this.tabIdValue,
       state: this.state,
       catalog: this.catalog,
+      directories: this.directories,
       validation: this._displayValidation(),
       validating: this.validating,
       saving: this.saving,
@@ -1065,31 +565,12 @@ export default class extends Controller {
       filePickerQuery: this.filePicker.query,
       filePickerDirectoryPath: this.filePicker.directoryPath,
       filePickerSelectedPath: this.filePicker.selectedPath,
-      directories: this.directories,
       isOnline: monitor.isOnline,
-      assistantChats: this.assistantChats,
-      assistantMessages: this.assistantMessages,
-      assistantCurrentChat: this.assistantCurrentChat,
-      assistantInput: this.assistantInput,
-      assistantLoading: this.assistantLoading,
-      assistantChatsLoading: this.assistantChatsLoading,
-      assistantError: this.assistantError,
-      assistantSettings: this.assistantSettings,
-      assistantSettingsDraft: this.assistantSettingsDraft,
-      assistantSettingsOpen: this.assistantSettingsOpen,
-      assistantSettingsSaving: this.assistantSettingsSaving,
-      assistantConnectionCheck: this.assistantConnectionCheck,
-      assistantConnectionChecking: this.assistantConnectionChecking,
-      assistantLaunchStarting: this.assistantLaunchStarting,
-      assistantLaunchStopping: this.assistantLaunchStopping,
-      assistantExpandedReasoningIds: Array.from(this.assistantExpandedReasoningIds),
-      renameDialog: this.renameDialog,
       confirmDialog: this.confirmDialog,
     })
   }
 
   private _renderSafely() {
-    this._captureAssistantScrollSnapshot()
     this.editor.captureSnapshot()
 
     try {
@@ -1103,7 +584,6 @@ export default class extends Controller {
     this.editor.restoreSnapshot()
     this.editor.syncScroll()
     this.autocomplete.sync(this.editor.yamlTextarea())
-    this._restoreAssistantScroll()
   }
 
   private _refreshDynamicView(): boolean {
@@ -1173,49 +653,6 @@ export default class extends Controller {
     return true
   }
 
-  private _restoreAssistantScroll() {
-    const messages = this._role<HTMLElement>("assistant-messages")
-    if (!messages) return
-
-    if (this.assistantScrollToBottomPending) {
-      messages.scrollTop = messages.scrollHeight
-      this.assistantScrollToBottomPending = false
-      this.assistantScrollSnapshot = null
-      return
-    }
-
-    if (!this.assistantScrollSnapshot) return
-
-    if (this.assistantScrollSnapshot.pinnedToBottom) {
-      messages.scrollTop = messages.scrollHeight
-    } else {
-      messages.scrollTop = this.assistantScrollSnapshot.top
-    }
-
-    this.assistantScrollSnapshot = null
-  }
-
-  private _syncAssistantSendButton() {
-    const button = this._role<HTMLButtonElement>("assistant-send-button")
-    if (!button) return
-
-    button.disabled = this.assistantLoading || !this._assistantConfigured() || !this.assistantInput.trim()
-  }
-
-  private _captureAssistantScrollSnapshot() {
-    const messages = this._role<HTMLElement>("assistant-messages")
-    if (!messages) {
-      this.assistantScrollSnapshot = null
-      return
-    }
-
-    const distanceFromBottom = messages.scrollHeight - messages.clientHeight - messages.scrollTop
-    this.assistantScrollSnapshot = {
-      top: messages.scrollTop,
-      pinnedToBottom: distanceFromBottom <= 24,
-    }
-  }
-
   private _ensureLoadedYaml() {
     if (!this.state) return
     if (this.state.systemYaml.trim()) return
@@ -1225,291 +662,17 @@ export default class extends Controller {
       || this.catalog.find(item => item.id === (state.sourceSystemId || state.systemId))
     if (!entry) return
 
-    state.systemId = entry.id
-    state.sourceSystemId = entry.id
-    state.sourcePath = entry.relative_path
-    state.directoryPath = relativeDirname(entry.relative_path)
-    state.systemYaml = entry.yaml
-  }
-
-  private _assistantSettingsDraftValue(provider = this._selectedAssistantProvider()): LlmSettingsDraft {
-    const defaults = this.assistantSettings?.defaults
-    const resolvedProvider = provider || defaults?.provider || this.assistantSettings?.providers[0]?.value || ""
-    const selectedSetting = this.assistantSettings?.setting.provider === resolvedProvider ? this.assistantSettings.setting : null
-    const saved = this._settingForProvider(resolvedProvider) || selectedSetting
-    const providerOption = this._providerOption(resolvedProvider)
-    const suggestedModel = this._modelSuggestionsFor(resolvedProvider)[0]
-    const defaultModel = saved?.model
-      || suggestedModel
-      || providerOption?.default_model
-      || ""
-    const launchConfig = saved?.launch_config
-
-    return {
-      provider: resolvedProvider,
-      model: defaultModel,
-      api_key: "",
-      api_base: saved?.api_base || providerOption?.default_api_base || "",
-      temperature: String(saved?.temperature ?? defaults?.temperature ?? ""),
-      max_output_tokens: String(saved?.max_output_tokens ?? defaults?.max_output_tokens ?? ""),
-      launch_binary_path: launchConfig?.binary_path || "",
-      launch_model_path: launchConfig?.model_path || "",
-      launch_bind_host: launchConfig?.bind_host || "0.0.0.0",
-      launch_client_host: launchConfig?.client_host || "127.0.0.1",
-      launch_port: String(launchConfig?.port ?? 8080),
-      launch_extra_args: launchConfig?.extra_args || "",
-    }
-  }
-
-  private _modelSuggestionsFor(provider: string): string[] {
-    return this.assistantSettings?.model_suggestions_by_provider?.[provider] || []
-  }
-
-  private _providerOption(provider: string) {
-    return this.assistantSettings?.providers.find(option => option.value === provider) || null
-  }
-
-  private _settingForProvider(provider: string) {
-    return this.assistantSettings?.settings_by_provider?.[provider] || null
-  }
-
-  private _assistantConfigured(): boolean {
-    const setting = this._settingForProvider(this._selectedAssistantProvider())
-    if (!setting?.model.trim()) return false
-
-    return Boolean(setting.api_key_present || !setting.api_key_required)
-  }
-
-  private _assistantEditorContext() {
-    const validation = this._displayValidation()
-
-    return {
-      system_yaml: this.state?.systemYaml || "",
-      system_id: this.state?.systemId || null,
-      source_path: this.state?.sourcePath || null,
-      yaml_hash: hashText(this.state?.systemYaml || ""),
-      diagnostics: validation?.diagnostics || [],
-    }
-  }
-
-  private async _loadAssistantSettings(resetDraft = false) {
-    const result = await fetchLlmSettings(this.state?.assistantSettingsProvider)
-    if (!result.ok || !result.data) {
-      this.assistantSettings = null
-      if (result.error && result.error !== "Unauthorized") {
-        this.assistantError = this.assistantError || result.error
-      }
-      this._renderSafely()
-      return
-    }
-
-    this.assistantSettings = result.data
-    this.assistantError = this.assistantError === "Unauthorized" ? null : this.assistantError
-    if (this.state && !this.state.assistantSettingsProvider) {
-      this.state.assistantSettingsProvider = result.data.setting.provider || null
-      this._persistState()
-    }
-    if (resetDraft || !this.assistantSettingsDraft) {
-      this.assistantSettingsDraft = this._assistantSettingsDraftValue(result.data.setting.provider)
-    }
-    this._renderSafely()
-  }
-
-  private _selectedAssistantProvider(): string {
-    return this.state?.assistantSettingsProvider
-      || this.assistantSettingsDraft?.provider
-      || this.assistantSettings?.setting.provider
-      || this.assistantSettings?.defaults.provider
-      || this.assistantSettings?.providers[0]?.value
-      || ""
-  }
-
-  private async _ensureAssistantChatSubscription(chatId: number) {
-    if (!chatId) return
-    if (this.assistantSubscribedChatId === chatId && this.assistantChatSubscription) return
-
-    this._disconnectAssistantChatSubscription()
-
-    const subscription = new AssistantChatSubscription(chatId, payload => {
-      const activeChatId = this.assistantCurrentChat?.id || this.state?.assistantChatId || null
-      if (payload.chat.id !== activeChatId) return
-
-      this._applyAssistantChatPayload(payload, "auto")
-      this._renderSafely()
-    })
-
-    this.assistantChatSubscription = subscription
-    this.assistantSubscribedChatId = chatId
-    await subscription.connect()
-  }
-
-  private _disconnectAssistantChatSubscription() {
-    this.assistantChatSubscription?.disconnect()
-    this.assistantChatSubscription = null
-    this.assistantSubscribedChatId = null
-  }
-
-  private async _loadAssistantChats() {
-    if (!this.state) return
-
-    this.assistantChatsLoading = true
-    this._renderSafely()
-
-    try {
-      const result = await fetchAssistantChats(null)
-      if (!result.ok || !result.data) {
-        if (result.error && result.error !== "Unauthorized") {
-          this.assistantError = this.assistantError || result.error
-        }
-        return
-      }
-
-      this.assistantChats = result.data.chats
-      const selectedChatId = this.state.assistantChatId || this.assistantCurrentChat?.id || null
-
-      if (selectedChatId && this.assistantChats.some(chat => chat.id === selectedChatId)) {
-        if (this.assistantCurrentChat?.id !== selectedChatId) {
-          await this._loadAssistantChat(selectedChatId, false, "force_bottom")
-        } else {
-          this.assistantCurrentChat = this.assistantChats.find(chat => chat.id === selectedChatId) || this.assistantCurrentChat
-          this._renderSafely()
-        }
-        return
-      }
-
-      this._renderSafely()
-    } finally {
-      this.assistantChatsLoading = false
-      this._renderSafely()
-    }
-  }
-
-  private async _loadAssistantChat(chatId: number, setLoading = true, scrollMode: "auto" | "force_bottom" | "preserve" = "force_bottom") {
-    if (setLoading) {
-      this.assistantChatsLoading = true
-      this._renderSafely()
-    }
-
-    try {
-      const result = await fetchAssistantChat(chatId)
-      if (!result.ok || !result.data) {
-        this.assistantError = result.error || "Failed to load chat"
-        this._clearAssistantSelection()
-        this._renderSafely()
-        return
-      }
-
-      this._applyAssistantChatPayload(result.data, scrollMode)
-      this._renderSafely()
-    } finally {
-      if (setLoading) {
-        this.assistantChatsLoading = false
-        this._renderSafely()
-      }
-    }
-  }
-
-  private async _createAssistantChat(): Promise<AssistantChatPayload | null> {
-    if (!this.state) return null
-
-    const result = await createAssistantChat({
-      source_path: this.state.sourcePath,
-      system_id: this.state.systemId || null,
-    })
-
-    if (!result.ok || !result.data) {
-      this.assistantError = result.error || "Chat create failed"
-      showToast(this.assistantError)
-      this._renderSafely()
-      return null
-    }
-
-    return result.data
-  }
-
-  private _applyAssistantChatPayload(payload: AssistantChatPayload, scrollMode: "auto" | "force_bottom" | "preserve" = "auto") {
-    if (!this.state) return
-
-    const shouldScrollToBottom = this._shouldScrollAssistantToBottom(payload, scrollMode)
-
-    this.assistantCurrentChat = payload.chat
-    this.assistantMessages = payload.messages
-    this.assistantDraft = null
-    this.assistantError = null
-    this.assistantScrollToBottomPending = shouldScrollToBottom
-    this.assistantExpandedReasoningIds = new Set(
-      Array.from(this.assistantExpandedReasoningIds).filter(id => payload.messages.some(message => message.id === id)),
-    )
-    this._mergeAssistantChatSummary(payload.chat)
-    this.state.assistantChatId = payload.chat.id
-    this._persistState()
-    void this._ensureAssistantChatSubscription(payload.chat.id)
-  }
-
-  private _appendOptimisticUserMessage(content: string) {
-    this.assistantMessages = [
-      ...this.assistantMessages,
-      {
-        id: -Date.now(),
-        role: "user",
-        content,
-        created_at: new Date().toISOString(),
-        thinking_text: null,
-        metadata: {},
-      },
-    ]
-  }
-
-  private _dropOptimisticUserMessages() {
-    this.assistantMessages = this.assistantMessages.filter(message => message.id > 0)
-  }
-
-  private _assistantDraftFromMetadata(metadata: Record<string, unknown> | null | undefined): AssistantDraftPayload | null {
-    const draft = metadata?.draft
-    if (!draft || typeof draft !== "object") return null
-
-    const payload = draft as Record<string, unknown>
-    if (typeof payload.yaml !== "string") return null
-
-    return {
-      yaml: payload.yaml,
-      source_yaml_hash: typeof payload.source_yaml_hash === "string" ? payload.source_yaml_hash : null,
-      validation: {
-        ok: Boolean((payload.validation as Record<string, unknown> | undefined)?.ok),
-        diagnostics: Array.isArray((payload.validation as Record<string, unknown> | undefined)?.diagnostics)
-          ? ((payload.validation as Record<string, unknown>).diagnostics as ResearchDslDiagnostic[])
-          : [],
-        system: ((payload.validation as Record<string, unknown> | undefined)?.system as Record<string, unknown> | null) || null,
-      },
-    }
-  }
-
-  private _mergeAssistantChatSummary(chat: AssistantChatSummary) {
-    this.assistantChats = [
-      chat,
-      ...this.assistantChats.filter(item => item.id !== chat.id),
-    ].sort((left, right) => {
-      const rightTime = Date.parse(right.updated_at)
-      const leftTime = Date.parse(left.updated_at)
-      return rightTime - leftTime
-    })
-  }
-
-  private _clearAssistantSelection() {
-    if (this.state) {
-      this.state.assistantChatId = null
-      this._persistState()
-    }
-    this.assistantCurrentChat = null
-    this.assistantMessages = []
-    this.assistantDraft = null
-    this.assistantExpandedReasoningIds.clear()
-    this._disconnectAssistantChatSubscription()
+    this.state.systemId = entry.id
+    this.state.sourceSystemId = entry.id
+    this.state.sourcePath = entry.relative_path
+    this.state.directoryPath = relativeDirname(entry.relative_path)
+    this.state.systemYaml = entry.yaml
   }
 
   private _currentEntry(): ResearchCatalogEntry | null {
     if (!this.state?.sourcePath) return null
-    return this.catalog.find(entry => entry.relative_path === this.state?.sourcePath) || null
+    const sourcePath = this.state.sourcePath
+    return this.catalog.find(entry => entry.relative_path === sourcePath) || null
   }
 
   private _currentDirectoryPath(): string {
@@ -1526,19 +689,23 @@ export default class extends Controller {
 
   private _mergeCatalogEntry(entry: ResearchCatalogEntry): ResearchCatalogEntry[] {
     const others = this.catalog.filter(item => item.relative_path !== entry.relative_path)
-    return [...others, entry].sort((l, r) => l.name.localeCompare(r.name))
+    return [...others, entry].sort((left, right) => left.name.localeCompare(right.name))
   }
 
   private _replaceCatalogEntry(previousPath: string, entry: ResearchCatalogEntry): ResearchCatalogEntry[] {
     const others = this.catalog.filter(item => item.relative_path !== previousPath && item.relative_path !== entry.relative_path)
-    return [...others, entry].sort((l, r) => l.name.localeCompare(r.name))
+    return [...others, entry].sort((left, right) => left.name.localeCompare(right.name))
   }
 
   private _persistState() {
     if (!this.state) return
     this.element.dispatchEvent(new CustomEvent("systemeditor:configChanged", {
       bubbles: true,
-      detail: { tabId: this.tabIdValue, config: { ...this.state } },
+      detail: {
+        tabId: this.tabIdValue,
+        config: { ...this.state },
+        diagnostics: this._displayValidation()?.diagnostics || [],
+      },
     }))
   }
 
@@ -1553,42 +720,9 @@ export default class extends Controller {
     this.validation = null
     this.validating = false
     this._refreshLocalDiagnostics()
+    this._persistState()
     this._renderSafely()
     void this.validator.run(this.state, true)
-  }
-
-  private _shouldScrollAssistantToBottom(
-    payload: AssistantChatPayload,
-    scrollMode: "auto" | "force_bottom" | "preserve",
-  ): boolean {
-    if (scrollMode === "force_bottom") return true
-    if (scrollMode === "preserve") return false
-    if (!this._assistantIsPinnedToBottom()) return false
-
-    const previousLast = this._assistantMessageSignature(this.assistantMessages[this.assistantMessages.length - 1] || null)
-    const nextLast = this._assistantMessageSignature(payload.messages[payload.messages.length - 1] || null)
-
-    return previousLast !== nextLast || this.assistantMessages.length !== payload.messages.length
-  }
-
-  private _assistantIsPinnedToBottom(): boolean {
-    const messages = this._role<HTMLElement>("assistant-messages")
-    if (!messages) return true
-
-    const distanceFromBottom = messages.scrollHeight - messages.clientHeight - messages.scrollTop
-    return distanceFromBottom <= 24
-  }
-
-  private _assistantMessageSignature(message: AssistantChatMessage | null): string {
-    if (!message) return ""
-
-    const draft = this._assistantDraftFromMetadata(message.metadata)
-    return [
-      message.id,
-      message.content || "",
-      message.thinking_text || "",
-      draft?.yaml || "",
-    ].join("::")
   }
 
   private _refreshLocalDiagnostics() {
@@ -1665,15 +799,4 @@ function mergeDiagnostics(
     seen.add(key)
     return true
   })
-}
-
-function hashText(value: string): string {
-  let hash = 2166136261
-
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-
-  return (hash >>> 0).toString(16)
 }

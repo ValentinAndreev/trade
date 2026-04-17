@@ -30,7 +30,7 @@ class LlmSetting < ApplicationRecord
 
   def normalize_launch_fields
     self.launch_config = provider.to_s == 'llama' ? normalized_launch_config : {}
-    self.launch_state = launch_state.is_a?(Hash) ? launch_state.deep_stringify_keys : {}
+    self.launch_state = launch_state.to_h.deep_stringify_keys
 
     return unless provider.to_s == 'llama'
 

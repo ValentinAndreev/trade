@@ -82,8 +82,6 @@ export interface LlmSettingsDraft {
 export interface AssistantChatSummary {
   id: number
   title: string
-  source_path: string | null
-  system_id: string | null
   updated_at: string
   last_message_preview: string
   last_used_provider: string | null
@@ -91,6 +89,7 @@ export interface AssistantChatSummary {
 }
 
 export interface AssistantDraftPayload {
+  kind: "system_draft"
   yaml: string
   source_yaml_hash: string | null
   validation: {
@@ -98,6 +97,13 @@ export interface AssistantDraftPayload {
     diagnostics: ResearchDslDiagnostic[]
     system: Record<string, unknown> | null
   }
+  suggested_target: AssistantDraftTargetPayload | null
+}
+
+export interface AssistantDraftTargetPayload {
+  type: "system_editor"
+  system_id: string | null
+  source_path: string | null
 }
 
 export interface AssistantChatMessage {
@@ -122,8 +128,34 @@ export interface AssistantEditorContextPayload {
   system_yaml: string
   system_id: string | null
   source_path: string | null
-  yaml_hash: string
+  yaml_hash: string | null
   diagnostics: ResearchDslDiagnostic[]
+}
+
+export interface AssistantLinkedTargetPayload {
+  type: "system_editor"
+  tab_id: string
+  system_id: string | null
+  source_path: string | null
+}
+
+export interface AssistantWorkspaceTabPayload {
+  id: string
+  type: string
+  label: string
+  source_path: string | null
+  system_id: string | null
+}
+
+export interface AssistantContextPayload {
+  host_type: string
+  linked_target: AssistantLinkedTargetPayload | null
+  workspace_snapshot: {
+    active_tab_id: string | null
+    tabs: AssistantWorkspaceTabPayload[]
+  }
+  referenced_tab_ids: string[]
+  editor_context: AssistantEditorContextPayload | null
 }
 
 export interface ApiResult<T> {
@@ -249,20 +281,14 @@ export async function stopLlamaServer(provider: string): Promise<ApiResult<LlmSe
   }))
 }
 
-export async function fetchAssistantChats(sourcePath: string | null): Promise<ApiResult<AssistantChatListPayload>> {
-  const params = new URLSearchParams()
-  if (sourcePath) params.set("source_path", sourcePath)
-  const url = params.size ? `/api/system_editor_chats?${params.toString()}` : "/api/system_editor_chats"
-
-  return buildResult<AssistantChatListPayload>(await apiFetch(url, { headers: jsonHeaders() }, { silent: true }))
+export async function fetchAssistantChats(): Promise<ApiResult<AssistantChatListPayload>> {
+  return buildResult<AssistantChatListPayload>(await apiFetch("/api/assistant_chats", { headers: jsonHeaders() }, { silent: true }))
 }
 
 export async function createAssistantChat(payload: {
   title?: string
-  source_path?: string | null
-  system_id?: string | null
 }): Promise<ApiResult<AssistantChatPayload>> {
-  return buildResult<AssistantChatPayload>(await apiFetch("/api/system_editor_chats", {
+  return buildResult<AssistantChatPayload>(await apiFetch("/api/assistant_chats", {
     method: "POST",
     headers: jsonHeaders(),
     body: JSON.stringify(payload),
@@ -270,11 +296,11 @@ export async function createAssistantChat(payload: {
 }
 
 export async function fetchAssistantChat(chatId: number): Promise<ApiResult<AssistantChatPayload>> {
-  return buildResult<AssistantChatPayload>(await apiFetch(`/api/system_editor_chats/${chatId}`, { headers: jsonHeaders() }, { silent: true }))
+  return buildResult<AssistantChatPayload>(await apiFetch(`/api/assistant_chats/${chatId}`, { headers: jsonHeaders() }, { silent: true }))
 }
 
 export async function renameAssistantChat(chatId: number, title: string): Promise<ApiResult<AssistantChatPayload>> {
-  return buildResult<AssistantChatPayload>(await apiFetch(`/api/system_editor_chats/${chatId}`, {
+  return buildResult<AssistantChatPayload>(await apiFetch(`/api/assistant_chats/${chatId}`, {
     method: "PATCH",
     headers: jsonHeaders(),
     body: JSON.stringify({ title }),
@@ -282,7 +308,7 @@ export async function renameAssistantChat(chatId: number, title: string): Promis
 }
 
 export async function deleteAssistantChat(chatId: number): Promise<ApiResult<{ ok: boolean }>> {
-  return buildResult<{ ok: boolean }>(await apiFetch(`/api/system_editor_chats/${chatId}`, {
+  return buildResult<{ ok: boolean }>(await apiFetch(`/api/assistant_chats/${chatId}`, {
     method: "DELETE",
     headers: jsonHeaders(),
   }))
@@ -293,10 +319,10 @@ export async function sendAssistantMessage(
   payload: {
     provider: string
     content: string
-    editor_context: AssistantEditorContextPayload
+    assistant_context?: AssistantContextPayload
   },
 ): Promise<ApiResult<AssistantChatPayload>> {
-  return buildResult<AssistantChatPayload>(await apiFetch(`/api/system_editor_chats/${chatId}/messages`, {
+  return buildResult<AssistantChatPayload>(await apiFetch(`/api/assistant_chats/${chatId}/messages`, {
     method: "POST",
     headers: jsonHeaders(),
     body: JSON.stringify(payload),

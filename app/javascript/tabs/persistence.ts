@@ -1,9 +1,11 @@
-import type { Tab } from "../types/store"
+import type { Tab, WorkspaceAssistantState } from "../types/store"
 import { buildDefaultResearchState } from "../research/state"
-import { buildDefaultSystemEditorState } from "../system_editor/state"
+import { hydrateSystemEditorState } from "../system_editor/state"
+import { buildDefaultWorkspaceAssistantState, hydrateWorkspaceAssistantState } from "../assistant/state"
 
 const STORAGE_KEY = "chart-tabs"
 const ACTIVE_TAB_KEY = "chart-active-tab"
+const WORKSPACE_ASSISTANT_STATE_KEY = "workspace-assistant-state"
 
 export function loadTabs(): Tab[] {
   try {
@@ -25,22 +27,26 @@ export function loadTabs(): Tab[] {
             tab.researchResult = { runs: [], selectedRunIndex: 0 }
           }
           if (tab.type === "system_editor") {
-            tab.systemEditorConfig = {
-              ...buildDefaultSystemEditorState(),
-              ...(tab.systemEditorConfig || {}),
-            }
+            tab.systemEditorConfig = hydrateSystemEditorState(tab.systemEditorConfig || {})
           }
           return tab
         })
+        let assistantTabSeen = false
+        const deduped = normalized.filter(tab => {
+          if (tab.type !== "assistant") return true
+          if (assistantTabSeen) return false
+          assistantTabSeen = true
+          return true
+        })
         // Build set of all valid system IDs across all data tabs
         const validSystemIds = new Set<string>()
-        for (const tab of normalized) {
+        for (const tab of deduped) {
           if (tab.type === "data" && tab.dataConfig?.systems) {
             for (const sys of tab.dataConfig.systems) validSystemIds.add(sys.id)
           }
         }
         // Drop orphaned system_stats tabs whose system no longer exists
-        return normalized.filter(tab =>
+        return deduped.filter(tab =>
           tab.type !== "system_stats" || validSystemIds.has(tab.systemStatsConfig?.systemId ?? "")
         )
       }
@@ -51,11 +57,16 @@ export function loadTabs(): Tab[] {
 
 export function saveTabs(tabs: Tab[]): void {
   const storableTabs = tabs.map(tab => {
-    if (tab.type !== "research") return tab
-    return {
-      ...tab,
-      researchResult: undefined,
+    const next = { ...tab }
+
+    if (next.type === "research") {
+      return {
+        ...next,
+        researchResult: undefined,
+      }
     }
+
+    return next
   })
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(storableTabs))
@@ -67,6 +78,25 @@ export function loadActiveTabId(): string | null {
 
 export function saveActiveTabId(tabId: string): void {
   localStorage.setItem(ACTIVE_TAB_KEY, tabId)
+}
+
+export function loadWorkspaceAssistantState(): WorkspaceAssistantState {
+  try {
+    const stored = localStorage.getItem(WORKSPACE_ASSISTANT_STATE_KEY)
+    if (!stored) return buildDefaultWorkspaceAssistantState()
+
+    return hydrateWorkspaceAssistantState(JSON.parse(stored) as Partial<WorkspaceAssistantState>)
+  } catch {
+    return buildDefaultWorkspaceAssistantState()
+  }
+}
+
+export function saveWorkspaceAssistantState(state: WorkspaceAssistantState): void {
+  localStorage.setItem(WORKSPACE_ASSISTANT_STATE_KEY, JSON.stringify(state))
+}
+
+export function clearWorkspaceAssistantState(): void {
+  localStorage.removeItem(WORKSPACE_ASSISTANT_STATE_KEY)
 }
 
 export function calcNextId(tabs: Tab[], prefix: string): number {

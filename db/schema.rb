@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_15_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_17_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "timescaledb"
@@ -20,14 +20,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_180000) do
     t.datetime "created_at", null: false
     t.string "last_used_model"
     t.string "last_used_provider"
-    t.string "source_path"
-    t.string "system_id"
     t.string "title", null: false
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.index ["ai_model_id"], name: "index_ai_chats_on_ai_model_id"
     t.index ["updated_at"], name: "index_ai_chats_on_updated_at"
-    t.index ["user_id", "source_path"], name: "index_ai_chats_on_user_id_and_source_path"
     t.index ["user_id"], name: "index_ai_chats_on_user_id"
   end
 

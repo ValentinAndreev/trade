@@ -38,7 +38,7 @@ export class DataSyncActions {
     }
     if (!ctrl) return
 
-    if (tab?.type === "data" && tab.dataConfig && typeof ctrl.loadWithConfig === "function") {
+    if (tab?.type === "data" && tab.dataConfig) {
       await ctrl.loadWithConfig(tab.dataConfig)
     } else {
       await ctrl.loadData()

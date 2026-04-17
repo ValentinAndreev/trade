@@ -184,6 +184,12 @@ export function addTabButtonHTML(ctrl: string): string {
       >+</button>
       <div data-tab-type-dropdown class="hidden absolute top-full right-0 z-50 mt-1 py-1 bg-[#22223a] border border-[#3a3a4e] rounded shadow-xl min-w-[140px]">
         <button
+          data-action="click->${ctrl}#addAssistantTab"
+          class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
+        >
+          <span class="text-fuchsia-400">&#9993;</span> Assistant
+        </button>
+        <button
           data-action="click->${ctrl}#addChartTab"
           class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
         >
@@ -255,6 +261,23 @@ export function systemEditorPanelHTML(tabId: string, configJson: string): string
          data-controller="system-editor"
          data-system-editor-tab-id-value="${tabId}"
          data-system-editor-config-value='${configJson.replace(/'/g, "&#39;")}'>
+    </div>
+  `
+}
+
+export function assistantPanelHTML(
+  tabId: string,
+  stateJson: string,
+  workspaceSnapshotJson: string,
+  linkedTargetContextJson: string,
+): string {
+  return `
+    <div class="relative flex-1 min-h-0 overflow-hidden"
+         data-controller="assistant"
+         data-assistant-tab-id-value="${tabId}"
+         data-assistant-state-value='${stateJson.replace(/'/g, "&#39;")}'
+         data-assistant-workspace-snapshot-value='${workspaceSnapshotJson.replace(/'/g, "&#39;")}'
+         data-assistant-linked-target-context-value='${linkedTargetContextJson.replace(/'/g, "&#39;")}'>
     </div>
   `
 }

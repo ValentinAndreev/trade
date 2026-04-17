@@ -18,11 +18,10 @@ RSpec.describe Llm::SystemEditor::DraftExtractor do
       role: 'tool',
       parent_tool_call: previous_tool_call,
       content: JSON.generate(
-        ok: true,
-        draft_yaml: "id: old\nname: Old",
-        diagnostics: [],
-        system: { id: 'old' },
-        source_yaml_hash: 'oldhash'
+        kind: 'system_draft',
+        yaml: "id: old\nname: Old",
+        source_yaml_hash: 'oldhash',
+        validation: { ok: true, diagnostics: [], system: { id: 'old' } }
       )
     )
 
@@ -36,21 +35,59 @@ RSpec.describe Llm::SystemEditor::DraftExtractor do
       role: 'tool',
       parent_tool_call: latest_tool_call,
       content: JSON.generate(
-        ok: false,
-        draft_yaml: "id: latest\nname: Latest",
-        diagnostics: [ { message: 'latest issue' } ],
-        system: nil,
-        source_yaml_hash: 'latesthash'
+        kind: 'system_draft',
+        yaml: "id: latest\nname: Latest",
+        source_yaml_hash: 'latesthash',
+        validation: { ok: false, diagnostics: [ { message: 'latest issue' } ], system: nil }
       )
     )
 
     draft = described_class.call(chat)
 
     expect(draft).to include(
+      'kind' => 'system_draft',
       'yaml' => "id: latest\nname: Latest",
       'source_yaml_hash' => 'latesthash'
     )
     expect(draft.dig('validation', 'diagnostics')).to include(include('message' => 'latest issue'))
+  end
+
+  it 'keeps a suggested target when one is provided by the caller context' do
+    chat = user.ai_chats.create!(title: 'Alpha chat')
+
+    assistant = chat.ai_messages.create!(role: 'assistant', content: '')
+    tool_call = assistant.ai_tool_calls.create!(
+      tool_call_id: 'call_patch',
+      name: 'apply_system_draft',
+      arguments: { yaml: 'id: alpha' }
+    )
+    chat.ai_messages.create!(
+      role: 'tool',
+      parent_tool_call: tool_call,
+      content: JSON.generate(
+        kind: 'system_draft',
+        yaml: "id: alpha\nname: Alpha",
+        source_yaml_hash: 'hash123',
+        validation: { ok: true, diagnostics: [], system: { id: 'alpha' } }
+      )
+    )
+
+    draft = described_class.call(
+      chat,
+      suggested_target: {
+        type: 'system_editor',
+        system_id: 'alpha',
+        source_path: 'systems/alpha.yml'
+      }
+    )
+
+    expect(draft).to include(
+      'suggested_target' => {
+        'type' => 'system_editor',
+        'system_id' => 'alpha',
+        'source_path' => 'systems/alpha.yml'
+      }
+    )
   end
 
   it 'does not reuse an older draft when the current turn has no new draft' do
@@ -66,11 +103,10 @@ RSpec.describe Llm::SystemEditor::DraftExtractor do
       role: 'tool',
       parent_tool_call: tool_call,
       content: JSON.generate(
-        ok: true,
-        draft_yaml: "id: old\nname: Old",
-        diagnostics: [],
-        system: { id: 'old' },
-        source_yaml_hash: 'oldhash'
+        kind: 'system_draft',
+        yaml: "id: old\nname: Old",
+        source_yaml_hash: 'oldhash',
+        validation: { ok: true, diagnostics: [], system: { id: 'old' } }
       )
     )
 

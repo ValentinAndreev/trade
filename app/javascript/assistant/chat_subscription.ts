@@ -1,6 +1,6 @@
 import type { Subscription } from "@rails/actioncable"
 import { consumer } from "../chart/feeds/cable_consumer"
-import type { AssistantChatPayload } from "./assistant_api"
+import type { AssistantChatPayload } from "./api"
 
 export class AssistantChatSubscription {
   private subscription: Subscription | null = null
@@ -24,7 +24,7 @@ export class AssistantChatSubscription {
 
       this.subscription = consumer.subscriptions.create<AssistantChatPayload>(
         {
-          channel: "SystemEditorChatChannel",
+          channel: "AssistantChatChannel",
           chat_id: this.chatId,
         },
         {

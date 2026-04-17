@@ -16,6 +16,7 @@ import {
   fetchResearchCatalog,
   validateResearchSystem,
   type ResearchCatalogEntry,
+  type ResearchDslDiagnostic,
   type ResearchValidationResponse,
   type ResearchValidatedSystem,
 } from "../research/dsl"
@@ -24,6 +25,10 @@ import {
 } from "../research/file_manager"
 import { ResearchFilePicker } from "../research/research_file_picker"
 import { showToast } from "../services/toast"
+import { loadWorkspaceAssistantState, saveWorkspaceAssistantState } from "../tabs/persistence"
+import { hydrateWorkspaceAssistantState } from "../assistant/state"
+import { hashText } from "../utils/text_hash"
+import type { AssistantTarget, AssistantWorkspaceSnapshot, WorkspaceAssistantState } from "../types/store"
 
 export default class extends Controller {
   static targets = ["tabBar", "panels", "sidebar"]
@@ -47,6 +52,8 @@ export default class extends Controller {
   private _researchFilePicker!: ResearchFilePicker
   private _researchValidation = new Map<string, { key: string; result: ResearchValidationResponse | null }>()
   private _researchValidationPending = new Map<string, string>()
+  private _systemEditorDiagnostics = new Map<string, ResearchDslDiagnostic[]>()
+  private _assistantState: WorkspaceAssistantState = hydrateWorkspaceAssistantState(loadWorkspaceAssistantState())
   private _tabScrollArea: HTMLElement | null = null
   private _lastRenderedActiveTabId: string | null = null
   private _lastRenderedTabCount = 0
@@ -75,6 +82,15 @@ export default class extends Controller {
 
   async connect() {
     this.store = new TabStore()
+    const initialActiveTabId = this.store.activeTabId
+    const hadAssistantTab = this.store.tabs.some(tab => tab.type === "assistant")
+    if (!hadAssistantTab) {
+      this._ensureAssistantTab()
+      if (initialActiveTabId && this.store.tabs.some(tab => tab.id === initialActiveTabId)) {
+        this.store.activateTab(initialActiveTabId)
+      }
+    }
+    this._reconcileAssistantLinkedTarget()
     const [ config, researchCatalog ] = await Promise.all([
       fetchConfig(),
       fetchResearchCatalog(),
@@ -145,6 +161,11 @@ export default class extends Controller {
       systemEditorConfigChanged: (e: Event) => this._onSystemEditorConfigChanged(e),
       systemEditorCatalogChanged: (e: Event) => this._onSystemEditorCatalogChanged(e),
       systemEditorOpenResearch: (e: Event) => this._onSystemEditorOpenResearch(e),
+      systemEditorOpenAssistant: (e: Event) => this._onSystemEditorOpenAssistant(e),
+      systemEditorLinkAssistantTarget: (e: Event) => this._onSystemEditorLinkAssistantTarget(e),
+      assistantStateChanged: (e: Event) => this._onAssistantStateChanged(e),
+      assistantOpenDraftInSystemEditor: (e: Event) => this._onAssistantOpenDraftInSystemEditor(e),
+      assistantApplyDraftToLinkedEditor: (e: Event) => this._onAssistantApplyDraftToLinkedEditor(e),
     }
     this.element.addEventListener("label:created", this._boundListeners.label)
     this.element.addEventListener("line:created", this._boundListeners.line)
@@ -163,6 +184,11 @@ export default class extends Controller {
     this.element.addEventListener("systemeditor:configChanged", this._boundListeners.systemEditorConfigChanged as EventListener)
     this.element.addEventListener("systemeditor:catalogChanged", this._boundListeners.systemEditorCatalogChanged as EventListener)
     this.element.addEventListener("systemeditor:openResearch", this._boundListeners.systemEditorOpenResearch as EventListener)
+    this.element.addEventListener("systemeditor:openAssistant", this._boundListeners.systemEditorOpenAssistant as EventListener)
+    this.element.addEventListener("systemeditor:linkAssistantTarget", this._boundListeners.systemEditorLinkAssistantTarget as EventListener)
+    this.element.addEventListener("assistant:stateChanged", this._boundListeners.assistantStateChanged as EventListener)
+    this.element.addEventListener("assistant:openDraftInSystemEditor", this._boundListeners.assistantOpenDraftInSystemEditor as EventListener)
+    this.element.addEventListener("assistant:applyDraftToLinkedEditor", this._boundListeners.assistantApplyDraftToLinkedEditor as EventListener)
   }
 
   private _onDataGridColumnStateChanged(e: Event) {
@@ -203,9 +229,32 @@ export default class extends Controller {
   }
 
   private _onSystemEditorConfigChanged(e: Event) {
-    const { tabId, config } = (e as CustomEvent<{ tabId: string; config: Record<string, unknown> }>).detail
+    const { tabId, config, diagnostics } = (e as CustomEvent<{
+      tabId: string
+      config: Record<string, unknown>
+      diagnostics?: ResearchDslDiagnostic[]
+    }>).detail
     if (!tabId || !config) return
-    this.store.updateSystemEditorConfig(tabId, config)
+    const currentTab = this.store.tabs.find(item => item.id === tabId && item.type === "system_editor")
+    const configChanged = JSON.stringify(currentTab?.systemEditorConfig || null) !== JSON.stringify(config)
+    if (configChanged) {
+      this.store.updateSystemEditorConfig(tabId, config)
+    }
+
+    const tab = this.store.tabs.find(item => item.id === tabId && item.type === "system_editor")
+    if (tab?.systemEditorConfig) {
+      this._systemEditorDiagnostics.set(tabId, Array.isArray(diagnostics) ? diagnostics : [])
+    } else {
+      this._systemEditorDiagnostics.delete(tabId)
+    }
+
+    if (
+      this.store.activeTab?.type === "assistant" &&
+      this._assistantState.linkedTarget?.type === "system_editor" &&
+      this._assistantState.linkedTarget.tabId === tabId
+    ) {
+      this.render()
+    }
   }
 
   private async _onSystemEditorCatalogChanged(_e: Event) {
@@ -232,6 +281,110 @@ export default class extends Controller {
       })
     }
     this.render()
+  }
+
+  private _onSystemEditorOpenAssistant(e: Event) {
+    const { tabId } = (e as CustomEvent<{ tabId: string }>).detail
+    this._ensureAssistantTab()
+    if (tabId && this.store.tabs.some(tab => tab.id === tabId && tab.type === "system_editor")) {
+      const previousTabId = this._assistantState.linkedTarget?.tabId ?? null
+      this._assistantState.linkedTarget = { type: "system_editor", tabId }
+      if (previousTabId !== tabId) {
+        // Switching to a different editor: clear the active chat so the model doesn't
+        // receive history from a previous editor's context. The user can explicitly pick
+        // an old chat from the list if they want it.
+        this._assistantState.currentChatId = null
+      }
+      this._persistAssistantState()
+      this._forceRevealActiveTab = true
+    }
+    this.render()
+  }
+
+  private _onSystemEditorLinkAssistantTarget(e: Event) {
+    const detail = (e as CustomEvent<{ tabId: string }>).detail
+    if (!detail?.tabId) return
+    if (!this.store.tabs.some(tab => tab.id === detail.tabId && tab.type === "system_editor")) return
+
+    const previousTabId = this._assistantState.linkedTarget?.tabId ?? null
+    this._assistantState.linkedTarget = { type: "system_editor", tabId: detail.tabId }
+    if (previousTabId !== detail.tabId) {
+      this._assistantState.currentChatId = null
+    }
+    this._persistAssistantState()
+    this.render()
+    showToast("Assistant linked to this system editor", "success")
+  }
+
+  private _onAssistantStateChanged(e: Event) {
+    const detail = (e as CustomEvent<{ state: WorkspaceAssistantState }>).detail
+    if (!detail?.state) return
+
+    this._assistantState = hydrateWorkspaceAssistantState(detail.state)
+    this._reconcileAssistantLinkedTarget()
+    this._persistAssistantState()
+    this.render()
+  }
+
+  private _onAssistantOpenDraftInSystemEditor(e: Event) {
+    const detail = (e as CustomEvent<{
+      yaml: string
+      suggestedSystemId?: string | null
+      sourcePath?: string | null
+    }>).detail
+    if (!detail?.yaml) return
+
+    const sourcePath = detail.sourcePath || null
+    const suggestedSystemId = detail.suggestedSystemId || "custom_system"
+    const tab = this.store.addSystemEditorTab({
+      systemId: suggestedSystemId,
+      sourceSystemId: sourcePath ? suggestedSystemId : null,
+      sourcePath,
+      directoryPath: relativeDirname(sourcePath),
+      systemYaml: detail.yaml,
+    })
+
+    this._assistantState.linkedTarget = {
+      type: "system_editor",
+      tabId: tab.id,
+    }
+    this._systemEditorDiagnostics.delete(tab.id)
+    this._persistAssistantState()
+    this._forceRevealActiveTab = true
+    this.render()
+    showToast("Draft opened in System editor", "success")
+  }
+
+  private _onAssistantApplyDraftToLinkedEditor(e: Event) {
+    const detail = (e as CustomEvent<{
+      yaml: string
+      target: AssistantTarget
+      suggestedSystemId?: string | null
+      sourcePath?: string | null
+    }>).detail
+    if (!detail?.yaml || detail.target?.type !== "system_editor") return
+
+    const tab = this.store.tabs.find(item => item.id === detail.target?.tabId && item.type === "system_editor")
+    if (!tab?.systemEditorConfig) return
+
+    const updates: Record<string, unknown> = {
+      systemYaml: detail.yaml,
+    }
+
+    if (detail.suggestedSystemId && !tab.systemEditorConfig.sourcePath) {
+      updates.systemId = detail.suggestedSystemId
+    }
+    if (detail.sourcePath && !tab.systemEditorConfig.sourcePath) {
+      updates.sourcePath = detail.sourcePath
+      updates.directoryPath = relativeDirname(detail.sourcePath)
+      updates.sourceSystemId = detail.suggestedSystemId || tab.systemEditorConfig.sourceSystemId
+    }
+
+    this.store.updateSystemEditorConfig(tab.id, updates)
+    this._systemEditorDiagnostics.delete(tab.id)
+    this._persistAssistantState()
+    this.render()
+    showToast("Assistant draft applied to linked editor", "success")
   }
 
   private _deliverSystemStats(systemId: string, dataTabId: string, attempt = 0) {
@@ -303,6 +456,11 @@ export default class extends Controller {
       this.element.removeEventListener("systemeditor:configChanged", this._boundListeners.systemEditorConfigChanged as EventListener)
       this.element.removeEventListener("systemeditor:catalogChanged", this._boundListeners.systemEditorCatalogChanged as EventListener)
       this.element.removeEventListener("systemeditor:openResearch", this._boundListeners.systemEditorOpenResearch as EventListener)
+      this.element.removeEventListener("systemeditor:openAssistant", this._boundListeners.systemEditorOpenAssistant as EventListener)
+      this.element.removeEventListener("systemeditor:linkAssistantTarget", this._boundListeners.systemEditorLinkAssistantTarget as EventListener)
+      this.element.removeEventListener("assistant:stateChanged", this._boundListeners.assistantStateChanged as EventListener)
+      this.element.removeEventListener("assistant:openDraftInSystemEditor", this._boundListeners.assistantOpenDraftInSystemEditor as EventListener)
+      this.element.removeEventListener("assistant:applyDraftToLinkedEditor", this._boundListeners.assistantApplyDraftToLinkedEditor as EventListener)
       this._boundListeners = null
     }
   }
@@ -331,6 +489,11 @@ export default class extends Controller {
 
   addTab() {
     this.store.addTab()
+    this._forceRevealActiveTab = true
+    this.render()
+  }
+  addAssistantTab() {
+    this._ensureAssistantTab()
     this._forceRevealActiveTab = true
     this.render()
   }
@@ -370,7 +533,16 @@ export default class extends Controller {
   removeTab(e: Event) {
     e.stopPropagation()
     const tabId = ((e.currentTarget as HTMLElement).closest("[data-tab-id]") as HTMLElement | null)?.dataset.tabId
-    if (tabId && this.store.removeTab(tabId)) this.render()
+    if (!tabId) return
+
+    const removedTab = this.store.tabs.find(tab => tab.id === tabId) || null
+    if (!this.store.removeTab(tabId)) return
+
+    if (removedTab?.type === "system_editor") {
+      this._systemEditorDiagnostics.delete(tabId)
+    }
+    this._reconcileAssistantLinkedTarget()
+    this.render()
   }
 
   switchTab(e: Event) {
@@ -838,6 +1010,8 @@ export default class extends Controller {
     const chartTabOptions = this.store.tabs
       .filter(t => t.type === "chart")
       .map(t => ({ id: t.id, label: this.store.tabLabel(t), primarySymbol: this.store.primaryPanel(t)?.overlays[0]?.symbol ?? null }))
+    const assistantWorkspaceSnapshot = this._assistantWorkspaceSnapshot()
+    const assistantLinkedTargetContext = this._assistantLinkedTargetContext()
     this.renderer.render({
       tabs: this.store.tabs,
       activeTabId: this.store.activeTabId,
@@ -861,6 +1035,9 @@ export default class extends Controller {
       researchFilePickerDirectoryPath: this._activeResearchFilePickerDirectoryPath(),
       researchFilePickerSelectedPath: this._activeResearchFilePickerSelectedPath(),
       researchValidationSystem,
+      assistantStateJson: JSON.stringify(this._assistantState),
+      assistantWorkspaceSnapshotJson: JSON.stringify(assistantWorkspaceSnapshot),
+      assistantLinkedTargetContextJson: JSON.stringify(assistantLinkedTargetContext),
     })
     this._bindTabBarScrollArea()
     if (this._tabScrollArea) {
@@ -883,6 +1060,58 @@ export default class extends Controller {
   }
 
   // --- Private helpers ---
+
+  private _persistAssistantState(): void {
+    saveWorkspaceAssistantState(this._assistantState)
+  }
+
+  private _ensureAssistantTab() {
+    return this.store.addAssistantTab()
+  }
+
+  private _reconcileAssistantLinkedTarget(): void {
+    const target = this._assistantState.linkedTarget
+    if (!target) return
+
+    const tab = this.store.tabs.find(item => item.id === target.tabId && item.type === "system_editor")
+    if (!tab?.systemEditorConfig) {
+      this._assistantState.linkedTarget = null
+      this._persistAssistantState()
+      return
+    }
+
+    this._assistantState.linkedTarget = { type: "system_editor", tabId: tab.id }
+  }
+
+  private _assistantWorkspaceSnapshot(): AssistantWorkspaceSnapshot {
+    return {
+      activeTabId: this.store.activeTabId,
+      tabs: this.store.tabs.map(tab => ({
+        id: tab.id,
+        type: tab.type,
+        label: this.store.tabLabel(tab),
+        sourcePath: tab.type === "system_editor" ? tab.systemEditorConfig?.sourcePath || null : null,
+        systemId: tab.type === "system_editor" ? tab.systemEditorConfig?.systemId || null : null,
+      })),
+    }
+  }
+
+  private _assistantLinkedTargetContext() {
+    const target = this._assistantState.linkedTarget
+    if (!target || target.type !== "system_editor") return null
+
+    const tab = this.store.tabs.find(item => item.id === target.tabId && item.type === "system_editor")
+    const config = tab?.systemEditorConfig
+    if (!config) return null
+
+    return {
+      system_yaml: config.systemYaml || "",
+      system_id: config.systemId || null,
+      source_path: config.sourcePath || null,
+      yaml_hash: hashText(config.systemYaml || ""),
+      diagnostics: this._systemEditorDiagnostics.get(tab.id) || [],
+    }
+  }
 
   private _refreshChartLabelsIfNeeded(): void {
     const activeTab = this.store.activeTab

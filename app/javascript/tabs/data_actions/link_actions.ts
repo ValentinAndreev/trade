@@ -96,7 +96,7 @@ export class LinkActions {
   private _applyConfigOnlyToGrid(tabId: string, config: DataConfig | undefined): void {
     if (!config) return
     const ctrl = this.ctx.getGridCtrl(tabId)
-    if (typeof ctrl?.applyConfigOnly === "function") ctrl.applyConfigOnly(config)
+    ctrl?.applyConfigOnly(config)
   }
 
   _initConfigFromChart(dataTab: { id: string; dataConfig?: DataConfig }, chart: Tab): void {

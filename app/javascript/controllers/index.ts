@@ -30,3 +30,6 @@ application.register("research", ResearchController)
 
 import SystemEditorController from "./system_editor_controller"
 application.register("system-editor", SystemEditorController)
+
+import AssistantController from "./assistant_controller"
+application.register("assistant", AssistantController)

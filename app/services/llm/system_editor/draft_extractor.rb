@@ -4,24 +4,24 @@ module Llm
   module SystemEditor
     class DraftExtractor
       class << self
-        def call(chat, source_yaml_hash: nil, after_message_id: nil)
+        def call(chat, source_yaml_hash: nil, after_message_id: nil, suggested_target: nil)
           scope = scoped_messages(chat, after_message_id)
           tool_message = latest_apply_system_draft_message(scope)
 
           draft = draft_from_tool_message(tool_message)
-          return normalize_tool_draft(draft) if draft
+          return normalize_tool_draft(draft, suggested_target:) if draft
 
           assistant_message = scope.where(role: 'assistant').order(created_at: :desc, id: :desc).first
           return unless assistant_message
 
-          fallback_from_assistant_message(assistant_message, source_yaml_hash:)
+          fallback_from_assistant_message(assistant_message, source_yaml_hash:, suggested_target:)
         end
 
         private
 
         def scoped_messages(chat, after_message_id)
           scope = chat.ai_messages
-          return scope unless after_message_id.present?
+          return scope if after_message_id.nil?
 
           scope.where('ai_messages.id > ?', after_message_id)
         end
@@ -37,39 +37,32 @@ module Llm
         def draft_from_tool_message(tool_message)
           return unless tool_message
 
-          payload = tool_message.content_raw || parse_json(tool_message.content)
+          payload = tool_message.content_raw.presence || parse_json(tool_message.content)
           return unless payload.is_a?(Hash)
-          return unless payload['draft_yaml'].present?
+          return unless payload['yaml'].present?
 
           payload
         end
 
-        def normalize_tool_draft(payload)
-          {
-            'yaml' => payload['draft_yaml'],
-            'source_yaml_hash' => payload['source_yaml_hash'],
-            'validation' => {
-              'ok' => payload['ok'],
-              'diagnostics' => Array(payload['diagnostics']),
-              'system' => payload['system']
-            }
-          }
+        def normalize_tool_draft(payload, suggested_target:)
+          DraftEnvelope.from_payload(payload, fallback_target: suggested_target)
         end
 
-        def fallback_from_assistant_message(message, source_yaml_hash:)
+        def fallback_from_assistant_message(message, source_yaml_hash:, suggested_target:)
           extract_yaml_candidates(message.content.to_s).filter_map do |candidate|
             validation = Research::Systems::Validation::Validator.new(candidate).call
             next unless validation.valid?
 
-            {
-              'yaml' => candidate,
-              'source_yaml_hash' => source_yaml_hash,
-              'validation' => {
-                'ok' => true,
-                'diagnostics' => validation.diagnostics.map(&:to_h),
-                'system' => validation.metadata
-              }
-            }
+            DraftEnvelope.build(
+              yaml: candidate,
+              source_yaml_hash:,
+              validation: {
+                ok: true,
+                diagnostics: validation.diagnostics.map(&:to_h),
+                system: validation.metadata
+              },
+              suggested_target:
+            )
           end.first
         end
 
@@ -86,13 +79,7 @@ module Llm
 
           JSON.parse(value)
         rescue JSON::ParserError
-          parse_yaml_like_hash(value)
-        end
-
-        def parse_yaml_like_hash(value)
-          parsed = YAML.safe_load(value)
-          parsed.is_a?(Hash) ? parsed.deep_stringify_keys : nil
-        rescue Psych::SyntaxError
+          nil
         end
       end
     end

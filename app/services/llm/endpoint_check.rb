@@ -31,7 +31,7 @@ module Llm
       private
 
       def models_url(api_base)
-        return nil if api_base.blank?
+        return if api_base.blank?
 
         uri = URI.parse(api_base.to_s)
         base_path = uri.path.to_s.sub(%r{/+\z}, '')
@@ -45,31 +45,17 @@ module Llm
       end
 
       def parse_models(body)
-        payload = JSON.parse(body)
-        return [] unless payload.is_a?(Hash)
-
-        data = payload['data']
-        return [] unless data.is_a?(Array)
-
-        data.filter_map do |entry|
-          next unless entry.is_a?(Hash)
-
-          entry['id'].to_s.presence
-        end
-      rescue JSON::ParserError
+        JSON.parse(body).fetch('data', []).filter_map { |entry| entry['id'].to_s.presence }
+      rescue JSON::ParserError, TypeError, NoMethodError
         []
       end
 
       def extract_error(body, fallback)
-        payload = JSON.parse(body)
-        if payload.is_a?(Hash)
-          error = payload['error']
-          return error['message'].to_s if error.is_a?(Hash) && error['message'].present?
-          return error.to_s if error.is_a?(String) && error.present?
-        end
-
-        fallback
-      rescue JSON::ParserError
+        error = JSON.parse(body)['error']
+        error.fetch('message', nil).presence || fallback
+      rescue JSON::ParserError, NoMethodError
+        error.to_s.presence || fallback
+      rescue StandardError
         fallback
       end
     end

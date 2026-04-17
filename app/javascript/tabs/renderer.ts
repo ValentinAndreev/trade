@@ -36,6 +36,9 @@ export interface TabRenderOpts {
   researchFilePickerDirectoryPath?: string
   researchFilePickerSelectedPath?: string | null
   researchValidationSystem?: ResearchValidatedSystem | null
+  assistantStateJson?: string
+  assistantWorkspaceSnapshotJson?: string
+  assistantLinkedTargetContextJson?: string
 }
 
 export default class TabRenderer {
@@ -97,7 +100,19 @@ export default class TabRenderer {
     } else if (activeTab?.type === "system_editor") {
       this.sidebarEl.hidden = true
       this.sidebarEl.innerHTML = ""
-      this.panels.renderDataTab(tabs, activeTabId)
+      this.panels.renderDataTab(tabs, activeTabId, {
+        assistantStateJson: opts.assistantStateJson,
+        assistantWorkspaceSnapshotJson: opts.assistantWorkspaceSnapshotJson,
+        assistantLinkedTargetContextJson: opts.assistantLinkedTargetContextJson,
+      })
+    } else if (activeTab?.type === "assistant") {
+      this.sidebarEl.hidden = true
+      this.sidebarEl.innerHTML = ""
+      this.panels.renderDataTab(tabs, activeTabId, {
+        assistantStateJson: opts.assistantStateJson,
+        assistantWorkspaceSnapshotJson: opts.assistantWorkspaceSnapshotJson,
+        assistantLinkedTargetContextJson: opts.assistantLinkedTargetContextJson,
+      })
     } else if (activeTab?.type === "system_stats") {
       this.sidebarEl.hidden = true
       this.sidebarEl.innerHTML = ""
@@ -137,7 +152,7 @@ export default class TabRenderer {
         }
         if (group.length > 1) {
           const inner = group.map(t =>
-            tabButtonHTML(this.ctrl, t.id, labelFn ? labelFn(t) : "New", t.id === activeTabId, tabs.length > 1, t.type || "chart", true)
+            tabButtonHTML(this.ctrl, t.id, labelFn ? labelFn(t) : "New", t.id === activeTabId, t.type !== "assistant" && tabs.length > 1, t.type || "chart", true)
           ).join("")
           const chartId = tab.id
           const groupHandle = `<span class="tab-drag-handle inline-flex items-center justify-center w-5 h-5 rounded cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300 hover:bg-white/10 shrink-0" draggable="true" data-action="click->${this.ctrl}#tabDragHandleClick dragstart->${this.ctrl}#tabDragStart dragend->${this.ctrl}#tabDragEnd" title="Drag to reorder">&#8942;</span>`
@@ -157,7 +172,7 @@ export default class TabRenderer {
         }
         if (statsGroup.length > 1) {
           const inner = statsGroup.map(t =>
-            tabButtonHTML(this.ctrl, t.id, labelFn ? labelFn(t) : "New", t.id === activeTabId, tabs.length > 1, t.type || "data", true)
+            tabButtonHTML(this.ctrl, t.id, labelFn ? labelFn(t) : "New", t.id === activeTabId, t.type !== "assistant" && tabs.length > 1, t.type || "data", true)
           ).join("")
           parts.push(`<div class="inline-flex items-stretch border border-blue-400/40 rounded-lg bg-blue-500/5">${inner}</div>`)
           i = j
@@ -165,7 +180,7 @@ export default class TabRenderer {
         }
       }
 
-      parts.push(tabButtonHTML(this.ctrl, tab.id, labelFn ? labelFn(tab) : "New", tab.id === activeTabId, tabs.length > 1, tab.type || "chart"))
+      parts.push(tabButtonHTML(this.ctrl, tab.id, labelFn ? labelFn(tab) : "New", tab.id === activeTabId, tab.type !== "assistant" && tabs.length > 1, tab.type || "chart"))
       i++
     }
 

@@ -6,11 +6,17 @@ module Llm
   module SystemEditor
     class ContextBuilder
       class << self
-        def call(editor_context:)
-          normalized = normalize_editor_context(editor_context)
+        def call(assistant_context:)
+          from_normalized(Llm::ContextNormalizer.call(assistant_context))
+        end
 
+        # Builds the context hash from an already-normalized context, skipping the
+        # second ContextNormalizer.call. Use this when the caller already holds a
+        # normalized context (e.g. inside an agent or ChatRunner).
+        def from_normalized(normalized_context)
           {
-            editor: normalized,
+            assistant: normalized_context.slice(:host_type, :harness, :linked_target, :workspace_snapshot, :referenced_tab_ids),
+            editor: normalized_context[:editor_context],
             dsl: KnowledgeBase.dsl,
             modules: KnowledgeBase.modules,
             examples: KnowledgeBase.examples,
@@ -18,21 +24,13 @@ module Llm
           }
         end
 
-        def prompt_json(editor_context:) = JSON.pretty_generate(call(editor_context:))
+        def prompt_json(assistant_context:) = JSON.pretty_generate(call(assistant_context:))
 
-        def normalize_editor_context(editor_context)
-          context = editor_context.to_h.deep_symbolize_keys
+        def prompt_json_normalized(normalized_context) = JSON.pretty_generate(from_normalized(normalized_context))
 
-          {
-            system_id: context[:system_id].to_s.presence,
-            source_path: context[:source_path].to_s.presence,
-            yaml_hash: context[:yaml_hash].to_s.presence,
-            system_yaml: context[:system_yaml].to_s,
-            diagnostics: Array(context[:diagnostics]).map do |diagnostic|
-              diagnostic.to_h.slice(:message, :line, :column, :length, :code, :path)
-            end
-          }
-        end
+        # Prompt path for the plain-chat instructions template, kept here so ChatRunner
+        # doesn't need to reference KnowledgeBase::PROMPT_NAMESPACE directly.
+        def plain_chat_instructions_prompt = "#{KnowledgeBase::PROMPT_NAMESPACE}/plain_chat_instructions"
       end
     end
   end

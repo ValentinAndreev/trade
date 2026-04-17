@@ -1,6 +1,6 @@
 import {
   panelLegendHTML, controlButtonsHTML,
-  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML, systemStatsPanelHTML, researchPanelHTML, systemEditorPanelHTML,
+  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML, systemStatsPanelHTML, researchPanelHTML, systemEditorPanelHTML, assistantPanelHTML,
 } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
 
@@ -24,7 +24,15 @@ export default class PanelRenderer {
     })
   }
 
-  renderDataTab(tabs: Tab[], activeTabId: string | null): void {
+  renderDataTab(
+    tabs: Tab[],
+    activeTabId: string | null,
+    options: {
+      assistantStateJson?: string
+      assistantWorkspaceSnapshotJson?: string
+      assistantLinkedTargetContextJson?: string
+    } = {},
+  ): void {
     this._ensureWrappers(tabs, activeTabId, (tab, wrapper, isActive) => {
       if (wrapper.dataset.tabWrapper !== tab.id) return
 
@@ -60,6 +68,30 @@ export default class PanelRenderer {
           }
         } else {
           wrapper.innerHTML = systemEditorPanelHTML(tab.id, configJson)
+        }
+        return
+      }
+
+      if (tab.type === "assistant") {
+        if (!isActive) return
+
+        const stateJson = options.assistantStateJson || "{}"
+        const workspaceSnapshotJson = options.assistantWorkspaceSnapshotJson || '{"activeTabId":null,"tabs":[]}'
+        const linkedTargetContextJson = options.assistantLinkedTargetContextJson || "null"
+        const existingAssistant = wrapper.querySelector("[data-controller='assistant']") as HTMLElement | null
+
+        if (existingAssistant) {
+          if (existingAssistant.dataset.assistantStateValue !== stateJson) {
+            existingAssistant.dataset.assistantStateValue = stateJson
+          }
+          if (existingAssistant.dataset.assistantWorkspaceSnapshotValue !== workspaceSnapshotJson) {
+            existingAssistant.dataset.assistantWorkspaceSnapshotValue = workspaceSnapshotJson
+          }
+          if (existingAssistant.dataset.assistantLinkedTargetContextValue !== linkedTargetContextJson) {
+            existingAssistant.dataset.assistantLinkedTargetContextValue = linkedTargetContextJson
+          }
+        } else {
+          wrapper.innerHTML = assistantPanelHTML(tab.id, stateJson, workspaceSnapshotJson, linkedTargetContextJson)
         }
         return
       }

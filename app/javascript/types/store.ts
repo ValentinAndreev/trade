@@ -1,4 +1,4 @@
-export type TabType = "chart" | "data" | "system_stats" | "research" | "system_editor"
+export type TabType = "chart" | "data" | "system_stats" | "research" | "system_editor" | "assistant"
 
 export type ResearchMetricKey =
   | "netProfit"
@@ -48,8 +48,32 @@ export interface SystemEditorConfig {
   directoryPath: string | null
   systemYaml: string
   searchQuery: string
-  assistantChatId: number | null
-  assistantSettingsProvider: string | null
+}
+
+export type AssistantTarget =
+  | null
+  | {
+      type: "system_editor"
+      tabId: string
+    }
+
+export interface WorkspaceAssistantState {
+  currentChatId: number | null
+  provider: string | null
+  linkedTarget: AssistantTarget
+}
+
+export interface AssistantWorkspaceTabSummary {
+  id: string
+  type: TabType
+  label: string
+  sourcePath: string | null
+  systemId: string | null
+}
+
+export interface AssistantWorkspaceSnapshot {
+  activeTabId: string | null
+  tabs: AssistantWorkspaceTabSummary[]
 }
 
 export interface ResearchRunPayload {

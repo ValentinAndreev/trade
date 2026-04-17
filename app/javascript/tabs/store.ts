@@ -71,6 +71,8 @@ export default class TabStore {
   removeTab(tabId: string): boolean {
     if (this.tabs.length === 1) return false
     const idx = this.tabs.findIndex(t => t.id === tabId)
+    if (idx === -1) return false
+    if (this.tabs[idx]?.type === "assistant") return false
     this.tabs.splice(idx, 1)
 
     this._cleanupChartLinks(tabId)
@@ -78,7 +80,7 @@ export default class TabStore {
     if (this.activeTabId === tabId) {
       const newTab = this.tabs[Math.min(idx, this.tabs.length - 1)]
       this.activeTabId = newTab.id
-      if (newTab.type === "data" || newTab.type === "research" || newTab.type === "system_stats" || newTab.type === "system_editor") {
+      if (newTab.type === "data" || newTab.type === "research" || newTab.type === "system_stats" || newTab.type === "system_editor" || newTab.type === "assistant") {
         this.selectedPanelId = null
         this.selectedOverlayId = null
       } else {
@@ -95,7 +97,7 @@ export default class TabStore {
     this.activeTabId = tabId
     const tab = this.activeTab
     if (tab) {
-      if (tab.type === "data" || tab.type === "research" || tab.type === "system_stats" || tab.type === "system_editor") {
+      if (tab.type === "data" || tab.type === "research" || tab.type === "system_stats" || tab.type === "system_editor" || tab.type === "assistant") {
         this.selectedPanelId = null
         this.selectedOverlayId = null
       } else if (!tab.panels.find(p => p.id === this.selectedPanelId)) {
@@ -124,6 +126,9 @@ export default class TabStore {
     }
     if (tab.type === "system_editor") {
       return tab.name || "System editor"
+    }
+    if (tab.type === "assistant") {
+      return tab.name || "Assistant"
     }
     if (tab.type === "data") {
       const base = tab.name || this._autoDataName(tab)
@@ -690,6 +695,30 @@ export default class TabStore {
         ...buildDefaultSystemEditorState(),
         ...updates,
       },
+    }
+    this.tabs.push(tab)
+    this.activeTabId = tab.id
+    this.selectedPanelId = null
+    this.selectedOverlayId = null
+    this._save()
+    return tab
+  }
+
+  addAssistantTab(): Tab {
+    const existing = this.tabs.find(tab => tab.type === "assistant")
+    if (existing) {
+      this.activeTabId = existing.id
+      this.selectedPanelId = null
+      this.selectedOverlayId = null
+      this._save()
+      return existing
+    }
+
+    const tab: Tab = {
+      id: `tab-${this._nextTabId++}`,
+      name: "Assistant",
+      type: "assistant",
+      panels: [],
     }
     this.tabs.push(tab)
     this.activeTabId = tab.id

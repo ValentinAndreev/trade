@@ -119,10 +119,26 @@ describe("TabStore", () => {
       expect(tab.systemEditorConfig?.systemId).toBe("custom_system")
       expect(tab.systemEditorConfig?.sourceSystemId).toBeNull()
       expect(tab.systemEditorConfig?.systemYaml).toBe("")
-      expect(tab.systemEditorConfig?.assistantChatId).toBeNull()
-      expect(tab.systemEditorConfig?.assistantSettingsProvider).toBeNull()
       expect(store.tabLabel(tab)).toBe("System editor")
       expect(store.activeTabId).toBe(tab.id)
+    })
+
+    it("addAssistantTab creates a single workspace assistant tab", () => {
+      const first = store.addAssistantTab()
+      const second = store.addAssistantTab()
+
+      expect(first.type).toBe("assistant")
+      expect(second.id).toBe(first.id)
+      expect(store.tabs.filter(tab => tab.type === "assistant")).toHaveLength(1)
+      expect(store.tabLabel(first)).toBe("Assistant")
+    })
+
+    it("does not remove the assistant tab once it exists", () => {
+      const assistant = store.addAssistantTab()
+      store.addTab()
+
+      expect(store.removeTab(assistant.id)).toBe(false)
+      expect(store.tabs.some(tab => tab.id === assistant.id && tab.type === "assistant")).toBe(true)
     })
   })
 
@@ -251,7 +267,6 @@ describe("TabStore", () => {
       expect(ok).toBe(true)
       expect(tab.systemEditorConfig?.systemId).toBe("rsi_threshold")
       expect(tab.systemEditorConfig?.searchQuery).toBe("period")
-      expect(tab.systemEditorConfig?.assistantChatId).toBeNull()
     })
   })
 

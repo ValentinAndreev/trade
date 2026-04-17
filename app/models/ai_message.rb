@@ -6,7 +6,7 @@ class AiMessage < ApplicationRecord
   validates :role, presence: true
   validates :ai_chat, presence: true
 
-  after_commit :broadcast_chat_snapshot, on: %i[create update]
+  after_commit :broadcast_chat_snapshot, on: %i[create update destroy]
 
   def draft_metadata = metadata.fetch('draft', {})
   def draft_yaml = draft_metadata['yaml']
@@ -20,6 +20,6 @@ class AiMessage < ApplicationRecord
   def broadcast_chat_snapshot
     return unless role == 'user' || (role == 'assistant' && displayable?)
 
-    Llm::SystemEditor::ChatBroadcaster.broadcast(ai_chat)
+    Llm::Assistant::ChatBroadcaster.broadcast(ai_chat)
   end
 end

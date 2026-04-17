@@ -9,7 +9,7 @@ module Llm
         param :yaml, desc: 'Full YAML document for the final draft'
 
         def initialize(editor_context:)
-          @editor_context = ContextBuilder.normalize_editor_context(editor_context)
+          @editor_context = editor_context
         end
 
         def name = 'apply_system_draft'
@@ -18,13 +18,20 @@ module Llm
           validation = Research::Systems::Validation::Validator.new(yaml.to_s).call
 
           halt(JSON.generate(
-            {
-              ok: validation.valid?,
-              draft_yaml: yaml.to_s,
-              diagnostics: validation.diagnostics.map(&:to_h),
-              system: validation.metadata,
-              source_yaml_hash: @editor_context.fetch(:yaml_hash, nil)
-            }
+            DraftEnvelope.build(
+              yaml: yaml.to_s,
+              source_yaml_hash: @editor_context.fetch(:yaml_hash, nil),
+              validation: {
+                ok: validation.valid?,
+                diagnostics: validation.diagnostics.map(&:to_h),
+                system: validation.metadata
+              },
+              suggested_target: {
+                type: 'system_editor',
+                system_id: @editor_context.fetch(:system_id, nil),
+                source_path: @editor_context.fetch(:source_path, nil)
+              }
+            )
           ))
         end
       end

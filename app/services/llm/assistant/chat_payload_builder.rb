@@ -1,26 +1,22 @@
 # frozen_string_literal: true
 
 module Llm
-  module SystemEditor
+  module Assistant
     class ChatPayloadBuilder
       class << self
         def call(chat)
-          chat = AiChat.find(chat) unless chat.is_a?(AiChat)
+          raise ArgumentError, "Expected AiChat, got #{chat.class}" unless chat.is_a?(AiChat)
 
           {
-            chat: chat_json(chat),
+            chat: chat_summary(chat),
             messages: messages_json(chat)
           }
         end
 
-        private
-
-        def chat_json(chat)
+        def chat_summary(chat)
           {
             id: chat.id,
             title: chat.title,
-            source_path: chat.source_path,
-            system_id: chat.system_id,
             updated_at: chat.updated_at.iso8601,
             last_message_preview: chat.latest_preview.to_s.truncate(120),
             last_used_provider: chat.last_used_provider,
@@ -28,10 +24,12 @@ module Llm
           }
         end
 
-        def messages_json(chat)
-          chat.visible_messages.filter_map do |message|
-            next unless message.displayable?
+        private
 
+        def messages_json(chat)
+          chat.visible_messages
+            .where("content IS NOT NULL OR content_raw IS NOT NULL OR thinking_text IS NOT NULL OR metadata ? 'draft'")
+            .map do |message|
             {
               id: message.id,
               role: message.role,

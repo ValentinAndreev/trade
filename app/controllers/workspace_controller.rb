@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class ChartsController < ApplicationController
+class WorkspaceController < ApplicationController
   def show
   end
 end

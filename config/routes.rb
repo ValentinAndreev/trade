@@ -48,7 +48,7 @@ Rails.application.routes.draw do
       post :launch
       post :stop
     end
-    resources :system_editor_chats, only: %i[index create show update destroy] do
+    resources :assistant_chats, only: %i[index create show update destroy] do
       member do
         post :messages, action: :create_message
       end
@@ -59,6 +59,5 @@ Rails.application.routes.draw do
     end
   end
 
-  resources :charts, only: :show
-  root 'charts#show'
+  root 'workspace#show'
 end

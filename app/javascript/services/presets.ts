@@ -1,18 +1,27 @@
-import { loadTabs, saveTabs, loadActiveTabId, saveActiveTabId } from "../tabs/persistence"
+import {
+  loadTabs,
+  saveTabs,
+  loadActiveTabId,
+  saveActiveTabId,
+  clearWorkspaceAssistantState,
+  loadWorkspaceAssistantState,
+  saveWorkspaceAssistantState,
+} from "../tabs/persistence"
 import { jsonHeaders } from "../utils/api_helpers"
 import type { PresetInfo } from "../types/markets"
-import type { Tab } from "../types/store"
+import type { Tab, WorkspaceAssistantState } from "../types/store"
 
 const ACTIVE_PRESET_KEY = "active-preset"
 const NAV_PAGE_KEY = "nav-active-page"
 
 /** Increment when the preset schema changes. */
-export const PRESET_VERSION = 2
+export const PRESET_VERSION = 3
 
 export interface PresetPayload {
   version: number
   tabs: Tab[]
   activeTabId: string | null
+  assistantState: WorkspaceAssistantState
   navPage: string
   dashboardSymbols?: unknown
   marketsSymbols?: unknown
@@ -79,6 +88,7 @@ export async function deletePreset(id: number): Promise<void> {
 export async function collectState(): Promise<PresetPayload> {
   const tabs = loadTabs()
   const activeTabId = loadActiveTabId()
+  const assistantState = loadWorkspaceAssistantState()
   const navPage = localStorage.getItem(NAV_PAGE_KEY) || "main"
 
   let dashboardSymbols = null
@@ -92,7 +102,7 @@ export async function collectState(): Promise<PresetPayload> {
     }
   } catch { /* offline */ }
 
-  return { version: PRESET_VERSION, tabs, activeTabId, navPage, dashboardSymbols, marketsSymbols }
+  return { version: PRESET_VERSION, tabs, activeTabId, assistantState, navPage, dashboardSymbols, marketsSymbols }
 }
 
 export async function applyState(payload: Partial<PresetPayload> | null): Promise<void> {
@@ -100,6 +110,7 @@ export async function applyState(payload: Partial<PresetPayload> | null): Promis
 
   if (payload.tabs) saveTabs(payload.tabs)
   if (payload.activeTabId) saveActiveTabId(payload.activeTabId)
+  if (payload.assistantState) saveWorkspaceAssistantState(payload.assistantState)
   if (payload.navPage) localStorage.setItem(NAV_PAGE_KEY, payload.navPage)
 
   if (payload.dashboardSymbols || payload.marketsSymbols) {
@@ -122,6 +133,7 @@ export async function resetState(): Promise<void> {
   localStorage.removeItem("chart-tabs")
   localStorage.removeItem("chart-active-tab")
   localStorage.removeItem(NAV_PAGE_KEY)
+  clearWorkspaceAssistantState()
   setActivePreset(null)
 
   try {

@@ -1,11 +1,21 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 
 import { loadTabs, saveTabs, loadActiveTabId, saveActiveTabId, calcNextId } from "../../tabs/persistence"
 import type { Tab } from "../../types/store"
 
 describe("persistence", () => {
+  const storage = new Map<string, string>()
+
   beforeEach(() => {
-    localStorage.clear()
+    storage.clear()
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+      clear: () => { storage.clear() },
+      key: (index: number) => Array.from(storage.keys())[index] ?? null,
+      get length() { return storage.size },
+    })
   })
 
   describe("loadTabs", () => {
@@ -117,32 +127,6 @@ describe("persistence", () => {
       expect(result[0].systemEditorConfig?.systemId).toBe("custom_system")
       expect(result[0].systemEditorConfig?.sourceSystemId).toBeNull()
       expect(result[0].systemEditorConfig?.systemYaml).toBe("")
-      expect(result[0].systemEditorConfig?.assistantChatId).toBeNull()
-      expect(result[0].systemEditorConfig?.assistantSettingsProvider).toBeNull()
-    })
-
-    it("hydrates missing assistant chat id on persisted editor config", () => {
-      const tabs = [{
-        id: "tab-1",
-        name: "System editor",
-        type: "system_editor",
-        panels: [],
-        systemEditorConfig: {
-          systemId: "price_ema_cross",
-          sourceSystemId: "price_ema_cross",
-          sourcePath: "trend/price_ema_cross.yml",
-          directoryPath: "trend",
-          systemYaml: "id: price_ema_cross",
-          searchQuery: "ema",
-          assistantSettingsProvider: "gemini",
-        },
-      }]
-
-      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
-      const result = loadTabs()
-
-      expect(result[0].systemEditorConfig?.assistantChatId).toBeNull()
-      expect(result[0].systemEditorConfig?.assistantSettingsProvider).toBe("gemini")
     })
   })
 
