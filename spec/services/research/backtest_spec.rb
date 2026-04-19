@@ -193,6 +193,7 @@ RSpec.describe Research::Backtest do
 
       allow(system).to receive(:module_runtime_configs).and_return({})
       allow(system).to receive(:run_params) { |params| params }
+      allow(system).to receive(:referenced_macro_keys).and_return([])
       allow(system).to receive(:signal_for) do |name, prev_row:, row:, params:|
         signal_calls << name
         name == :long_entry && row[:time] == (start_time + 1.minute).to_i
@@ -215,6 +216,7 @@ RSpec.describe Research::Backtest do
 
       allow(system).to receive(:module_runtime_configs).and_return({})
       allow(system).to receive(:run_params) { |params| params }
+      allow(system).to receive(:referenced_macro_keys).and_return([])
       allow(system).to receive(:signal_for).and_return(false)
 
       backtest = described_class.new(

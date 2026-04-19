@@ -6,6 +6,7 @@ import {
   timeframeSelectHTML,
   dateRangeHTML,
   indicatorParamsHTML,
+  macroParamsHTML,
   changeParamsHTML,
   formulaParamsHTML,
   instrumentParamsHTML,
@@ -27,6 +28,7 @@ export interface IndicatorInfo {
   name: string
   options: string[]
   min_data: number
+  category?: string
 }
 
 export default class DataSidebarRenderer {
@@ -126,12 +128,16 @@ export default class DataSidebarRenderer {
     return indicatorParamsHTML(this.availableIndicators)
   }
 
+  macroParamsHTML(): string {
+    return macroParamsHTML(this.availableIndicators)
+  }
+
   changeParamsHTML(): string {
     return changeParamsHTML()
   }
 
   formulaParamsHTML(): string {
-    return formulaParamsHTML()
+    return formulaParamsHTML(this.availableIndicators)
   }
 
   instrumentParamsHTML(symbols: string[]): string {

@@ -38,6 +38,16 @@ module Research
 
     # --- Data loading ---
 
+    def macro_series_data
+      @macro_series_data ||= begin
+        keys = system.referenced_macro_keys
+        return {} if keys.empty?
+
+        from = start_time || candles.first&.dig(:time)&.then { |t| Time.at(t).utc }
+        Macro::FindQuery.new(indicators: keys, from:, to: end_time).call
+      end
+    end
+
     def module_results_for(module_configs, cancel_check: nil)
       module_configs.each_with_object({}) do |(module_name, config), acc|
         cancelled!(cancel_check)
@@ -83,8 +93,9 @@ module Research
       trades        = []
       open_position = nil
       position_mode = params[:position_mode].presence || 'long_short'
-      prev_row = Research::Runtime::RowCursor.new(candles:, module_series:, index: 0)
-      row = Research::Runtime::RowCursor.new(candles:, module_series:, index: 1)
+      macro_lookup  = macro_series_data
+      prev_row = Research::Runtime::RowCursor.new(candles:, module_series:, macro_lookup:, index: 0)
+      row = Research::Runtime::RowCursor.new(candles:, module_series:, macro_lookup:, index: 1)
 
       (1...(candles.length - 1)).each do |idx|
         cancelled!(cancel_check)

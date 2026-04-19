@@ -33,6 +33,7 @@ class DataTable::Builder
       }
     end
 
+    attach_macro_indicators(rows)
     attach_indicators(rows)
     attach_changes(rows)
 
@@ -41,12 +42,17 @@ class DataTable::Builder
 
   private
 
+  def attach_macro_indicators(rows)
+    DataTable::MacroAttachStep.new(rows, indicator_specs).attach
+  end
+
   def attach_indicators(rows)
-    return if indicator_specs.empty?
+    technical_specs = indicator_specs.reject { |s| DataTable::MacroAttachStep.macro_keys.include?(s[:type].to_s) }
+    return if technical_specs.empty?
 
     calculator = Candle::IndicatorCalculator.new(candles)
 
-    indicator_specs.each do |spec|
+    technical_specs.each do |spec|
       type = spec[:type].to_sym
       params = (spec[:params] || {}).symbolize_keys
       col_key = indicator_column_key(type, params)

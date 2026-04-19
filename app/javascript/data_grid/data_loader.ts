@@ -24,6 +24,7 @@ function mapOhlcvToColumnKeys(rows: DataTableRow[], columns: DataColumn[]): void
 function needsServerData(config: DataConfig): boolean {
   if (getInstrumentColumns(config).length > 0) return true
   if (config.columns.some(c => c.type === "change" && c.changePeriod)) return true
+  if (config.columns.some(c => c.type === "macro" && c.indicatorType)) return true
   if (config.columns.some(c => c.type === "indicator" && c.indicatorType && !INDICATOR_META[c.indicatorType]?.lib)) return true
   return false
 }
@@ -245,7 +246,7 @@ function buildApiUrl(config: DataConfig): URL {
   if (config.endTime && !config.sourceTabId) url.searchParams.set("end_time", new Date(config.endTime * 1000).toISOString())
 
   const indicatorSpecs = config.columns
-    .filter(c => c.type === "indicator" && c.indicatorType)
+    .filter(c => (c.type === "indicator" || c.type === "macro") && c.indicatorType)
     .map(c => ({ type: c.indicatorType, params: c.indicatorParams || {} }))
   if (indicatorSpecs.length) url.searchParams.set("indicators", JSON.stringify(indicatorSpecs))
 

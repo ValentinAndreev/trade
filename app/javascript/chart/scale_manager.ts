@@ -29,7 +29,7 @@ export default class ScaleManager {
       const selOv = this.overlayMap.get(this.selectedOverlayId)!
       if (selOv.visible) {
         const selMeta = selOv.indicatorType ? INDICATOR_META[selOv.indicatorType] : null
-        if (selMeta && !selMeta.overlay) {
+        if ((selMeta && !selMeta.overlay) || selOv.indicatorSource === "macro") {
           rightScaleOverlayId = this.selectedOverlayId
         } else {
           rightScaleOverlayId = selOv.pinnedTo || this.selectedOverlayId
@@ -58,7 +58,9 @@ export default class ScaleManager {
       if (!ov.pinnedTo) continue
       const meta = ov.indicatorType ? INDICATOR_META[ov.indicatorType] : null
       let targetScaleId
-      if (meta && !meta.overlay) {
+      if (ov.indicatorSource === "macro") {
+        targetScaleId = (rightScaleOverlayId === id) ? "right" : ov.basePriceScaleId
+      } else if (meta && !meta.overlay) {
         targetScaleId = (rightScaleOverlayId === id) ? "right" : ov.basePriceScaleId
       } else {
         const target = this.overlayMap.get(ov.pinnedTo)

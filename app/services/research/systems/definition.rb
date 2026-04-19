@@ -4,6 +4,7 @@ module Research
   module Systems
     class Definition
       BAR_FIELDS = Set.new(%w[open high low close volume]).freeze
+      MACRO_FIELDS = Set.new(MacroConfig.indicator_keys).freeze
 
       private attr_reader :payload, :schema
 
@@ -91,6 +92,12 @@ module Research
 
       def signal_for(name, prev_row:, row:, params:) = signal_evaluator.call(name:, prev_row:, row:, params:)
 
+      def referenced_macro_keys
+        @referenced_macro_keys ||= parsed_conditions.flat_map do |_, ast|
+          Research::Systems::ConditionExpression::Ast.references(ast)
+        end.select { |ref| MACRO_FIELDS.include?(ref) }.uniq
+      end
+
       def module_runtime_configs(params)
         runtime_params = params.to_h.symbolize_keys
 
@@ -123,6 +130,7 @@ module Research
         reference = ref.to_s
         return to_f_or_nil(resolve_row_value(row, row_offset, :bar, reference.to_sym)) if BAR_FIELDS.include?(reference)
         return to_f_or_nil(params[reference.delete_prefix('params.').to_sym]) if reference.start_with?('params.')
+        return to_f_or_nil(row.macro_value(reference, row_offset)) if MACRO_FIELDS.include?(reference)
 
         module_name, attribute = reference.split('.', 2)
         return nil unless attribute == 'value'

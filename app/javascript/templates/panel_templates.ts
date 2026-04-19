@@ -5,11 +5,15 @@ import type { Panel } from "../types/store"
 export function panelLegendHTML(panel: Panel): string {
   const timeframe = panel.timeframe || "1m"
   const lines = panel.overlays
-    .filter(o => o.symbol)
+    .filter(o => o.symbol && o.visible !== false)
     .map(o => {
       const colors = OVERLAY_COLORS[o.colorScheme] || OVERLAY_COLORS[0]
       const swatches = `<span class="inline-flex items-center gap-0.5 shrink-0">${colorSwatch(colors.up)}${colorSwatch(colors.down)}</span>`
       if (o.mode === "indicator" && o.indicatorType) {
+        if (o.indicatorSource === "macro") {
+          const modeLabel = (o.indicatorType || "data").toUpperCase()
+          return `<div class="flex items-center gap-1.5 truncate">${swatches} \uD83D\uDCCA ${modeLabel}</div>`
+        }
         const sourceOverlay = o.pinnedTo ? panel.overlays.find(s => s.id === o.pinnedTo) : null
         const sourceSymbol = escapeHTML(sourceOverlay ? sourceOverlay.symbol : o.symbol)
         const sourceMode = sourceOverlay ? (sourceOverlay.mode === "volume" ? "Volume" : "Price") : "Price"

@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require 'net/http'
-
 class Utils::YahooFinanceClient
+  include HTTParty
+
   def fetch_quotes(symbols)
     return {} if symbols.empty?
 
@@ -12,43 +12,61 @@ class Utils::YahooFinanceClient
     end
   end
 
+  def fetch_history(ticker:, from: nil)
+    query = { interval: '1d' }
+    if from
+      query[:period1] = from.to_i
+      query[:period2] = Time.current.to_i
+    else
+      query[:range] = 'max'
+    end
+
+    response = get("#{MarketsConfig.api_url}/#{CGI.escape(ticker)}", query:)
+    return [] unless response.success?
+
+    result = response.parsed_response.dig('chart', 'result', 0)
+    return [] unless result
+
+    timestamps = result['timestamp'] || []
+    closes = result.dig('indicators', 'quote', 0, 'close') || []
+
+    timestamps.each_with_index.filter_map do |ts, i|
+      next unless closes[i]
+      { ts: Time.at(ts).utc, value: closes[i] }
+    end
+  rescue StandardError => e
+    Rails.logger.warn("[yahoo] fetch_history #{ticker} failed: #{e.message}")
+    []
+  end
+
   private
 
   def fetch_parallel(symbols)
     results = {}
-
-    threads = symbols.map do |sym|
-      Thread.new { [ sym, fetch_one(sym) ] }
-    end
-
+    threads = symbols.map { |sym| Thread.new { [ sym, fetch_one(sym) ] } }
     threads.each do |t|
       sym, meta = t.value
       results[sym] = meta if meta
     rescue StandardError => e
       Rails.logger.debug("[yahoo] thread error: #{e.message}")
     end
-
     results
   end
 
   def fetch_one(sym)
-    uri = URI("#{MarketsConfig.api_url}/#{CGI.escape(sym)}?range=1m&interval=1d")
+    response = get("#{MarketsConfig.api_url}/#{CGI.escape(sym)}", query: { range: '1m', interval: '1d' })
+    return unless response.success?
 
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = true
-    http.open_timeout = MarketsConfig.open_timeout
-    http.read_timeout = MarketsConfig.read_timeout
-
-    request = Net::HTTP::Get.new(uri)
-    request['User-Agent'] = MarketsConfig.user_agent
-
-    response = http.request(request)
-    return nil unless response.is_a?(Net::HTTPSuccess)
-
-    raw = JSON.parse(response.body)
-    raw.dig('chart', 'result', 0, 'meta')
+    response.parsed_response.dig('chart', 'result', 0, 'meta')
   rescue StandardError => e
     Rails.logger.debug("[yahoo] fetch #{sym} failed: #{e.message}")
-    nil
+  end
+
+  def get(url, query: {})
+    self.class.get(url,
+      query:,
+      headers: { 'User-Agent' => MarketsConfig.user_agent },
+      open_timeout: MarketsConfig.open_timeout,
+      read_timeout: MarketsConfig.read_timeout)
   end
 end

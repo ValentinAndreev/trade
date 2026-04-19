@@ -21,4 +21,6 @@ RSpec.configure do |config|
   config.filter_run_excluding timescale: true
 
   config.include FactoryBot::Syntax::Methods
+
+  config.after { Macro::Catalog.reset! }
 end

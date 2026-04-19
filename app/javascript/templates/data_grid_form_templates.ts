@@ -5,6 +5,7 @@ import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 
 const COLUMN_TYPES: Array<{ value: string; label: string }> = [
   { value: "indicator", label: "Indicator" },
+  { value: "macro", label: "Data Source" },
   { value: "change", label: "Change %" },
   { value: "formula", label: "Formula" },
   { value: "instrument", label: "Instrument" },
@@ -167,20 +168,33 @@ export function utcDateRangeHTML({
 }
 
 export function indicatorParamsHTML(indicators: IndicatorInfo[]): string {
-  if (!indicators.length) {
+  const techInds = indicators.filter(i => !i.category || i.category === "technical")
+  if (!techInds.length) {
     return `<span class="text-xs text-gray-500 italic">Loading indicators from server...</span>`
   }
-  const options = indicators.map(ind =>
+
+  const opts = techInds.map(ind =>
     `<option value="${ind.key}">${escapeHTML(ind.name)} (${ind.key})</option>`
   ).join("")
+
   return `
-    <select data-field="indicatorType"
-            class="${INPUT_CLS}">
-      ${options}
-    </select>
+    <select data-field="indicatorType" class="${INPUT_CLS}">${opts}</select>
     <input type="number" data-field="indicatorPeriod" placeholder="Period (e.g. 20)" value="20"
            class="${INPUT_CLS}">
   `
+}
+
+export function macroParamsHTML(indicators: IndicatorInfo[]): string {
+  const macroInds = indicators.filter(i => i.category === "macro")
+  if (!macroInds.length) {
+    return `<span class="text-xs text-gray-500 italic">No data sources configured</span>`
+  }
+
+  const opts = macroInds.map(ind =>
+    `<option value="${ind.key}">${escapeHTML(ind.name)} (${ind.key})</option>`
+  ).join("")
+
+  return `<select data-field="macroType" class="${INPUT_CLS}">${opts}</select>`
 }
 
 export function changeParamsHTML(): string {
@@ -192,9 +206,11 @@ export function changeParamsHTML(): string {
   `
 }
 
-export function formulaParamsHTML(): string {
+export function formulaParamsHTML(indicators: IndicatorInfo[] = []): string {
+  const macroKeys = indicators.filter(i => i.category === 'macro').map(i => i.key).join(', ')
   const helpLines = [
     "<b>Fields:</b> open high low close volume",
+    macroKeys ? `<b>Macro:</b> ${escapeHTML(macroKeys)}` : null,
     "<b>Indicators:</b> sma_20, ema_10, rsi_14 …",
     "<b>Changes:</b> change_5m, change_1h …",
     "<b>Instruments:</b> btcusd_close …",
@@ -205,7 +221,7 @@ export function formulaParamsHTML(): string {
     "sma_20 - ema_10",
     "abs(close - sma_20) / sma_20 * 100",
   ]
-  const helpHTML = helpLines.join("<br>")
+  const helpHTML = helpLines.filter(Boolean).join("<br>")
   return `
     <div class="flex items-center gap-1">
       <input type="text" data-field="formulaLabel" placeholder="Column name"
@@ -260,7 +276,7 @@ export function columnListHTML(ctrl: string, columns: DataColumn[]): string {
     <div class="flex items-center justify-between gap-2 py-1.5 px-2 rounded hover:bg-[#2a2a3e] group" data-column-id="${col.id}">
       <span class="text-sm text-gray-300 truncate min-w-0 flex-1"${exprHint}>${escapeHTML(col.label)}</span>
       <span class="flex items-center gap-0 shrink-0">
-        <span class="text-xs text-gray-500 shrink-0">${col.type}</span>
+        <span class="text-xs shrink-0 ${col.type === 'macro' ? 'text-teal-400' : 'text-gray-500'}">${col.type === 'macro' ? '⬡ data' : col.type}</span>
         <button type="button"
                 data-action="click->${ctrl}#toggleColumnVisibility"
                 data-column-id="${col.id}"
@@ -287,7 +303,7 @@ export function addColumnFormHTML(ctrl: string, defaultParamsHTML: string): stri
               class="${INPUT_CLS}">
         ${COLUMN_TYPES.map(ct => `<option value="${ct.value}">${ct.label}</option>`).join("")}
       </select>
-      <div data-column-params>
+      <div data-column-params class="flex flex-col gap-2">
         ${defaultParamsHTML}
       </div>
       <div class="flex gap-2">

@@ -647,7 +647,7 @@ function assistantSettingsModalHTML({
               placeholder="${apiKeyRequired ? "Leave blank to keep the saved key" : "Optional for this endpoint"}"
               autocomplete="off"
             >
-            <div class="mt-2 text-xs text-gray-500">${escapeHTML(keyStatus)}</div>
+            <div class="mt-2 text-xs ${selectedProviderSetting?.api_key_present ? 'text-emerald-400' : 'text-gray-500'}">${escapeHTML(keyStatus)}</div>
           </label>
 
           <label class="text-sm text-gray-300">

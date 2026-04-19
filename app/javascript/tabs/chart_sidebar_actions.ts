@@ -86,7 +86,7 @@ export default class ChartSidebarActions {
   }
 
   cycleIndicatorFilter(): void {
-    const filters = ["all", "client", "server"]
+    const filters = ["all", "client", "server", "macro"]
     const current = (this.deps.renderer.sidebar as unknown as Record<string, unknown>).indicatorFilter as string || "all"
     const next = filters[(filters.indexOf(current) + 1) % filters.length]
     ;(this.deps.renderer.sidebar as unknown as Record<string, unknown>).indicatorFilter = next

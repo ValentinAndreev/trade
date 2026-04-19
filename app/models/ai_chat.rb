@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class AiChat < ApplicationRecord
+  DEFAULT_TITLE = 'New chat'
+
   acts_as_chat messages: :ai_messages, model: :ai_model
 
   belongs_to :user
@@ -23,5 +25,5 @@ class AiChat < ApplicationRecord
 
   def ensure_title = self.title = title.to_s.strip.presence || default_title
 
-  def default_title = 'New chat'
+  def default_title = DEFAULT_TITLE
 end

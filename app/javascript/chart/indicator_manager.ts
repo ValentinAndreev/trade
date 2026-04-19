@@ -8,6 +8,7 @@ import { RECOMPUTE_DEBOUNCE_MS } from "../config/constants"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import connectionMonitor from "../services/connection_monitor"
 import indicatorCache from "../data/indicator_cache"
+import { apiFetch } from "../services/api_fetch"
 import type { RuntimeOverlay, OverlayConfig } from "../types/store"
 import type { Candle } from "../types/candle"
 
@@ -53,7 +54,7 @@ export default class IndicatorManager {
 
     this.overlayMap.set(config.id, ov)
 
-    if (INDICATOR_META[indicatorType]) {
+    if (INDICATOR_META[indicatorType] || indicatorSource === "macro") {
       this.loadData(config.id, ov)
     }
     this._onScaleSync()
@@ -61,6 +62,11 @@ export default class IndicatorManager {
   }
 
   async loadData(id: string, ov: RuntimeOverlay): Promise<void> {
+    if (ov.indicatorSource === "macro") {
+      await this._loadMacroData(id, ov)
+      return
+    }
+
     const meta = ov.indicatorType ? INDICATOR_META[ov.indicatorType] : null
     if (!meta) { this._restorePriceIfEmpty(ov); return }
 
@@ -144,6 +150,7 @@ export default class IndicatorManager {
   refreshAll(sourceId?: string): void {
     for (const [id, ov] of this.overlayMap) {
       if (ov.mode !== "indicator") continue
+      if (ov.indicatorSource === "macro") continue
       if (sourceId && ov.pinnedTo !== sourceId) continue
 
       const isServer = ov.indicatorSource === "server" || !INDICATOR_META[ov.indicatorType ?? ""]?.lib
@@ -178,6 +185,34 @@ export default class IndicatorManager {
   }
 
   // --- Private ---
+
+  async _loadMacroData(id: string, ov: RuntimeOverlay): Promise<void> {
+    const type = ov.indicatorType
+    if (!type || !connectionMonitor.backendOnline) return
+
+    try {
+      const resp = await apiFetch(`/api/macro_series?indicators[]=${encodeURIComponent(type)}`, {}, { silent: true })
+      if (!resp) return
+      const json = await resp.json() as Record<string, [number, number][]>
+      const points = json[type]
+      if (!points?.length) return
+
+      this.removeSeriesFor(ov)
+
+      const series = this.chart.addSeries(LineSeries, {
+        color: ov.colors.line,
+        lineWidth: 2,
+        priceScaleId: ov.basePriceScaleId,
+        visible: ov.visible,
+      })
+      series.setData(points.map(([time, value]) => ({ time: time as import("lightweight-charts").Time, value })))
+      ov.indicatorSeries = [{ series, fieldKey: type }]
+      ov.activePriceScaleId = ov.basePriceScaleId
+      this._onScaleSync()
+    } catch (error) {
+      console.error(`[macro] failed to load ${type}:`, error)
+    }
+  }
 
   _scheduleRecompute(id: string, ov: RuntimeOverlay): void {
     if (this._recomputeTimers.has(id)) return

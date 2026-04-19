@@ -6,7 +6,7 @@ import type { Panel, Overlay } from "../types/store"
 const ACTIVE_BTN = "text-white bg-blue-600"
 const INACTIVE_BTN = "text-gray-400 bg-[#2a2a3e] hover:bg-[#3a3a4e]"
 const SELECT_CLASS = "px-2 py-2 text-base text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
-const INDICATOR_FILTER_LABELS = { all: "All", client: "\u26A1 Client", server: "\uD83C\uDF10 Server" }
+const INDICATOR_FILTER_LABELS = { all: "All", client: "\u26A1 Client", server: "\uD83C\uDF10 Server", macro: "\uD83D\uDCCA Data" }
 
 export function collapseBtnHTML(ctrl: string, action: string, collapsed: boolean): string {
   return `<button
@@ -152,13 +152,19 @@ export function overlayItemHTML(
 ): string {
   let label, modeLabel
   if (o.mode === "indicator") {
-    const sourceOverlay = o.pinnedTo ? panel.overlays.find(s => s.id === o.pinnedTo) : null
-    const sourceSymbol = sourceOverlay ? sourceOverlay.symbol : o.symbol
-    const sourceMode = sourceOverlay ? (sourceOverlay.mode === "volume" ? "Vol" : "Price") : "Price"
-    label = `${sourceSymbol || o.symbol || "Empty"} ${sourceMode}`
-    const paramsStr = o.indicatorParams ? Object.values(o.indicatorParams).join(", ") : ""
-    const srcIcon = o.indicatorSource === "server" ? "\uD83C\uDF10" : "\u26A1"
-    modeLabel = srcIcon + " " + (o.indicatorType || "ind").toUpperCase() + (paramsStr ? ` ${paramsStr}` : "")
+    const isMacro = o.indicatorSource === "macro"
+    if (isMacro) {
+      label = (o.indicatorType || "data").toUpperCase()
+      modeLabel = "\uD83D\uDCCA Data"
+    } else {
+      const sourceOverlay = o.pinnedTo ? panel.overlays.find(s => s.id === o.pinnedTo) : null
+      const sourceSymbol = sourceOverlay ? sourceOverlay.symbol : o.symbol
+      const sourceMode = sourceOverlay ? (sourceOverlay.mode === "volume" ? "Vol" : "Price") : "Price"
+      label = `${sourceSymbol || o.symbol || "Empty"} ${sourceMode}`
+      const paramsStr = o.indicatorParams ? Object.values(o.indicatorParams).join(", ") : ""
+      const srcIcon = o.indicatorSource === "server" ? "\uD83C\uDF10" : "\u26A1"
+      modeLabel = srcIcon + " " + (o.indicatorType || "ind").toUpperCase() + (paramsStr ? ` ${paramsStr}` : "")
+    }
   } else {
     label = o.symbol || "Empty"
     modeLabel = !o.symbol ? "" : (o.mode === "volume" ? "Volume" : "Price")
@@ -200,10 +206,11 @@ export function overlayItemHTML(
 function indicatorOptionsHTML(
   indicatorType: string,
   currentSource: string,
-  indicators: Array<{ key: string }>,
-  indicatorFilter: "all" | "client" | "server",
+  indicators: Array<{ key: string; category?: string }>,
+  indicatorFilter: "all" | "client" | "server" | "macro",
 ): string {
-  const serverKeys = new Set(indicators.map(i => String(i.key)))
+  const macroKeys = new Set(indicators.filter(i => i.category === "macro").map(i => String(i.key)))
+  const serverKeys = new Set(indicators.filter(i => i.category !== "macro").map(i => String(i.key)))
   const clientKeys = new Set(Object.keys(INDICATOR_META).filter(k => !!INDICATOR_META[k]?.lib))
   const allEntries: Array<{ key: string; source: string }> = []
   const processedKeys = new Set<string>()
@@ -218,13 +225,16 @@ function indicatorOptionsHTML(
   for (const key of serverKeys) {
     if (!processedKeys.has(key)) allEntries.push({ key, source: "server" })
   }
+  for (const key of macroKeys) {
+    allEntries.push({ key, source: "macro" })
+  }
 
   return allEntries
     .filter(({ source }) => indicatorFilter === "all" || indicatorFilter === source)
     .map(({ key, source }) => {
       const m = INDICATOR_META[key]
       const label = m?.label || key.toUpperCase()
-      const icon = source === "client" ? "\u26A1" : "\uD83C\uDF10"
+      const icon = source === "client" ? "\u26A1" : source === "macro" ? "\uD83D\uDCCA" : "\uD83C\uDF10"
       const selected = key === indicatorType && source === currentSource
       return `<option value="${key}|${source}"${selected ? " selected" : ""}>${icon} ${label}</option>`
     }).join("")
@@ -275,16 +285,17 @@ export function indicatorSettingsHTML(
   indicatorParams: Record<string, number | string> | null,
   selectedOverlay: Overlay | null | undefined,
   panel: Panel,
-  indicators: Array<{ key: string }>,
-  indicatorFilter: "all" | "client" | "server"
+  indicators: Array<{ key: string; category?: string }>,
+  indicatorFilter: "all" | "client" | "server" | "macro"
 ): string {
+  const isMacro = selectedOverlay?.indicatorSource === "macro"
   const meta = INDICATOR_META[indicatorType]
   const currentSource = selectedOverlay?.indicatorSource || (meta?.lib ? "client" : "server")
   const indicatorOpts = indicatorOptionsHTML(indicatorType, currentSource, indicators, indicatorFilter)
   const filterLabel = INDICATOR_FILTER_LABELS[indicatorFilter]
 
   let paramInputs = ""
-  if (meta?.defaults) {
+  if (!isMacro && meta?.defaults) {
     const params = { ...meta.defaults, ...indicatorParams }
     paramInputs = Object.entries(meta.defaults)
       .map(([key, defaultVal]) =>
@@ -304,6 +315,6 @@ export function indicatorSettingsHTML(
       </div>
     </div>
     ${paramInputs}
-    ${sourceSelectHTML(ctrl, selectedOverlay, panel, meta?.requires || "values")}
+    ${isMacro ? "" : sourceSelectHTML(ctrl, selectedOverlay, panel, meta?.requires || "values")}
   `
 }

@@ -57,6 +57,8 @@ Rails.application.routes.draw do
     resource :data_table, only: :show do
       post :statistics
     end
+
+    resources :macro_series, only: :index
   end
 
   root 'workspace#show'

@@ -342,6 +342,32 @@ conditions:
     - short_entry
     - short_exit
 
+macro_indicators:
+  dxy:
+    label: DXY (Dollar Index)
+    category: macro
+    params: {}
+  vix:
+    label: VIX
+    category: macro
+    params: {}
+  fear_greed:
+    label: Crypto Fear & Greed
+    category: macro
+    params: {}
+  fed_rate:
+    label: Fed Funds Rate
+    category: macro
+    params: {}
+  m2:
+    label: M2 Money Supply
+    category: macro
+    params: {}
+  cpi:
+    label: CPI (Inflation)
+    category: macro
+    params: {}
+
 references:
   fields:
     - open
@@ -349,6 +375,12 @@ references:
     - low
     - close
     - volume
+    - dxy
+    - vix
+    - fear_greed
+    - fed_rate
+    - m2
+    - cpi
   values:
     - value
 

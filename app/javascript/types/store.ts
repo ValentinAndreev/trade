@@ -119,7 +119,7 @@ export interface DataConfig {
 export interface DataColumn {
   id: string;
   type: "datetime" | "open" | "high" | "low" | "close" | "volume"
-      | "indicator" | "change" | "custom" | "formula" | "instrument";
+      | "indicator" | "change" | "custom" | "formula" | "instrument" | "macro";
   label: string;
   width?: number;
   /** When false, column is hidden in the grid. Default true. */
@@ -134,6 +134,7 @@ export interface DataColumn {
 
 export function columnFieldKey(col: DataColumn): string {
   if (col.type === "change") return `change_${col.changePeriod || "5m"}`
+  if (col.type === "macro" && col.indicatorType) return col.indicatorType
   if (col.type === "indicator" && col.indicatorType) {
     const params = col.indicatorParams || {}
     const suffix = Object.values(params)[0]

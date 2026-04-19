@@ -29,6 +29,8 @@ export class ColumnActions {
       paramsEl.innerHTML = this.renderer.dataSidebar.formulaParamsHTML()
     } else if (type === "instrument") {
       paramsEl.innerHTML = this.renderer.dataSidebar.instrumentParamsHTML(this.ctx.deps.config.symbols)
+    } else if (type === "macro") {
+      paramsEl.innerHTML = this.renderer.dataSidebar.macroParamsHTML()
     } else {
       paramsEl.innerHTML = this.renderer.dataSidebar.indicatorParamsHTML()
     }
@@ -42,7 +44,7 @@ export class ColumnActions {
     const added = this._buildAndAddColumn(tab, colType)
     if (!added) return
     this.ctx.render()
-    if (["indicator", "change", "instrument"].includes(colType)) {
+    if (["indicator", "macro", "change", "instrument"].includes(colType)) {
       requestAnimationFrame(() => this.ctx.deps.renderFn())
     }
   }
@@ -165,6 +167,7 @@ export class ColumnActions {
       this.store.addDataColumn(tab.id, { type: "change", label: this._uniqueLabel(tab, `change_${period}`), changePeriod: period })
       return true
     }
+    if (colType === "macro")      return this._addMacroColumn(tab)
     if (colType === "formula")    return this._addFormulaColumn(tab)
     if (colType === "instrument") return this._addInstrumentColumn(tab)
     return this._addIndicatorColumn(tab)
@@ -198,6 +201,17 @@ export class ColumnActions {
     this.store.addDataColumn(tab.id, {
       type: "instrument", label: this._uniqueLabel(tab, `${symbol.toLowerCase()}_${field}`),
       instrumentSymbol: symbol, instrumentField: field,
+    })
+    return true
+  }
+
+  private _addMacroColumn(tab: { id: string; dataConfig?: DataConfig }): boolean {
+    const macroType = (this.sidebar.querySelector("[data-field='macroType']") as HTMLSelectElement | null)?.value?.trim().toLowerCase()
+    if (!macroType) return false
+    this.store.addDataColumn(tab.id, {
+      type: "macro",
+      label: this._uniqueLabel(tab, macroType),
+      indicatorType: macroType,
     })
     return true
   }

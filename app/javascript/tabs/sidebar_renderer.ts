@@ -15,7 +15,7 @@ const LINE_COLOR_INDICATOR = (item: DrawingItem, color: string, width: number): 
 export default class SidebarRenderer {
   sidebarEl: HTMLElement
   ctrl: string
-  indicatorFilter: "all" | "client" | "server" = "all"
+  indicatorFilter: "all" | "client" | "server" | "macro" = "all"
   chartsCollapsed: boolean
   labelsCollapsed: boolean
   textCollapsed: boolean
@@ -23,7 +23,7 @@ export default class SidebarRenderer {
   hlinesCollapsed: boolean
   vlinesCollapsed: boolean
   systemsCollapsed: boolean
-  indicators: Array<{ key: string }> = []
+  indicators: Array<{ key: string; category?: string }> = []
   private _linkedSystems: Array<{ system: TradingSystem; dataTabId: string }> = []
 
   constructor(sidebarEl: HTMLElement, controllerName: string) {
@@ -53,7 +53,7 @@ export default class SidebarRenderer {
   }
 
   render(panel: Panel | null, selectedOverlayId: string | null, symbols: string[], timeframes: string[], indicators: unknown[], labelModeActive: boolean, lineModeActive: boolean, vpEnabled: boolean, vpOpacity: number, hlModeActive: boolean, vlModeActive: boolean): void {
-    this.indicators = Array.isArray(indicators) ? (indicators as Array<{ key: string }>) : []
+    this.indicators = Array.isArray(indicators) ? (indicators as Array<{ key: string; category?: string }>) : []
 
     if (!panel) {
       this.sidebarEl.innerHTML = ""
