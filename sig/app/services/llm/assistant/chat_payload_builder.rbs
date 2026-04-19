@@ -1,0 +1,12 @@
+module Llm
+  module Assistant
+    class ChatPayloadBuilder
+      def self.call: (AiChat chat) -> Hash[Symbol, untyped]
+      def self.chat_summary: (AiChat chat) -> Hash[Symbol, untyped]
+
+      private
+
+      def self.messages_json: (AiChat chat) -> Array[Hash[Symbol, untyped]]
+    end
+  end
+end

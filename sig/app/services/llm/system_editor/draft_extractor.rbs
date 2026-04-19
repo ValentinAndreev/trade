@@ -1,0 +1,17 @@
+module Llm
+  module SystemEditor
+    class DraftExtractor
+      def self.call: (AiChat chat, ?source_yaml_hash: String?, ?after_message_id: Integer?, ?suggested_target: Hash[String, untyped]?) -> Hash[String, untyped]?
+
+      private
+
+      def self.scoped_messages: (AiChat chat, Integer? after_message_id) -> untyped
+      def self.latest_apply_system_draft_message: (untyped scope) -> AiMessage?
+      def self.draft_from_tool_message: (AiMessage? tool_message) -> Hash[String, untyped]?
+      def self.normalize_tool_draft: (Hash[String, untyped] payload, suggested_target: Hash[String, untyped]?) -> Hash[String, untyped]
+      def self.fallback_from_assistant_message: (AiMessage message, source_yaml_hash: String?, suggested_target: Hash[String, untyped]?) -> Hash[String, untyped]?
+      def self.extract_yaml_candidates: (String content) -> Array[String]
+      def self.parse_json: (untyped value) -> untyped
+    end
+  end
+end

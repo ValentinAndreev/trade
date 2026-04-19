@@ -3,13 +3,15 @@ D = Steep::Diagnostic
 target :app do
   signature "sig"
 
-  check "app/models/utils/"
-  check "app/models/candle/"
   check "app/models/user.rb"
   check "app/models/preset.rb"
   check "app/models/candle.rb"
   check "app/controllers/api/"
   check "app/jobs/"
+  check "app/services/candle/"
+  check "app/services/utils/"
+  check "app/services/data_table/"
+  check "app/services/llm/"
   check "app/services/research/"
   check "config/configs/"
 

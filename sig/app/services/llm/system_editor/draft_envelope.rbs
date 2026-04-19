@@ -1,0 +1,15 @@
+module Llm
+  module SystemEditor
+    class DraftEnvelope
+      def self.build: (yaml: untyped, source_yaml_hash: String?, validation: untyped, ?suggested_target: untyped?, ?fallback_target: untyped?) -> Hash[String, untyped]
+      def self.from_payload: (untyped payload, ?fallback_target: untyped?) -> Hash[String, untyped]
+
+      private
+
+      def self.normalize_validation: (untyped validation) -> Hash[String, untyped]
+      def self.normalize_suggested_target: (untyped target, fallback_target: untyped?, validation: Hash[String, untyped]) -> Hash[String, untyped]?
+      def self.target_from_validation: (Hash[String, untyped] validation) -> Hash[String, untyped]?
+      def self.normalize_target: (untyped target) -> Hash[String, untyped]?
+    end
+  end
+end

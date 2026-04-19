@@ -1,0 +1,11 @@
+module Llm
+  module SystemEditor
+    class ContextBuilder
+      def self.call: (assistant_context: untyped) -> Hash[Symbol, untyped]
+      def self.from_normalized: (Hash[Symbol, untyped] normalized_context) -> Hash[Symbol, untyped]
+      def self.prompt_json: (assistant_context: untyped) -> String
+      def self.prompt_json_normalized: (Hash[Symbol, untyped] normalized_context) -> String
+      def self.plain_chat_instructions_prompt: () -> String
+    end
+  end
+end

@@ -1,0 +1,10 @@
+module Llm
+  module SystemEditor
+    module Tools
+      class LoadExampleSystemTool < RubyLLM::Tool
+        def name: () -> String
+        def execute: (identifier: String) -> Hash[Symbol, untyped]
+      end
+    end
+  end
+end

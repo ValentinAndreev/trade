@@ -81,4 +81,10 @@ end
 module RubyLLM
   class Agent
   end
+
+  class Tool
+    def name: () -> String
+    def execute: (*untyped) -> untyped
+    def halt: (untyped result) -> void
+  end
 end

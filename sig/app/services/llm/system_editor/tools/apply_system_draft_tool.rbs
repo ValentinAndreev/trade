@@ -1,0 +1,13 @@
+module Llm
+  module SystemEditor
+    module Tools
+      class ApplySystemDraftTool < RubyLLM::Tool
+        @editor_context: Hash[Symbol, untyped]
+
+        def initialize: (editor_context: Hash[Symbol, untyped]) -> void
+        def name: () -> String
+        def execute: (yaml: String) -> void
+      end
+    end
+  end
+end

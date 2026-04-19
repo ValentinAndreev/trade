@@ -1,0 +1,6 @@
+module Llm
+  module Assistant
+    class Agent < RubyLLM::Agent
+    end
+  end
+end

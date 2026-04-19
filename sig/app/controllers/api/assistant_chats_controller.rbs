@@ -1,5 +1,7 @@
 module Api
-  class SystemEditorChatsController < ApplicationController
+  class AssistantChatsController < ApplicationController
+    @chat: AiChat
+
     def index: () -> void
     def create: () -> void
     def show: () -> void
@@ -9,11 +11,9 @@ module Api
 
     private
 
-    @chat: untyped
-
-    def set_chat: () -> untyped
-    def editor_context_params: () -> ActionController::Parameters
+    def set_chat: () -> void
+    def assistant_context_params: () -> Hash[Symbol, untyped]
     def llm_setting_configured?: (LlmSetting? setting) -> bool
-    def chat_payload: (untyped chat) -> Hash[Symbol, untyped]
+    def chat_payload: (AiChat chat) -> Hash[Symbol, untyped]
   end
 end

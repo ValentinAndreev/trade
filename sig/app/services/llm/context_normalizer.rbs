@@ -1,0 +1,9 @@
+module Llm
+  class ContextNormalizer
+    def self.call: (untyped assistant_context) -> Hash[Symbol, untyped]
+
+    private
+
+    def self.normalize_editor_context: (untyped editor_context) -> Hash[Symbol, untyped]
+  end
+end

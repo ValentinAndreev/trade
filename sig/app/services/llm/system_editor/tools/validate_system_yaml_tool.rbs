@@ -1,0 +1,10 @@
+module Llm
+  module SystemEditor
+    module Tools
+      class ValidateSystemYamlTool < RubyLLM::Tool
+        def name: () -> String
+        def execute: (yaml: String) -> Hash[Symbol, untyped]
+      end
+    end
+  end
+end

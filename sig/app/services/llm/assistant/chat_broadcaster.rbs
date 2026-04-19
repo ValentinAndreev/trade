@@ -1,0 +1,8 @@
+module Llm
+  module Assistant
+    class ChatBroadcaster
+      def self.stream_name: (Integer chat_id) -> String
+      def self.broadcast: (AiChat chat) -> void
+    end
+  end
+end
