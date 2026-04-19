@@ -174,46 +174,21 @@ export function tabButtonHTML(
   `
 }
 
-export function addTabButtonHTML(ctrl: string): string {
+export function quickLaunchButtonsHTML(ctrl: string): string {
+  const btn = (action: string, icon: string, iconColor: string, label: string, borderColor: string) =>
+    `<button
+      type="button"
+      data-action="click->${ctrl}#${action}"
+      class="px-3 py-1.5 text-sm font-medium text-gray-200 hover:text-white bg-[#1a1a2e] hover:bg-[#22223a] border ${borderColor} rounded cursor-pointer flex items-center gap-2 transition-colors whitespace-nowrap"
+    ><span class="${iconColor} text-base leading-none">${icon}</span>${label}</button>`
+
   return `
-    <div class="relative inline-flex" data-tab-type-menu>
-      <button
-        data-action="click->${ctrl}#toggleAddTabMenu"
-        class="px-3 py-2 text-gray-400 hover:text-white text-2xl leading-none cursor-pointer"
-        title="Add new tab"
-      >+</button>
-      <div data-tab-type-dropdown class="hidden absolute top-full right-0 z-50 mt-1 py-1 bg-[#22223a] border border-[#3a3a4e] rounded shadow-xl min-w-[140px]">
-        <button
-          data-action="click->${ctrl}#addAssistantTab"
-          class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
-        >
-          <span class="text-fuchsia-400">&#9993;</span> Assistant
-        </button>
-        <button
-          data-action="click->${ctrl}#addChartTab"
-          class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
-        >
-          <span class="text-blue-400">&#9636;</span> Chart
-        </button>
-        <button
-          data-action="click->${ctrl}#addDataTab"
-          class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
-        >
-          <span class="text-green-400">&#9638;</span> Data
-        </button>
-        <button
-          data-action="click->${ctrl}#addResearchTab"
-          class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
-        >
-          <span class="text-amber-400">&#9673;</span> Test/Optimization
-        </button>
-        <button
-          data-action="click->${ctrl}#addSystemEditorTab"
-          class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2a3e] hover:text-white cursor-pointer flex items-center gap-2"
-        >
-          <span class="text-cyan-400">&#9998;</span> System editor
-        </button>
-      </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      ${btn("addAssistantTab", "&#9993;", "text-fuchsia-400", "Assistant", "border-fuchsia-500/40 hover:border-fuchsia-400/70")}
+      ${btn("addChartTab", "&#9636;", "text-blue-400", "Chart", "border-blue-500/40 hover:border-blue-400/70")}
+      ${btn("addDataTab", "&#9638;", "text-green-400", "Data", "border-green-500/40 hover:border-green-400/70")}
+      ${btn("addResearchTab", "&#9673;", "text-amber-400", "Test", "border-amber-500/40 hover:border-amber-400/70")}
+      ${btn("addSystemEditorTab", "&#9998;", "text-cyan-400", "System editor", "border-cyan-500/40 hover:border-cyan-400/70")}
     </div>
   `
 }

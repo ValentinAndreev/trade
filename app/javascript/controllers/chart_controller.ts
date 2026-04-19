@@ -7,6 +7,7 @@ import { CHART_THEME, OVERLAY_COLORS } from "../config/theme"
 import DataLoader from "../chart/data_loader"
 import BitfinexFeed from "../chart/feeds/bitfinex_feed"
 import CableFeed from "../chart/feeds/cable_feed"
+import { bfxRegistry, cableRegistry } from "../chart/feeds/feed_registry"
 import Scrollbar from "../chart/scrollbar"
 import { INDICATOR_META } from "../config/indicators"
 import IndicatorManager from "../chart/indicator_manager"
@@ -30,8 +31,8 @@ import type { Candle } from "../types/candle"
 /** Extends RuntimeOverlay with chart-controller–specific fields (loader, feeds). */
 interface OverlayEntry extends RuntimeOverlay {
   loader: DataLoader
-  bfxFeed: BitfinexFeed
-  cableFeed: CableFeed
+  bfxFeed: { connect(): void; disconnect(): void }
+  cableFeed: { connect(): void; disconnect(): void }
   symbol: string   // always set (non-null) in chart context
 }
 
@@ -324,8 +325,9 @@ export default class extends Controller {
     const url = `/api/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${encodeURIComponent(this.timeframeValue)}&limit=${CANDLE_LIMIT}`
     const loader = new DataLoader(url, config.symbol, this.timeframeValue)
     const onCandle = (candle: Candle) => this._handleCandle(config.id, candle)
-    const bfxFeed = new BitfinexFeed(config.symbol, this.timeframeValue, onCandle)
-    const cableFeed = new CableFeed(config.symbol, this.timeframeValue, onCandle)
+    const feedKey = `${config.symbol}:${this.timeframeValue}`
+    const bfxFeed = bfxRegistry.acquire(feedKey, (cb) => new BitfinexFeed(config.symbol, this.timeframeValue, cb), onCandle)
+    const cableFeed = cableRegistry.acquire(feedKey, (cb) => new CableFeed(config.symbol, this.timeframeValue, cb), onCandle)
 
     this.overlayMap.set(config.id, {
       series, loader, bfxFeed, cableFeed,

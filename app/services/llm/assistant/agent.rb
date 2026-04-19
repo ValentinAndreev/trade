@@ -6,13 +6,15 @@ module Llm
       chat_model AiChat
       inputs :assistant_context
       instructions(
-        prompt: 'instructions',
-        locals: {
-          # Pre-render the context JSON so the template doesn't need to call
-          # ContextBuilder (and therefore ContextNormalizer) a second time.
-          context_json: -> { Llm::SystemEditor::ContextBuilder.prompt_json_normalized(assistant_context) },
-          # Passed separately so the template can branch on harness without parsing JSON.
-          harness: -> { assistant_context[:harness] }
+        {
+          prompt: 'instructions',
+          locals: {
+            # Pre-render the context JSON so the template doesn't need to call
+            # ContextBuilder (and therefore ContextNormalizer) a second time.
+            context_json: -> { Llm::SystemEditor::ContextBuilder.prompt_json_normalized(assistant_context) },
+            # Passed separately so the template can branch on harness without parsing JSON.
+            harness: -> { assistant_context[:harness] }
+          }
         }
       )
 
@@ -32,7 +34,7 @@ module Llm
         # suggested_target would be nil and the frontend would receive an untargeted
         # draft, bypassing the overwrite guard. Only expose the tool in patch mode.
         if assistant_context[:harness] == 'system_patch'
-          base + [Llm::SystemEditor::Tools::ApplySystemDraftTool.new(editor_context:)]
+          base + [ Llm::SystemEditor::Tools::ApplySystemDraftTool.new(editor_context:) ]
         else
           base
         end

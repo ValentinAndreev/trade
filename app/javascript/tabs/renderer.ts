@@ -3,7 +3,7 @@ import DataSidebarRenderer from "../data_grid/sidebar_renderer"
 import ResearchSidebarRenderer from "../research/sidebar_renderer"
 import type { ResearchCatalogEntry, ResearchValidatedSystem } from "../research/dsl"
 import PanelRenderer from "./panel_renderer"
-import { tabButtonHTML, addTabButtonHTML } from "../templates/panel_templates"
+import { tabButtonHTML, quickLaunchButtonsHTML } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
 
@@ -152,7 +152,7 @@ export default class TabRenderer {
         }
         if (group.length > 1) {
           const inner = group.map(t =>
-            tabButtonHTML(this.ctrl, t.id, labelFn ? labelFn(t) : "New", t.id === activeTabId, t.type !== "assistant" && tabs.length > 1, t.type || "chart", true)
+            tabButtonHTML(this.ctrl, t.id, labelFn ? labelFn(t) : "New", t.id === activeTabId, true, t.type || "chart", true)
           ).join("")
           const chartId = tab.id
           const groupHandle = `<span class="tab-drag-handle inline-flex items-center justify-center w-5 h-5 rounded cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300 hover:bg-white/10 shrink-0" draggable="true" data-action="click->${this.ctrl}#tabDragHandleClick dragstart->${this.ctrl}#tabDragStart dragend->${this.ctrl}#tabDragEnd" title="Drag to reorder">&#8942;</span>`
@@ -172,7 +172,7 @@ export default class TabRenderer {
         }
         if (statsGroup.length > 1) {
           const inner = statsGroup.map(t =>
-            tabButtonHTML(this.ctrl, t.id, labelFn ? labelFn(t) : "New", t.id === activeTabId, t.type !== "assistant" && tabs.length > 1, t.type || "data", true)
+            tabButtonHTML(this.ctrl, t.id, labelFn ? labelFn(t) : "New", t.id === activeTabId, true, t.type || "data", true)
           ).join("")
           parts.push(`<div class="inline-flex items-stretch border border-blue-400/40 rounded-lg bg-blue-500/5">${inner}</div>`)
           i = j
@@ -180,35 +180,47 @@ export default class TabRenderer {
         }
       }
 
-      parts.push(tabButtonHTML(this.ctrl, tab.id, labelFn ? labelFn(tab) : "New", tab.id === activeTabId, tab.type !== "assistant" && tabs.length > 1, tab.type || "chart"))
+      parts.push(tabButtonHTML(this.ctrl, tab.id, labelFn ? labelFn(tab) : "New", tab.id === activeTabId, true, tab.type || "chart"))
       i++
     }
 
+    const hasTabs = tabs.length > 0
     const scrollBtnClass = "shrink-0 w-8 h-8 mt-0.5 flex items-center justify-center rounded border border-[#2a2a3e] text-gray-400 hover:text-white hover:bg-[#1a1a2e] cursor-pointer transition-opacity"
 
-    this.tabBarEl.innerHTML = `
-      <div class="flex items-center gap-2 min-w-0 w-full">
-        <button
-          type="button"
-          data-tab-scroll-left
-          data-action="click->${this.ctrl}#scrollTabsLeft"
-          class="${scrollBtnClass}"
-          title="Scroll tabs left"
-        >&larr;</button>
+    const scrollButtons = hasTabs ? `
+      <button
+        type="button"
+        data-tab-scroll-left
+        data-action="click->${this.ctrl}#scrollTabsLeft"
+        class="${scrollBtnClass}"
+        title="Scroll tabs left"
+      >&larr;</button>` : ""
+
+    const scrollRightButton = hasTabs ? `
+      <button
+        type="button"
+        data-tab-scroll-right
+        data-action="click->${this.ctrl}#scrollTabsRight"
+        class="${scrollBtnClass}"
+        title="Scroll tabs right"
+      >&rarr;</button>` : ""
+
+    const tabsRow = hasTabs ? `
+      <div class="flex items-center gap-2 px-3 pb-0 min-w-0 w-full border-t border-[#2a2a3e]">
+        ${scrollButtons}
         <div data-tab-scroll-area class="flex-1 min-w-0 overflow-x-auto overflow-y-hidden no-scrollbar">
           <div data-tab-scroll-content class="flex items-center gap-1 w-max min-w-full">
             ${parts.join("")}
           </div>
         </div>
-        <button
-          type="button"
-          data-tab-scroll-right
-          data-action="click->${this.ctrl}#scrollTabsRight"
-          class="${scrollBtnClass}"
-          title="Scroll tabs right"
-        >&rarr;</button>
-        ${addTabButtonHTML(this.ctrl)}
+        ${scrollRightButton}
+      </div>` : ""
+
+    this.tabBarEl.innerHTML = `
+      <div class="flex items-center gap-2 px-3 py-2 min-w-0 w-full">
+        ${quickLaunchButtonsHTML(this.ctrl)}
       </div>
+      ${tabsRow}
     `
   }
 }

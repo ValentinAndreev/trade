@@ -83,12 +83,8 @@ export default class extends Controller {
   async connect() {
     this.store = new TabStore()
     const initialActiveTabId = this.store.activeTabId
-    const hadAssistantTab = this.store.tabs.some(tab => tab.type === "assistant")
-    if (!hadAssistantTab) {
-      this._ensureAssistantTab()
-      if (initialActiveTabId && this.store.tabs.some(tab => tab.id === initialActiveTabId)) {
-        this.store.activateTab(initialActiveTabId)
-      }
+    if (initialActiveTabId && this.store.tabs.some(tab => tab.id === initialActiveTabId)) {
+      this.store.activateTab(initialActiveTabId)
     }
     this._reconcileAssistantLinkedTarget()
     const [ config, researchCatalog ] = await Promise.all([
@@ -462,26 +458,6 @@ export default class extends Controller {
       this.element.removeEventListener("assistant:openDraftInSystemEditor", this._boundListeners.assistantOpenDraftInSystemEditor as EventListener)
       this.element.removeEventListener("assistant:applyDraftToLinkedEditor", this._boundListeners.assistantApplyDraftToLinkedEditor as EventListener)
       this._boundListeners = null
-    }
-  }
-
-  // --- Tab type menu ---
-
-  toggleAddTabMenu(e: Event) {
-    e.stopPropagation()
-    const dropdown = this.tabBarTarget.querySelector("[data-tab-type-dropdown]")
-    if (!dropdown) return
-    const isOpen = !dropdown.classList.contains("hidden")
-    dropdown.classList.toggle("hidden")
-    if (!isOpen) {
-      this._positionAddTabMenu(dropdown as HTMLElement)
-      const close = (ev: MouseEvent) => {
-        if (!(ev.target as HTMLElement).closest("[data-tab-type-menu]")) {
-          dropdown.classList.add("hidden")
-          document.removeEventListener("click", close)
-        }
-      }
-      setTimeout(() => document.addEventListener("click", close), 0)
     }
   }
 
@@ -1161,11 +1137,6 @@ export default class extends Controller {
     if (tabRight > viewportRight) {
       area.scrollTo({ left: Math.min(maxScrollLeft, tabRight - area.clientWidth + 16), behavior })
     }
-  }
-
-  private _positionAddTabMenu(dropdown: HTMLElement): void {
-    dropdown.style.left = "auto"
-    dropdown.style.right = "0"
   }
 
   private _syncTabBarScrollControls(): void {
