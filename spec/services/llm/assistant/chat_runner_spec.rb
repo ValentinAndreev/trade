@@ -51,8 +51,9 @@ RSpec.describe Llm::Assistant::ChatRunner do
       allow(Llm::Assistant::Agent).to receive(:new).and_return(agent)
       allow(chat).to receive(:context=)
       allow(chat).to receive(:with_model)
+      allow(chat).to receive(:with_temperature)
       allow(chat.ai_messages).to receive(:maximum).and_return(0)
-      allow(chat.ai_messages).to receive_message_chain(:where, :order, :last).and_return(nil)
+      allow(chat.ai_messages).to receive_message_chain(:where, :where, :order, :last).and_return(nil)
       allow(Llm::SystemEditor::DraftExtractor).to receive(:call).and_return(nil)
 
       described_class.new(chat:, setting:).call(content: 'Fix the exits', assistant_context: { editor_context: })
@@ -76,8 +77,9 @@ RSpec.describe Llm::Assistant::ChatRunner do
       allow(Llm::Assistant::Agent).to receive(:new).and_return(agent)
       allow(chat).to receive(:context=)
       allow(chat).to receive(:with_model)
+      allow(chat).to receive(:with_temperature)
       allow(chat.ai_messages).to receive(:maximum).and_return(0)
-      allow(chat.ai_messages).to receive_message_chain(:where, :order, :last).and_return(nil)
+      allow(chat.ai_messages).to receive_message_chain(:where, :where, :order, :last).and_return(nil)
       allow(Llm::SystemEditor::DraftExtractor).to receive(:call).and_return(nil)
 
       described_class.new(chat:, setting:).call(

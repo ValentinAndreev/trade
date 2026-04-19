@@ -312,7 +312,8 @@ export default class extends Controller {
   }
 
   _addOverlayInternal(config: OverlayConfig): void {
-    if (!config.symbol) return
+    const symbol = config.symbol
+    if (!symbol) return
     const colorIndex = normalizeColorScheme(config.colorScheme ?? 0, this._colorIndex++)
     const colors = OVERLAY_COLORS[colorIndex]
     const mode = config.mode || "price"
@@ -322,18 +323,18 @@ export default class extends Controller {
     const basePriceScaleId = `overlay-${config.id}`
 
     const series = createOverlaySeries(this.chart, mode, chartType, colors, basePriceScaleId, visible, opacity)
-    const url = `/api/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${encodeURIComponent(this.timeframeValue)}&limit=${CANDLE_LIMIT}`
-    const loader = new DataLoader(url, config.symbol, this.timeframeValue)
+    const url = `/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(this.timeframeValue)}&limit=${CANDLE_LIMIT}`
+    const loader = new DataLoader(url, symbol, this.timeframeValue)
     const onCandle = (candle: Candle) => this._handleCandle(config.id, candle)
-    const feedKey = `${config.symbol}:${this.timeframeValue}`
-    const bfxFeed = bfxRegistry.acquire(feedKey, (cb) => new BitfinexFeed(config.symbol, this.timeframeValue, cb), onCandle)
-    const cableFeed = cableRegistry.acquire(feedKey, (cb) => new CableFeed(config.symbol, this.timeframeValue, cb), onCandle)
+    const feedKey = `${symbol}:${this.timeframeValue}`
+    const bfxFeed = bfxRegistry.acquire(feedKey, (cb) => new BitfinexFeed(symbol, this.timeframeValue, cb), onCandle)
+    const cableFeed = cableRegistry.acquire(feedKey, (cb) => new CableFeed(symbol, this.timeframeValue, cb), onCandle)
 
     this.overlayMap.set(config.id, {
       series, loader, bfxFeed, cableFeed,
       mode: mode as RuntimeOverlay["mode"], chartType, colorIndex, colorScheme: colorIndex, opacity, colors, visible,
       basePriceScaleId, activePriceScaleId: basePriceScaleId,
-      symbol: config.symbol ?? "",
+      symbol,
       indicatorSeries: [],
       indicatorType: config.indicatorType ?? null,
       indicatorParams: config.indicatorParams ?? null,

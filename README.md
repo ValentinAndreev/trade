@@ -71,7 +71,8 @@ npm test
 - [06 UI Workflows](docs/06-ui-workflows.md)
 - [07 Jobs and Realtime](docs/07-jobs-and-realtime.md)
 - [08 Offline Mode](docs/08-offline-mode.md)
-- [09 Research Implementation](docs/09-research-plan.md)
+- [09 Research & Trading Systems](docs/09-research-systems.md)
+- [10 LLM Assistant](docs/10-llm-assistant.md)
 
 ## С чего читать
 

@@ -9,6 +9,9 @@ vi.mock("../../tabs/persistence", () => ({
   saveTabs: vi.fn(),
   loadActiveTabId: vi.fn(() => null),
   saveActiveTabId: vi.fn(),
+  loadWorkspaceAssistantState: vi.fn(() => ({ currentChatId: null, provider: null, linkedTarget: null })),
+  saveWorkspaceAssistantState: vi.fn(),
+  clearWorkspaceAssistantState: vi.fn(),
 }))
 
 import {
