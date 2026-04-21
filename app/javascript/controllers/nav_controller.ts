@@ -10,6 +10,8 @@ export default class extends Controller {
   declare graphBtnTarget: HTMLElement
   private _boundOpenChart: ((e: Event) => void) | null = null
 
+  private _boundShowMain: (() => void) | null = null
+
   connect() {
     const saved = localStorage.getItem(NAV_PAGE_KEY)
     if (saved === "graph") {
@@ -26,10 +28,15 @@ export default class extends Controller {
         tabsEl.dispatchEvent(new CustomEvent("tabs:openSymbol", { detail: (e as CustomEvent).detail }))
       }
     })
+
+    window.addEventListener("nav:showMain", this._boundShowMain = () => {
+      this.showMain()
+    })
   }
 
   disconnect() {
     if (this._boundOpenChart) window.removeEventListener("nav:openChart", this._boundOpenChart)
+    if (this._boundShowMain) window.removeEventListener("nav:showMain", this._boundShowMain)
   }
 
   showMain() {

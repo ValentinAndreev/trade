@@ -81,5 +81,6 @@ class Macro::FindQuery
     Time.parse(value.to_s).utc
   rescue ArgumentError, TZInfo::Error
     Rails.logger.warn("[find_query] unparseable time value: #{value.inspect}, falling back to raw query")
+    nil
   end
 end

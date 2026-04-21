@@ -46,10 +46,11 @@ describe("TabStore", () => {
       expect(store.tabLabel(tab)).toBe("BTCUSD 1m")
     })
 
-    it("removeTab returns false when only one tab", () => {
+    it("removeTab allows closing the last tab, leaving tabs empty", () => {
       const tab = store.addTab()
-      expect(store.removeTab(tab.id)).toBe(false)
-      expect(store.tabs).toHaveLength(1)
+      expect(store.removeTab(tab.id)).toBe(true)
+      expect(store.tabs).toHaveLength(0)
+      expect(store.activeTabId).toBeNull()
     })
 
     it("removeTab deletes a tab and selects next", () => {
@@ -133,12 +134,12 @@ describe("TabStore", () => {
       expect(store.tabLabel(first)).toBe("Assistant")
     })
 
-    it("does not remove the assistant tab once it exists", () => {
+    it("allows removing the assistant tab", () => {
       const assistant = store.addAssistantTab()
       store.addTab()
 
-      expect(store.removeTab(assistant.id)).toBe(false)
-      expect(store.tabs.some(tab => tab.id === assistant.id && tab.type === "assistant")).toBe(true)
+      expect(store.removeTab(assistant.id)).toBe(true)
+      expect(store.tabs.some(tab => tab.id === assistant.id && tab.type === "assistant")).toBe(false)
     })
   })
 

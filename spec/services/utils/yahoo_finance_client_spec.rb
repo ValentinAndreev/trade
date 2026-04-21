@@ -75,7 +75,11 @@ RSpec.describe Utils::YahooFinanceClient do
     end
 
     context 'when API returns non-200' do
-      before { stub_request(:get, "#{api_url}/#{CGI.escape(ticker)}").to_return(status: 404) }
+      before do
+        stub_request(:get, "#{api_url}/#{CGI.escape(ticker)}")
+          .with(query: hash_including('interval' => '1d'))
+          .to_return(status: 404)
+      end
 
       it 'returns []' do
         allow(Rails.logger).to receive(:warn)
@@ -84,7 +88,11 @@ RSpec.describe Utils::YahooFinanceClient do
     end
 
     context 'when request times out' do
-      before { stub_request(:get, "#{api_url}/#{CGI.escape(ticker)}").to_timeout }
+      before do
+        stub_request(:get, "#{api_url}/#{CGI.escape(ticker)}")
+          .with(query: hash_including('interval' => '1d'))
+          .to_timeout
+      end
 
       it 'returns [] and logs warning' do
         expect(Rails.logger).to receive(:warn).with(/fetch_history/)
@@ -95,6 +103,7 @@ RSpec.describe Utils::YahooFinanceClient do
     context 'when chart result is missing' do
       before do
         stub_request(:get, "#{api_url}/#{CGI.escape(ticker)}")
+          .with(query: hash_including('interval' => '1d'))
           .to_return(status: 200, body: { 'chart' => { 'result' => nil } }.to_json,
                      headers: { 'Content-Type' => 'application/json' })
       end

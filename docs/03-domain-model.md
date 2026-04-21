@@ -105,9 +105,12 @@ Market symbols живут в тех же двух файлах внутри се
 
 Типы:
 
-- `chart`
-- `data`
-- `system_stats`
+- `chart` — графический таб с панелями и оверлеями
+- `data` — табличный анализ исторических данных
+- `system_stats` — метрики и equity curve торговой системы
+- `research` — бэктест / оптимизация YAML-системы (в UI: "Test/Optimization")
+- `system_editor` — редактор YAML торговой системы с DSL-поддержкой
+- `assistant` — LLM-ассистент
 
 Хранится:
 

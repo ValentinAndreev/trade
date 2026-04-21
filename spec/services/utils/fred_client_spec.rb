@@ -19,6 +19,7 @@ RSpec.describe Utils::FredClient do
     context 'when API returns 200' do
       before do
         stub_request(:get, 'https://api.stlouisfed.org/fred/series/observations')
+          .with(query: hash_including('api_key' => 'test_key_123'))
           .to_return(
             status: 200,
             body: { 'observations' => observations }.to_json,
@@ -63,7 +64,9 @@ RSpec.describe Utils::FredClient do
 
     context 'when API returns error status' do
       before do
-        stub_request(:get, 'https://api.stlouisfed.org/fred/series/observations').to_return(status: 400)
+        stub_request(:get, 'https://api.stlouisfed.org/fred/series/observations')
+          .with(query: hash_including('api_key' => 'test_key_123'))
+          .to_return(status: 400)
       end
 
       it 'returns empty array' do
@@ -79,7 +82,9 @@ RSpec.describe Utils::FredClient do
 
     context 'when request times out' do
       before do
-        stub_request(:get, 'https://api.stlouisfed.org/fred/series/observations').to_timeout
+        stub_request(:get, 'https://api.stlouisfed.org/fred/series/observations')
+          .with(query: hash_including('api_key' => 'test_key_123'))
+          .to_timeout
       end
 
       it 'returns empty array and logs' do

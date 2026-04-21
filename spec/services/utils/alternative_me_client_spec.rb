@@ -19,6 +19,7 @@ RSpec.describe Utils::AlternativeMeClient do
     context 'when API returns 200' do
       before do
         stub_request(:get, 'https://api.alternative.me/fng/')
+          .with(query: hash_including('format' => 'json'))
           .to_return(status: 200, body: response_body, headers: { 'Content-Type' => 'application/json' })
       end
 
@@ -49,7 +50,9 @@ RSpec.describe Utils::AlternativeMeClient do
 
     context 'when API returns non-200' do
       before do
-        stub_request(:get, 'https://api.alternative.me/fng/').to_return(status: 429)
+        stub_request(:get, 'https://api.alternative.me/fng/')
+          .with(query: hash_including('format' => 'json'))
+          .to_return(status: 429)
       end
 
       it 'returns empty array' do
@@ -65,7 +68,9 @@ RSpec.describe Utils::AlternativeMeClient do
 
     context 'when request times out' do
       before do
-        stub_request(:get, 'https://api.alternative.me/fng/').to_timeout
+        stub_request(:get, 'https://api.alternative.me/fng/')
+          .with(query: hash_including('format' => 'json'))
+          .to_timeout
       end
 
       it 'returns empty array' do

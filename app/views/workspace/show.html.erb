@@ -7,8 +7,66 @@
   <!-- Workspace -->
   <div class="flex-1 flex flex-col min-h-0">
     <div data-controller="tabs" class="flex flex-col flex-1 min-h-0">
+      <!-- Tab bar (always visible — contains add buttons) -->
       <div data-tabs-target="tabBar" class="flex flex-col bg-[#12122a] border-b border-[#2a2a3e] shrink-0 min-w-0"></div>
-      <div class="flex flex-1 min-h-0">
+
+      <!-- Main dashboard (shown when no tabs are open) -->
+      <div data-controller="main" data-tabs-target="mainPanel" class="hidden flex-1 overflow-auto p-6">
+        <section class="mb-8">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-gray-300 text-sm font-semibold uppercase tracking-wider">Crypto</h2>
+            <div class="relative">
+              <button data-action="click->main#showAddDropdown"
+                      class="text-xs text-gray-400 hover:text-white px-2 py-1 rounded border border-[#2a2a3e] hover:border-blue-500/50 transition-colors">
+                + Add
+              </button>
+            </div>
+          </div>
+          <div data-main-target="grid" class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))"></div>
+        </section>
+
+        <section class="mb-8">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-gray-300 text-sm font-semibold uppercase tracking-wider">Indices</h2>
+            <div class="relative">
+              <button data-action="click->main#showAddMarketDropdown" data-category="indices"
+                      class="text-xs text-gray-400 hover:text-white px-2 py-1 rounded border border-[#2a2a3e] hover:border-blue-500/50 transition-colors">
+                + Add
+              </button>
+            </div>
+          </div>
+          <div data-main-target="indicesGrid" class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))"></div>
+        </section>
+
+        <section class="mb-8">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-gray-300 text-sm font-semibold uppercase tracking-wider">Forex</h2>
+            <div class="relative">
+              <button data-action="click->main#showAddMarketDropdown" data-category="forex"
+                      class="text-xs text-gray-400 hover:text-white px-2 py-1 rounded border border-[#2a2a3e] hover:border-blue-500/50 transition-colors">
+                + Add
+              </button>
+            </div>
+          </div>
+          <div data-main-target="forexGrid" class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))"></div>
+        </section>
+
+        <section class="mb-8">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-gray-300 text-sm font-semibold uppercase tracking-wider">Commodities</h2>
+            <div class="relative">
+              <button data-action="click->main#showAddMarketDropdown" data-category="commodities"
+                      class="text-xs text-gray-400 hover:text-white px-2 py-1 rounded border border-[#2a2a3e] hover:border-blue-500/50 transition-colors">
+                + Add
+              </button>
+            </div>
+          </div>
+          <div data-main-target="commoditiesGrid" class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))"></div>
+        </section>
+      </div>
+
+      <!-- Tab workspace (shown when tabs exist) -->
+      <div data-tabs-target="panelsRow" class="flex flex-1 min-h-0">
         <div data-tabs-target="panels" class="flex-1 min-w-0 h-full"></div>
         <div data-tabs-target="sidebar" class="w-[22rem] shrink-0 bg-[#12122a] border-l border-[#2a2a3e] overflow-y-auto p-4"></div>
       </div>

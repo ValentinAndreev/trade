@@ -193,7 +193,9 @@ export default class extends Controller {
 
     const dropdown = document.createElement("div")
     dropdown.setAttribute("data-add-tile-dropdown", "")
-    dropdown.className = "absolute left-0 top-full mt-1 z-50 bg-[#1a1a2e] border border-[#2a2a3e] rounded-lg shadow-lg max-h-48 overflow-y-auto w-52"
+    const btnRect = btn.getBoundingClientRect()
+    const openAbove = window.innerHeight - btnRect.bottom < 220
+    dropdown.className = `absolute right-0 ${openAbove ? "bottom-full mb-1" : "top-full mt-1"} z-50 bg-[#1a1a2e] border border-[#2a2a3e] rounded-lg shadow-lg max-h-48 overflow-y-auto w-52`
 
     dropdown.innerHTML = items.map(s => `
       <button class="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-blue-500/20 hover:text-white transition-colors"

@@ -1,0 +1,16 @@
+{
+  "ignored_warnings": [
+    {
+      "fingerprint": "1f66f86d4d793bab1ccdbfba409ff08978f78884a139c3ddc19019f2c799ad4b",
+      "note": "False positive: indicators_sql uses connection.quote() for each value"
+    },
+    {
+      "fingerprint": "90ffa1360c0d4b46698907c0a178ca2e5bff3bb61e0b4d077c628f6e23ab662c",
+      "note": "False positive: values_sql contains only $N/$M parameter placeholders, no user data"
+    },
+    {
+      "fingerprint": "9c80c6f9db48015c14b5ae2be63672a881cc7f567a9b881e63e2331a6d710fe0",
+      "note": "False positive: indicators_sql uses connection.quote() for each value"
+    }
+  ]
+}

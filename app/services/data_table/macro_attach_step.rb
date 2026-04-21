@@ -20,7 +20,6 @@ class DataTable::MacroAttachStep
 
     data = Macro::FindQuery.new(
       indicators:,
-      from: from_time,
       to: to_time
     ).call
 

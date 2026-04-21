@@ -17,11 +17,10 @@
 - JS/CSS watchers;
 - PostgreSQL с расширением TimescaleDB.
 
-## Быстрый путь для macOS
+## Быстрый путь (macOS / Ubuntu)
 
 В репозитории есть скрипт `install.sh`, который:
 
-- ставит Homebrew, если его нет;
 - ставит PostgreSQL 17;
 - ставит TimescaleDB;
 - ставит Node.js;
@@ -29,15 +28,13 @@
 - выполняет `bundle install` и `npm install`;
 - готовит БД и проверяет hypertable / continuous aggregates.
 
+На macOS дополнительно устанавливается Homebrew, если его нет.
+
 Запуск:
 
 ```bash
 ./install.sh
 ```
-
-Ограничение:
-
-- скрипт написан под macOS и не подходит как универсальная инструкция для Linux.
 
 ## Ручная установка
 

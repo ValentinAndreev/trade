@@ -69,15 +69,17 @@ export default class TabStore {
   }
 
   removeTab(tabId: string): boolean {
-    if (this.tabs.length === 1) return false
     const idx = this.tabs.findIndex(t => t.id === tabId)
     if (idx === -1) return false
-    if (this.tabs[idx]?.type === "assistant") return false
     this.tabs.splice(idx, 1)
 
     this._cleanupChartLinks(tabId)
 
-    if (this.activeTabId === tabId) {
+    if (this.tabs.length === 0) {
+      this.activeTabId = null
+      this.selectedPanelId = null
+      this.selectedOverlayId = null
+    } else if (this.activeTabId === tabId) {
       const newTab = this.tabs[Math.min(idx, this.tabs.length - 1)]
       this.activeTabId = newTab.id
       if (newTab.type === "data" || newTab.type === "research" || newTab.type === "system_stats" || newTab.type === "system_editor" || newTab.type === "assistant") {

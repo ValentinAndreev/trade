@@ -31,11 +31,15 @@ import { hashText } from "../utils/text_hash"
 import type { AssistantTarget, AssistantWorkspaceSnapshot, WorkspaceAssistantState } from "../types/store"
 
 export default class extends Controller {
-  static targets = ["tabBar", "panels", "sidebar"]
+  static targets = ["tabBar", "panels", "sidebar", "mainPanel", "panelsRow"]
 
   declare tabBarTarget: HTMLElement
   declare panelsTarget: HTMLElement
   declare sidebarTarget: HTMLElement
+  declare mainPanelTarget: HTMLElement
+  declare hasMainPanelTarget: boolean
+  declare panelsRowTarget: HTMLElement
+  declare hasPanelsRowTarget: boolean
 
   store!: TabStore
   config!: { symbols: string[]; timeframes: string[]; indicators: IndicatorInfo[] }
@@ -54,6 +58,7 @@ export default class extends Controller {
   private _researchValidationPending = new Map<string, string>()
   private _systemEditorDiagnostics = new Map<string, ResearchDslDiagnostic[]>()
   private _assistantState: WorkspaceAssistantState = hydrateWorkspaceAssistantState(loadWorkspaceAssistantState())
+  private _boundOpenChart: ((e: Event) => void) | null = null
   private _tabScrollArea: HTMLElement | null = null
   private _lastRenderedActiveTabId: string | null = null
   private _lastRenderedTabCount = 0
@@ -136,8 +141,18 @@ export default class extends Controller {
     if (this.config.indicators?.length) {
       this.renderer.dataSidebar.availableIndicators = this.config.indicators as IndicatorInfo[]
     }
+    this._updateMainPanelVisibility()
     this.render()
     window.addEventListener("resize", this._onWindowResize)
+    window.addEventListener("nav:openChart", this._boundOpenChart = (e: Event) => {
+      const symbol = (e as CustomEvent).detail?.symbol
+      if (symbol) {
+        this.store.addTab({ symbol })
+        this._forceRevealActiveTab = true
+        this._updateMainPanelVisibility()
+        this.render()
+      }
+    })
 
     this._boundListeners = {
       label:  (e) => this._onDrawingCreated("labels", e),
@@ -429,6 +444,7 @@ export default class extends Controller {
 
   disconnect() {
     window.removeEventListener("resize", this._onWindowResize)
+    if (this._boundOpenChart) window.removeEventListener("nav:openChart", this._boundOpenChart)
     this._unbindTabBarScrollArea()
     if (this._linkedDataRefreshInterval) {
       clearInterval(this._linkedDataRefreshInterval)
@@ -517,7 +533,9 @@ export default class extends Controller {
     if (removedTab?.type === "system_editor") {
       this._systemEditorDiagnostics.delete(tabId)
     }
+
     this._reconcileAssistantLinkedTarget()
+    this._updateMainPanelVisibility()
     this.render()
   }
 
@@ -1027,6 +1045,7 @@ export default class extends Controller {
     this._lastRenderedActiveTabId = this.store.activeTabId
     this._lastRenderedTabCount = this.store.tabs.length
     this._forceRevealActiveTab = false
+    this._updateMainPanelVisibility()
     this._syncTabBarScrollControls()
     requestAnimationFrame(() => {
       this._syncSelectedOverlayScale()
@@ -1036,6 +1055,13 @@ export default class extends Controller {
   }
 
   // --- Private helpers ---
+
+  private _updateMainPanelVisibility(): void {
+    if (!this.hasMainPanelTarget) return
+    const isEmpty = this.store.tabs.length === 0
+    this.mainPanelTarget.classList.toggle("hidden", !isEmpty)
+    if (this.hasPanelsRowTarget) this.panelsRowTarget.classList.toggle("hidden", isEmpty)
+  }
 
   private _persistAssistantState(): void {
     saveWorkspaceAssistantState(this._assistantState)
