@@ -22,9 +22,19 @@ import {
 import { saveTabs, saveActiveTabId } from "../../tabs/persistence"
 
 describe("presets service", () => {
+  const storage = new Map<string, string>()
+
   beforeEach(() => {
-    localStorage.clear()
     vi.restoreAllMocks()
+    storage.clear()
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+      clear: () => { storage.clear() },
+      key: (index: number) => Array.from(storage.keys())[index] ?? null,
+      get length() { return storage.size },
+    })
     vi.stubGlobal("fetch", vi.fn())
   })
 

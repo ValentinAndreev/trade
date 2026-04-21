@@ -234,5 +234,24 @@ RSpec.describe Research::Backtest do
         )
       end.to raise_error(Research::Backtest::Cancelled)
     end
+
+    it 'uses the last macro value before the backtest range' do
+      create(:macro_series, indicator: 'dxy', source: 'yahoo', ts: start_time - 1.day, value: 101.0)
+
+      system = instance_double(Research::Systems::Definition)
+      allow(system).to receive(:module_runtime_configs).and_return({})
+      allow(system).to receive(:run_params) { |params| params }
+      allow(system).to receive(:referenced_macro_keys).and_return([ 'dxy' ])
+      allow(system).to receive(:signal_for) do |name, prev_row:, row:, params:|
+        name == :long_entry && row.macro_value('dxy').to_f > 100.0
+      end
+
+      result = described_class.new(
+        system:, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      ).run(params: { position_mode: 'long_only' })
+
+      expect(result[:trades]).not_to be_empty
+    end
   end
 end

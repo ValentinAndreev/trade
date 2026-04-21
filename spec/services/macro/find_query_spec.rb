@@ -45,6 +45,20 @@ RSpec.describe Macro::FindQuery do
     end
   end
 
+  describe '#call with from and gapfill disabled' do
+    it 'includes the last known point before the requested range' do
+      result = described_class.new(
+        indicators: %w[dxy],
+        from: base_time + 2.days + 12.hours,
+        to: base_time + 4.days,
+        gapfill: false
+      ).call
+
+      expect(result['dxy'].first).to eq([ (base_time + 2.days).to_i, 102.0 ])
+      expect(result['dxy'].map(&:first)).to include((base_time + 3.days).to_i)
+    end
+  end
+
   describe '#call with from (gapfill path)', :timescale do
     it 'returns gapfilled data across the range' do
       result = described_class.new(

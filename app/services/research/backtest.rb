@@ -44,7 +44,7 @@ module Research
         return {} if keys.empty?
 
         from = start_time || candles.first&.dig(:time)&.then { |t| Time.at(t).utc }
-        Macro::FindQuery.new(indicators: keys, from:, to: end_time).call
+        Macro::FindQuery.new(indicators: keys, from:, to: end_time, gapfill: false).call
       end
     end
 

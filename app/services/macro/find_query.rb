@@ -3,16 +3,23 @@
 class Macro::FindQuery
   DEFAULT_LOOKBACK = 5.years
 
-  def initialize(indicators:, from: nil, to: nil)
+  def initialize(indicators:, from: nil, to: nil, gapfill: nil)
     @indicators = Array(indicators).map(&:to_s)
     @from = parse_time(from)
     @to   = parse_time(to) || Time.current
+    @gapfill = gapfill.nil? ? @from.present? : gapfill
   end
 
   def call
     return {} if @indicators.empty?
 
-    rows = @from ? query_with_gapfill : query_raw
+    rows = if @from && @gapfill
+      query_with_gapfill
+    elsif @from
+      query_raw_with_previous
+    else
+      query_raw
+    end
 
     rows.each_with_object({}) do |row, h|
       value = row['value']
@@ -50,6 +57,29 @@ class Macro::FindQuery
     SQL
   end
 
+  def query_raw_with_previous
+    connection.exec_query(<<-SQL.squish, 'MacroFindQuery', range_bind_params).to_a
+      SELECT indicator, bucket, value
+      FROM (
+        SELECT indicator, ts AS bucket, value
+        FROM macro_series
+        WHERE indicator IN (#{indicators_sql})
+          AND ts >= $1
+          AND ts <= $2
+        UNION ALL
+        SELECT indicator, ts AS bucket, value
+        FROM (
+          SELECT DISTINCT ON (indicator) indicator, ts, value
+          FROM macro_series
+          WHERE indicator IN (#{indicators_sql})
+            AND ts < $1
+          ORDER BY indicator, ts DESC
+        ) previous_rows
+      ) rows
+      ORDER BY indicator, bucket
+    SQL
+  end
+
   def gapfill_bind_params
     [
       attr(@from.iso8601),
@@ -60,6 +90,10 @@ class Macro::FindQuery
   def raw_bind_params
     from = DEFAULT_LOOKBACK.ago
     [ attr(from.iso8601), attr(@to.iso8601) ]
+  end
+
+  def range_bind_params
+    [ attr(@from.iso8601), attr(@to.iso8601) ]
   end
 
   def attr(value)

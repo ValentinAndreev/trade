@@ -5,7 +5,7 @@ import type { Panel } from "../types/store"
 export function panelLegendHTML(panel: Panel): string {
   const timeframe = panel.timeframe || "1m"
   const lines = panel.overlays
-    .filter(o => o.symbol && o.visible !== false)
+    .filter(o => (o.symbol || (o.mode === "indicator" && o.indicatorSource === "macro")) && o.visible !== false)
     .map(o => {
       const colors = OVERLAY_COLORS[o.colorScheme] || OVERLAY_COLORS[0]
       const swatches = `<span class="inline-flex items-center gap-0.5 shrink-0">${colorSwatch(colors.up)}${colorSwatch(colors.down)}</span>`
