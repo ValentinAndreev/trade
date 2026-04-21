@@ -93,12 +93,59 @@ npm run build -- --watch
 npm run build:css -- --watch
 ```
 
+## Настройка внешних источников данных
+
+### FRED API
+
+FRED предоставляет макроэкономические данные: Fed Funds Rate, M2 Money Supply, CPI. Без ключа эти три индикатора не загружаются. DXY и VIX (Yahoo Finance) и Fear & Greed (AlternativeMe) работают без ключей.
+
+Получить ключ: [fred.stlouisfed.org](https://fred.stlouisfed.org) → My Account → API Keys → Request API Key (бесплатно).
+
+Прописать в Rails credentials:
+
+```bash
+VISUAL="code --wait --new-window" bin/rails credentials:edit
+```
+
+```yaml
+macro:
+  fred_api_key: your_key_here
+```
+
+Ключ читается автоматически через `MacroConfig.fred_api_key`.
+
+### LLM-ассистент
+
+API-ключи LLM-провайдеров (Gemini, Anthropic, OpenAI и др.) **не прописываются в credentials**. Они вводятся через UI и хранятся в БД в зашифрованном виде (`llm_settings.api_key`).
+
+Путь в UI: страница ассистента → иконка настроек → выбрать провайдер → ввести ключ → сохранить.
+
+## Первоначальная загрузка данных
+
+### Свечи
+
+Свечи загружаются автоматически каждую минуту через `CandleSyncJob`. Для полного backfill есть отдельный job:
+
+```bash
+bundle exec rails runner "CandleBackfillJob.perform_now"
+```
+
+### Макро-данные
+
+Макро-данные по расписанию не загружаются при первом запуске — расписание работает только пока запущен Solid Queue worker. Для начальной загрузки запустить вручную:
+
+```bash
+bundle exec rails runner "MacroSyncJob.perform_now(frequency: 'all', backfill: true)"
+```
+
+`backfill: true` подтягивает историю (до 5 лет). Без него загрузятся только последние значения.
+
 ## Что должно работать после запуска
 
 После старта стоит проверить:
 
 1. Главная страница открывается.
-2. `GET /api/health` отвечает JSON, значит backend reachable из браузера.
+2. `GET /api/health` отвечает JSON — backend reachable из браузера.
 3. В логах нет ошибок подключения к PostgreSQL.
 4. Solid Queue worker запущен.
 5. Через минуту появляются записи от `CandleSyncJob`, если внешняя сеть доступна.
@@ -108,6 +155,7 @@ npm run build:css -- --watch
 Проект рассчитывает на наличие:
 
 - hypertable `candles`;
+- hypertable `macro_series`;
 - continuous aggregates:
   - `cagg_candles_5m`
   - `cagg_candles_15m`
@@ -133,6 +181,19 @@ bin/rails db:migrate
 npm test
 npm run build
 npm run build:css
+```
+
+### Диагностика макро-данных
+
+```bash
+# Сколько записей в macro_series
+bin/rails runner "puts MacroSeries.group(:indicator).count"
+
+# Ручной запуск синхронизации дневных данных
+bin/rails runner "MacroSyncJob.perform_now(frequency: 'daily')"
+
+# Ручной запуск с полным backfill
+bin/rails runner "MacroSyncJob.perform_now(frequency: 'all', backfill: true)"
 ```
 
 ## Что читать дальше

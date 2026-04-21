@@ -111,12 +111,46 @@ modules:
     period: 14
 ```
 
-Поддерживаемые типы:
+Поддерживаемые типы (из `config/research/dictionary.yml`):
 
-| Тип | Параметры |
-| --- | --- |
-| `ema` | `period` |
-| `rsi` | `period` |
+| Тип | Описание | Ключевые параметры |
+| --- | --- | --- |
+| `adi` | Accumulation/Distribution Index | — |
+| `adtv` | Average Daily Trading Volume | `period` |
+| `adx` | Average Directional Index | `period` |
+| `ao` | Awesome Oscillator | `short_period`, `long_period` |
+| `atr` | Average True Range | `period` |
+| `bb` | Bollinger Bands | `period`, `standard_deviations` |
+| `cci` | Commodity Channel Index | `period`, `constant` |
+| `cmf` | Chaikin Money Flow | `period` |
+| `cr` | Cumulative Return | — |
+| `dc` | Donchian Channel | `period` |
+| `dlr` | Daily Log Return | — |
+| `dpo` | Detrended Price Oscillator | `period` |
+| `dr` | Daily Return | — |
+| `ema` | Exponential Moving Average | `period` |
+| `eom` | Ease of Movement | `period` |
+| `fi` | Force Index | — |
+| `ichimoku` | Ichimoku Kinko Hyo | `low_period`, `medium_period`, `high_period` |
+| `kc` | Keltner Channel | `period` |
+| `kst` | Know Sure Thing | `period`, `roc1`–`roc4`, `sma1`–`sma4` |
+| `macd` | MACD | `fast_period`, `slow_period`, `signal_period` |
+| `mfi` | Money Flow Index | `period` |
+| `mi` | Mass Index | `ema_period`, `sum_period` |
+| `nvi` | Negative Volume Index | — |
+| `obv` | On-balance Volume | — |
+| `obv_mean` | On-balance Volume Mean | `period` |
+| `rsi` | Relative Strength Index | `period` |
+| `sma` | Simple Moving Average | `period` |
+| `sr` | Stochastic Oscillator | `period`, `signal_period` |
+| `trix` | Triple Exponential Average | `period` |
+| `tsi` | True Strength Index | `low_period`, `high_period` |
+| `uo` | Ultimate Oscillator | `short_period`, `medium_period`, `long_period`, weights |
+| `vi` | Vortex Indicator | `period` |
+| `vpt` | Volume-price Trend | — |
+| `vwap` | Volume Weighted Average Price | — |
+| `wma` | Weighted Moving Average | `period` |
+| `wr` | Williams %R | `period` |
 
 Результат модуля в условиях доступен как `<alias>.value`.
 
@@ -152,6 +186,7 @@ params:
 Условия задаются строковыми выражениями. Поддерживаются:
 
 - поля свечи: `open`, `high`, `low`, `close`, `volume`;
+- макро-индикаторы: `vix`, `dxy`, `fear_greed`, `fed_rate`, `m2`, `cpi`;
 - ссылки на модули: `<alias>.value`;
 - ссылки на параметры: `params.<key>`;
 - числа;
@@ -207,6 +242,33 @@ conditions:
 - `close > prev(close)`
 - `close > max(prev(close), offset(close, 2))`
 - `rsi_filter.value < min(params.upper_threshold, 25)`
+- `fear_greed < 30`
+- `(ema.value >> close) && (vix > 25)`
+
+### Пример с макро-данными
+
+```yaml
+id: sentiment_trend_hybrid
+name: Sentiment + Trend Hybrid
+
+modules:
+  ema:
+    type: ema
+    period: 20
+
+params:
+  position_mode: long_short
+  fear_threshold: 30
+  greed_threshold: 70
+
+conditions:
+  long_entry: "(close >> ema.value) && (fear_greed < params.fear_threshold)"
+  long_exit: "(close << ema.value) || (fear_greed > params.greed_threshold)"
+  short_entry: "(close << ema.value) && (fear_greed > params.greed_threshold)"
+  short_exit: "(close >> ema.value) || (fear_greed < params.fear_threshold)"
+```
+
+Макро-поля берутся из `macro_series` (TimescaleDB) с применением LOCF (last observation carried forward) для сопоставления с минутными свечами. Если данные за период не загружены, значение будет `nil` и условие вернет `false`.
 
 Ограничения и поведение:
 
@@ -243,32 +305,34 @@ optimization:
 ```text
 POST /api/research/run
   -> Research::RunRequest
-  -> Research::Dsl::Catalog.validate
-  -> Research::System
+  -> Research::Systems::Validation::Validator
+  -> Research::Systems::Definition (compiled)
   -> Research::Backtest
   -> Research::Optimizer
   -> Research::ProgressBroadcaster
 ```
 
-### Research::System
+### Research::Systems::Definition
 
 Отвечает за:
 
 - нормализацию `modules`;
 - формирование runtime-параметров вида `ema_fast_period`;
-- разрешение ссылок вроде `ema_fast.value`;
-- mapping optimization target `ema_fast.period -> ema_fast_period`.
+- разрешение ссылок вроде `ema_fast.value`, `params.threshold`, `fear_greed`;
+- mapping optimization target `ema_fast.period -> ema_fast_period`;
+- определение `referenced_macro_keys` — список макро-полей, используемых в условиях.
 
 ### Research::Backtest
 
 `Backtest`:
 
 - загружает свечи через `Candle::FindQuery`;
-- строит series для каждого alias модуля;
-- кэширует результаты по паре `module_type + params`;
-- симулирует сделки по `conditions`.
+- загружает макро-данные через `Macro::FindQuery` (только если система ссылается на макро-поля);
+- строит series для каждого alias модуля через `Research::Modules.for(type)`;
+- кэширует результаты модулей по паре `module_type + params` внутри одного экземпляра `Backtest`;
+- симулирует сделки по `conditions` через `Research::Runtime::RowCursor`.
 
-Несколько alias одного типа работают независимо на уровне сигналов, но могут переиспользовать вычисления, если параметры совпадают.
+Несколько alias одного типа работают независимо на уровне сигналов, но переиспользуют вычисления если параметры совпадают. Макро-данные загружаются один раз и переиспользуются во всех итерациях оптимизации.
 
 ## API
 
@@ -308,41 +372,55 @@ POST /api/research/run
 
 ```text
 app/services/research/
-├── system.rb
 ├── backtest.rb
 ├── optimizer.rb
 ├── run_request.rb
-├── signal_evaluator.rb
+├── cancellation_registry.rb
+├── progress_broadcaster.rb
+├── modules.rb                    # Research::Modules.for(type)
 ├── modules/
-│   ├── base.rb
-│   ├── ema.rb
-│   └── rsi.rb
-└── dsl/
-    ├── catalog.rb
-    ├── validator.rb
-    └── validators/
-        ├── structure.rb
-        ├── conditions.rb
-        └── optimization.rb
+│   └── base.rb                   # Base class (делегирует в TechnicalAnalysis gem)
+├── systems/
+│   ├── catalog.rb
+│   ├── definition.rb             # Compiled system — разрешение ссылок, run_params
+│   ├── editor_metadata.rb
+│   ├── path_helpers.rb
+│   ├── repository.rb
+│   ├── schema.rb
+│   ├── condition_expression/     # Parser и AST для условий
+│   └── validation/               # Validator и sub-validators
+└── runtime/
+    ├── row_cursor.rb             # Курсор по свечам с доступом к модулям и макро
+    └── signal_evaluator.rb       # Вычисление условий по AST
 ```
 
-Примеры систем:
+Примеры систем и конфигурация:
 
 ```text
-config/research/systems/examples/
-├── price_ema_cross.yml
-├── rsi_threshold.yml
-├── ema_rsi_combo.yml
-└── ema_fast_slow_cross.yml
+config/research/
+├── dictionary.yml                # Типы модулей, params, condition keys, макро-индикаторы
+└── systems/
+    ├── examples/
+    │   ├── price_ema_cross.yml
+    │   ├── rsi_threshold.yml
+    │   ├── ema_rsi_combo.yml
+    │   ├── ema_fast_slow_cross.yml
+    │   ├── history_breakout.yml
+    │   ├── midpoint_filter.yml
+    │   └── ema_distance_reversion.yml
+    └── sentiment_trend_hybrid.yml
 ```
 
 ## Как добавить новый тип модуля
 
-1. Добавить класс в `app/services/research/modules/`.
-2. Зарегистрировать его в `Research::Backtest::MODULES`.
-3. Добавить тип и параметры в `config/research/dictionary.yml`.
+1. Добавить класс в `app/services/research/modules/`, наследующий `Research::Modules::Base`.
+   - Класс должен называться так, чтобы `"TechnicalAnalysis::#{demodulize}"` резолвился в нужный класс из `technical_analysis` gem.
+   - Если gem уже поддерживает индикатор, достаточно создать пустой класс-наследник.
+2. Добавить тип и параметры в `config/research/dictionary.yml` в секцию `modules.types`.
+   - `Research::Modules.for(type)` автоматически найдет класс по константному имени.
+3. (Опционально) Добавить тип в секцию `references.fields` если нужно ссылаться на него как на поле (не применимо для модулей).
 
-После этого его можно использовать в YAML так:
+После этого его можно использовать в YAML:
 
 ```yaml
 modules:
@@ -350,3 +428,5 @@ modules:
     type: sma
     period: 50
 ```
+
+Регистрация через `Research::Backtest::MODULES` не нужна — этого константного словаря не существует. Поиск класса делается динамически через `Research::Modules.for(type)`.

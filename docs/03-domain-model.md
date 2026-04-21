@@ -32,6 +32,28 @@
 - `5m`, `15m`, `1h`, `4h`, `1d` оптимизированы через materialized continuous views;
 - нестандартные таймфреймы строятся по запросу.
 
+## MacroSeries
+
+Макроэкономические временные ряды.
+
+Хранение:
+
+- TimescaleDB hypertable `macro_series`;
+- каждая запись: `indicator` (ключ), `ts` (timestamp), `value` (float).
+
+Поддерживаемые индикаторы:
+
+| Ключ | Описание | Источник | Частота |
+| --- | --- | --- | --- |
+| `dxy` | Dollar Index | Yahoo Finance | hourly |
+| `vix` | Volatility Index | Yahoo Finance | hourly |
+| `fear_greed` | Crypto Fear & Greed Index | AlternativeMe | daily |
+| `fed_rate` | Fed Funds Rate | FRED API | daily |
+| `m2` | M2 Money Supply | FRED API | daily |
+| `cpi` | Consumer Price Index | FRED API | daily |
+
+Синхронизация через `MacroSyncJob`. Данные используются как оверлеи на графике и как поля в условиях торговых систем.
+
 ## User
 
 Базовая сущность аутентификации.
@@ -126,8 +148,14 @@ Market symbols живут в тех же двух файлах внутри се
 - `opacity`
 - `indicatorType`
 - `indicatorParams`
-- `indicatorSource`
+- `indicatorSource` — `"client"` | `"server"` | `"macro"`
 - `pinnedTo`
+
+Особенности overlay с `indicatorSource === "macro"`:
+
+- данные загружаются напрямую из `/api/macro_series`, а не через стандартный indicator pipeline;
+- в боковой панели не отображаются параметры `period` и `source` (их нет);
+- при выборе в списке оверлеев получает собственную шкалу (не привязывается к price-шкале основного overlay).
 
 Дополнительное правило:
 
@@ -163,11 +191,14 @@ Market symbols живут в тех же двух файлах внутри се
 
 Колонка в data grid. Может представлять:
 
-- стандартное поле свечи;
-- indicator;
-- change;
-- custom/formula;
-- значение другого инструмента.
+| Тип | Описание |
+| --- | --- |
+| OHLCV | Стандартные поля свечи |
+| `indicator` | Серверный или клиентский технический индикатор |
+| `change` | Процентное или абсолютное изменение поля |
+| `formula` | Пользовательское выражение |
+| `instrument` | Значение другого symbol (close, volume, и т.д.) |
+| `macro` | Макроэкономический индикатор (dxy, vix, fear_greed, fed_rate, m2, cpi) |
 
 Именно `columns` определяют, какие серверные вычисления и какие клиентские трансформации будут участвовать в таблице.
 
@@ -222,6 +253,44 @@ System-column показывает состояние системы на каж
 - `EXIT`
 - `OPEN` для бара, где позиция остается открытой и считается плавающий PnL
 
+## LlmSetting
+
+Настройки LLM-провайдера для пользователя.
+
+Содержит:
+
+- `provider` — имя провайдера (openai, anthropic, gemini, openrouter, mistral, xai, ollama, llama);
+- `model` — название модели;
+- `api_base` — кастомный endpoint (опционально, нужен для ollama/llama.cpp);
+- `temperature`, `max_output_tokens` — параметры генерации;
+- `api_key` — зашифрованный ключ API (через Rails ActiveRecord encryption);
+- `launch_config`, `launch_state` — для llama.cpp: конфигурация и состояние запуска локального сервера.
+
+Одна запись на пользователя на провайдера. API-ключи **не хранятся** в Rails credentials — только в этой таблице в зашифрованном виде. Настраиваются через UI: страница ассистента → иконка настроек.
+
+## AiChat / AiMessage / AiToolCall
+
+Сущности LLM-ассистента.
+
+`AiChat`:
+
+- принадлежит пользователю;
+- имеет `title`;
+- содержит историю сообщений.
+
+`AiMessage`:
+
+- роль: `user`, `assistant`, `tool_result`;
+- текстовое `content`;
+- может содержать `tool_calls` (JSON).
+
+`AiToolCall`:
+
+- отдельные вызовы инструментов внутри ответа ассистента;
+- содержит `tool_name`, `input`, `output`.
+
+Вся история диалогов хранится в PostgreSQL. Ассистент может читать текущую конфигурацию торговой системы из редактора и предлагать изменения в режимах `system_patch` (патч существующего YAML) или `system_design` (полная генерация).
+
 ## Browser Cache
 
 Отдельный производный слой данных, не являющийся source of truth.
@@ -247,8 +316,11 @@ System-column показывает состояние системы на каж
 
 | Сущность | Где хранится | Комментарий |
 | --- | --- | --- |
-| Candle | PostgreSQL / TimescaleDB | Историческая база |
+| Candle | PostgreSQL / TimescaleDB | Историческая база свечей |
+| MacroSeries | PostgreSQL / TimescaleDB | Макро-данные (hypertable `macro_series`) |
 | User | PostgreSQL | Сессионная аутентификация |
+| LlmSetting | PostgreSQL | Настройки LLM провайдера, api_key зашифрован |
+| AiChat / AiMessage / AiToolCall | PostgreSQL | История диалогов ассистента |
 | Preset | PostgreSQL | Пользовательские сохранения |
 | Preset payload | PostgreSQL JSONB | Лежит внутри `presets.payload` |
 | Dashboard symbols | YAML | Серверное состояние главной страницы |

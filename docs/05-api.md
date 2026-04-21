@@ -217,6 +217,62 @@
 }
 ```
 
+## Macro Series
+
+| Method | Path | Назначение | Auth |
+| --- | --- | --- | --- |
+| `GET` | `/api/macro_series` | Макроэкономические временные ряды | Нет |
+
+Параметры:
+
+- `indicators[]` — список ключей индикаторов (`vix`, `dxy`, `fear_greed`, `fed_rate`, `m2`, `cpi`);
+- `from` — начало диапазона (ISO8601 или unix timestamp, опционально);
+- `to` — конец диапазона (опционально).
+
+Пример запроса:
+
+```text
+/api/macro_series?indicators[]=vix&indicators[]=fear_greed
+```
+
+Ответ:
+
+```json
+{
+  "vix": [[1740000000, 18.5], [1740003600, 19.2]],
+  "fear_greed": [[1739952000, 42.0], [1740038400, 38.0]]
+}
+```
+
+Каждый элемент массива — пара `[unix_timestamp, value]`. Данные в порядке возрастания времени.
+
+Если данные за запрошенный период не загружены, соответствующий ключ будет содержать пустой массив.
+
+## LLM Assistant
+
+Требуют аутентификации.
+
+### Chats
+
+| Method | Path | Назначение | Auth |
+| --- | --- | --- | --- |
+| `GET` | `/api/assistant_chats` | Список чатов пользователя | Да |
+| `GET` | `/api/assistant_chats/:id` | Чат с историей сообщений | Да |
+| `POST` | `/api/assistant_chats` | Создать новый чат | Да |
+| `PATCH` | `/api/assistant_chats/:id` | Обновить чат (например, title) | Да |
+| `DELETE` | `/api/assistant_chats/:id` | Удалить чат | Да |
+| `POST` | `/api/assistant_chats/:id/messages` | Отправить сообщение, получить ответ | Да |
+
+### LLM Settings
+
+| Method | Path | Назначение | Auth |
+| --- | --- | --- | --- |
+| `GET` | `/api/llm_settings` | Настройки провайдеров | Да |
+| `PUT` | `/api/llm_settings/:provider` | Сохранить/обновить настройки провайдера | Да |
+| `DELETE` | `/api/llm_settings/:provider` | Удалить настройки провайдера | Да |
+
+Подробнее об LLM-ассистенте: [10 LLM Assistant](10-llm-assistant.md)
+
 ## Presets
 
 Требуют аутентификации.

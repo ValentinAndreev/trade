@@ -33,6 +33,44 @@
 
 Исторический backfill по всем symbols. Используется для загрузки данных назад до исторической границы.
 
+### `MacroSyncJob`
+
+Синхронизация макроэкономических данных.
+
+Что делает:
+
+- загружает DXY и VIX через Yahoo Finance (hourly);
+- загружает Fear & Greed Index через AlternativeMe API (daily);
+- загружает Fed Funds Rate, M2 Money Supply, CPI через FRED API (daily);
+- записывает точки в таблицу `macro_series` (TimescaleDB hypertable).
+
+Расписание (Solid Queue recurring tasks):
+
+| Задача | Частота | Индикаторы |
+| --- | --- | --- |
+| `macro_sync_hourly` | каждый час, минута 5 | DXY, VIX |
+| `macro_sync_daily` | ежедневно 14:30 UTC | fear_greed, fed_rate, m2, cpi |
+
+Зависимости:
+
+- Yahoo Finance и AlternativeMe работают без ключей;
+- FRED-индикаторы (`fed_rate`, `m2`, `cpi`) требуют `MACRO_FRED_API_KEY` или Rails credentials `macro.fred_api_key`. Без ключа FRED-синхронизация пропускается.
+
+Ручной запуск:
+
+```bash
+# Первичная загрузка с историей (до 5 лет)
+bundle exec rails runner "MacroSyncJob.perform_now(frequency: 'all', backfill: true)"
+
+# Обновить только дневные индикаторы
+bundle exec rails runner "MacroSyncJob.perform_now(frequency: 'daily')"
+
+# Обновить только hourly индикаторы
+bundle exec rails runner "MacroSyncJob.perform_now(frequency: 'hourly')"
+```
+
+Параметр `backfill: true` подтягивает историю. Без него загружаются только последние значения.
+
 ### `Candle::Fetcher`
 
 Это центральный server-side ingestion объект.

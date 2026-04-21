@@ -3,16 +3,19 @@
 Внутреннее Rails-приложение для мониторинга и анализа рыночных данных. Система объединяет:
 
 - крипто-графики и свечные данные из Bitfinex;
-- рыночные виджеты по индексам, forex и commodities через Yahoo Finance;
+- макроэкономические данные (VIX, DXY, CPI, Fed Rate, M2, Fear & Greed);
 - интерактивные графики с оверлеями, индикаторами и разметкой;
 - табличный анализ, условия, торговые системы и статистику;
+- бэктестинг и оптимизацию торговых систем с поддержкой макро-данных;
+- встроенный LLM-ассистент для разработки торговых систем;
 - сохранение пользовательских пресетов и состояния рабочего пространства.
 
 ## Что внутри
 
-- Backend: Rails 8, PostgreSQL, TimescaleDB, Solid Queue, Solid Cable
-- Frontend: TypeScript, Stimulus, Tailwind CSS, AG Grid, Lightweight Charts
-- Интеграции: Bitfinex API, Yahoo Finance API
+- **Backend**: Rails 8, PostgreSQL, TimescaleDB, Solid Queue, Solid Cable
+- **Frontend**: TypeScript, Stimulus, Tailwind CSS, AG Grid, Lightweight Charts
+- **Интеграции**: Bitfinex API, Yahoo Finance API, FRED API, AlternativeMe API
+- **LLM**: OpenAI, Anthropic, Gemini, OpenRouter, Mistral, xAI, Ollama, llama.cpp
 
 ## Быстрый старт
 
@@ -52,6 +55,29 @@ bin/dev
 - JS watcher
 - CSS watcher
 
+## Настройка внешних источников данных
+
+### FRED API (макроэкономические данные)
+
+Без ключа FRED-индикаторы (Fed Rate, M2, CPI) не загружаются. Yahoo Finance (DXY, VIX) и AlternativeMe (Fear & Greed) работают без ключей.
+
+Получить ключ: [fred.stlouisfed.org](https://fred.stlouisfed.org) → My Account → API Keys
+
+Прописать:
+
+```bash
+VISUAL="code --wait --new-window" bin/rails credentials:edit
+```
+
+```yaml
+macro:
+  fred_api_key: your_key_here
+```
+
+### LLM-ассистент
+
+API-ключи провайдеров (Gemini, Anthropic, OpenAI и др.) настраиваются через UI — страница ассистента → настройки провайдера. Ключи хранятся в БД в зашифрованном виде.
+
 ## Полезные команды
 
 ```bash
@@ -60,6 +86,18 @@ bin/rails solid_queue:start
 bundle exec rspec
 npm test
 ```
+
+### Загрузка макро-данных вручную
+
+```bash
+# Первый запуск — загрузить всё с историей
+bundle exec rails runner "MacroSyncJob.perform_now(frequency: 'all', backfill: true)"
+
+# Обновить только дневные индикаторы
+bundle exec rails runner "MacroSyncJob.perform_now(frequency: 'daily')"
+```
+
+После загрузки данные появятся в Data Source колонках таблицы и macro-оверлеях графика.
 
 ## Карта документации
 
