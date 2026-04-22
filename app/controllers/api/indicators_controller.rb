@@ -34,7 +34,7 @@ class Api::IndicatorsController < Api::ApplicationController
       {
         key: entry.key,
         name: entry.label,
-        category: 'macro',
+        category: entry.category,
         options: [],
         min_data: 0
       }

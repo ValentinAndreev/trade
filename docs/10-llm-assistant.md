@@ -143,7 +143,7 @@ LLM-ассистент — это встроенный чат-бот, котор
 - `plain_chat_instructions_prompt` — возвращает путь к шаблону инструкций для plain-chat пути; находится здесь, чтобы `ChatRunner` не ссылался на `KnowledgeBase::PROMPT_NAMESPACE` напрямую.
 
 ### `Llm::SystemEditor::KnowledgeBase`
-Загружает статические YAML-файлы DSL-справочника: `dsl.yml`, `modules.yml`, `examples.yml`. Используется в `ContextBuilder` и `LoadDslReferenceTool`.
+Загружает статические YAML-файлы DSL-справочника: `dsl.yml`, `examples.yml`. Справочник `modules` строится динамически: структура (типы, enum-значения) берётся из `Research::Systems::Schema.data` (dictionary.yml), LLM-описания — из `modules_meta.yml`. Используется в `ContextBuilder` и `LoadDslReferenceTool`.
 
 ### `Llm::SystemEditor::DraftExtractor`
 Извлекает черновик торговой системы из новых сообщений чата после завершения запроса к LLM.

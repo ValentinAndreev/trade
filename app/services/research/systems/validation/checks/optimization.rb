@@ -57,6 +57,11 @@ module Research
               return
             end
 
+            unless %w[integer number].include?(module_param_rule['type'])
+              add_error(message: "Optimization target must be a numeric parameter: #{value}", path:, code: 'optimization_target')
+              return
+            end
+
             return if module_payload.key?(param_key)
 
             add_error(message: "Optimization target param is not defined: #{value}", path:, code: 'optimization_target')
@@ -64,8 +69,14 @@ module Research
 
           def validate_param_target(value, path)
             param_key = value.delete_prefix('params.')
-            unless @schema.fetch('params').key?(param_key)
+            rule = @schema.fetch('params')[param_key]
+            unless rule
               add_error(message: "Unknown optimization target: #{value}", path:, code: 'optimization_target')
+              return
+            end
+
+            unless %w[integer number].include?(rule['type'])
+              add_error(message: "Optimization target must be a numeric parameter: #{value}", path:, code: 'optimization_target')
               return
             end
 

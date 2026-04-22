@@ -18,7 +18,7 @@
 1. Проверяет доступность Bitfinex.
 2. Публикует статус в канал `exchange:status`.
 3. Проходит по текущему списку symbols из `BitfinexConfig.symbols`.
-4. Для каждого symbol запускает `Candle::Fetcher`.
+4. Для каждого symbol запускает `Candle::Syncer`.
 
 Расписание:
 
@@ -42,6 +42,7 @@
 - загружает DXY и VIX через Yahoo Finance (hourly);
 - загружает Fear & Greed Index через AlternativeMe API (daily);
 - загружает Fed Funds Rate, M2 Money Supply, CPI через FRED API (daily);
+- загружает on-chain метрики BTC через Coin Metrics Community API (daily): mvrv_ratio, mvrv_z_score, nupl, realized_price;
 - записывает точки в таблицу `macro_series` (TimescaleDB hypertable).
 
 Расписание (Solid Queue recurring tasks):
@@ -49,11 +50,11 @@
 | Задача | Частота | Индикаторы |
 | --- | --- | --- |
 | `macro_sync_hourly` | каждый час, минута 5 | DXY, VIX |
-| `macro_sync_daily` | ежедневно 14:30 UTC | fear_greed, fed_rate, m2, cpi |
+| `macro_sync_daily` | ежедневно 14:30 UTC | fear_greed, fed_rate, m2, cpi, mvrv_ratio, mvrv_z_score, nupl, realized_price |
 
 Зависимости:
 
-- Yahoo Finance и AlternativeMe работают без ключей;
+- Yahoo Finance, AlternativeMe и Coin Metrics Community API работают без ключей;
 - FRED-индикаторы (`fed_rate`, `m2`, `cpi`) требуют `MACRO_FRED_API_KEY` или Rails credentials `macro.fred_api_key`. Без ключа FRED-синхронизация пропускается.
 
 Ручной запуск:
@@ -71,9 +72,19 @@ bundle exec rails runner "MacroSyncJob.perform_now(frequency: 'hourly')"
 
 Параметр `backfill: true` подтягивает историю. Без него загружаются только последние значения.
 
-### `Candle::Fetcher`
+### `Candle::Syncer`
 
-Это центральный server-side ingestion объект.
+Это центральная server-side точка сборки ingestion pipeline.
+
+`Candle::Syncer` выбирает режим синхронизации и собирает зависимости:
+
+- `Candle::Sync::Recent` — регулярная догрузка свежих свечей;
+- `Candle::Sync::Backfill` — историческая загрузка;
+- `Candle::Sync::HistorySource` — чтение истории из Bitfinex;
+- `Candle::Sync::Importer` — запись свечей в БД;
+- `Candle::Sync::Broadcaster` — публикация новых свечей в ActionCable;
+- `Candle::Sync::AggregateRefresher` — обновление continuous aggregates;
+- `Candle::Sync::Paginator` — постраничный обход истории и координация importer/broadcaster/refresher.
 
 Он умеет:
 
@@ -132,7 +143,7 @@ sequenceDiagram
   participant Scheduler
   participant Job as CandleSyncJob
   participant Health as BitfinexHealth
-  participant Fetcher as Candle::Fetcher
+  participant Syncer as Candle::Syncer
   participant DB as TimescaleDB
   participant Cable as ActionCable
   participant UI as Browser
@@ -141,12 +152,12 @@ sequenceDiagram
   Job->>Health: check!
   Health-->>Job: reachable?
   Job->>Cable: broadcast exchange status
-  Job->>Fetcher: call(symbol)
-  Fetcher->>DB: read max/min timestamps
-  Fetcher->>Fetcher: fetch missing candles
-  Fetcher->>DB: upsert/import records
-  Fetcher->>DB: refresh continuous aggregates
-  Fetcher->>Cable: broadcast new candles
+  Job->>Syncer: call(symbol)
+  Syncer->>DB: read max/min timestamps
+  Syncer->>Syncer: fetch missing candles
+  Syncer->>DB: upsert/import records
+  Syncer->>DB: refresh continuous aggregates
+  Syncer->>Cable: broadcast new candles
   Cable-->>UI: realtime updates
 ```
 

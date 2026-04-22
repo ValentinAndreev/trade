@@ -2,28 +2,9 @@
 
 module Research
   module Runtime
-    class RowCursor < Struct.new(:candles, :module_series, :macro_lookup, :index, keyword_init: true)
+    class RowCursor < Struct.new(:candles, :module_series, :index, keyword_init: true)
       EMPTY_HASH = {}.freeze
       EMPTY_SERIES = [].freeze
-
-      def initialize(candles:, module_series:, index:, macro_lookup: nil)
-        super
-      end
-
-      def macro_value(key, row_offset = 0)
-        pairs = macro_lookup&.[](key.to_s)
-        return unless pairs&.any?
-
-        target_index = index - row_offset.to_i
-        return if target_index.negative?
-
-        ts = (candles[target_index] || EMPTY_HASH)[:time]
-        return unless ts
-
-        idx = pairs.bsearch_index { |t, _| t > ts }
-        actual = idx ? idx - 1 : pairs.length - 1
-        actual < 0 ? nil : pairs[actual][1]
-      end
 
       def [](key)
         case key

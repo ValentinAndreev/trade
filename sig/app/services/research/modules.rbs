@@ -1,5 +1,5 @@
 module Research
   module Modules
-    def self.for: (String | Symbol type) -> singleton(Research::Modules::Base)
+    def self.for: (String | Symbol type) -> singleton(Base)
   end
 end

@@ -136,5 +136,61 @@ RSpec.describe Research::Systems::Validation::Validator do
       expect(result).to be_invalid
       expect(result.diagnostics.map(&:message)).to include('Condition expressions must evaluate to a boolean comparison')
     end
+
+    it 'accepts external_series module references' do
+      yaml = <<~YAML
+        id: external_series_filter
+        name: External Series Filter
+        modules:
+          mvrv:
+            type: external_series
+            key: mvrv_z_score
+        params:
+          position_mode: long_only
+          upper_threshold: 7
+        conditions:
+          long_entry: "mvrv.value < params.upper_threshold"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_valid
+    end
+
+    it 'rejects bb standard_deviations below schema minimum' do
+      yaml = <<~YAML
+        id: bb_bad_stddev
+        name: BB Bad StdDev
+        modules:
+          band:
+            type: bb
+            period: 20
+            standard_deviations: 0
+        conditions:
+          long_entry: "band.value > 0"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:message)).to include(a_string_matching(/>=.*0\.1/))
+    end
+
+    it 'rejects external_series without required key' do
+      yaml = <<~YAML
+        id: external_series_missing_key
+        name: External Series Missing Key
+        modules:
+          ext:
+            type: external_series
+        conditions:
+          long_entry: "ext.value > 0"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:message)).to include('Missing required key: key')
+    end
   end
 end

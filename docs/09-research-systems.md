@@ -111,7 +111,7 @@ modules:
     period: 14
 ```
 
-Поддерживаемые типы (из `config/research/dictionary.yml`):
+Поддерживаемые типы (из `config/configs/indicators_config.rb`):
 
 | Тип | Описание | Ключевые параметры |
 | --- | --- | --- |
@@ -186,8 +186,7 @@ params:
 Условия задаются строковыми выражениями. Поддерживаются:
 
 - поля свечи: `open`, `high`, `low`, `close`, `volume`;
-- макро-индикаторы: `vix`, `dxy`, `fear_greed`, `fed_rate`, `m2`, `cpi`;
-- ссылки на модули: `<alias>.value`;
+- ссылки на модули: `<alias>.value` (включая `external_series` для macro/on-chain данных);
 - ссылки на параметры: `params.<key>`;
 - числа;
 - операторы `>>`, `<<`, `>`, `>=`, `<`, `<=`, `&&`, `||`, `+`, `-`, `*`, `/`;
@@ -242,8 +241,8 @@ conditions:
 - `close > prev(close)`
 - `close > max(prev(close), offset(close, 2))`
 - `rsi_filter.value < min(params.upper_threshold, 25)`
-- `fear_greed < 30`
-- `(ema.value >> close) && (vix > 25)`
+- `fear_greed_mod.value < 30`
+- `(ema.value >> close) && (vix_mod.value > 25)`
 
 ### Пример с макро-данными
 
@@ -255,20 +254,23 @@ modules:
   ema:
     type: ema
     period: 20
+  fear_greed_mod:
+    type: external_series
+    key: fear_greed
 
 params:
   position_mode: long_short
-  fear_threshold: 30
-  greed_threshold: 70
+  lower_threshold: 30
+  upper_threshold: 70
 
 conditions:
-  long_entry: "(close >> ema.value) && (fear_greed < params.fear_threshold)"
-  long_exit: "(close << ema.value) || (fear_greed > params.greed_threshold)"
-  short_entry: "(close << ema.value) && (fear_greed > params.greed_threshold)"
-  short_exit: "(close >> ema.value) || (fear_greed < params.fear_threshold)"
+  long_entry: "(close >> ema.value) && (fear_greed_mod.value < params.lower_threshold)"
+  long_exit: "(close << ema.value) || (fear_greed_mod.value > params.upper_threshold)"
+  short_entry: "(close << ema.value) && (fear_greed_mod.value > params.upper_threshold)"
+  short_exit: "(close >> ema.value) || (fear_greed_mod.value < params.lower_threshold)"
 ```
 
-Макро-поля берутся из `macro_series` (TimescaleDB) с применением LOCF (last observation carried forward) для сопоставления с минутными свечами. Если данные за период не загружены, значение будет `nil` и условие вернет `false`.
+Внешние данные берутся из `macro_series` (TimescaleDB) с применением LOCF (last observation carried forward) для сопоставления с минутными свечами. Если данные за период не загружены, значение будет `nil` и условие вернет `false`.
 
 Ограничения и поведение:
 
@@ -296,7 +298,39 @@ optimization:
 - `<alias>.<param>`;
 - `params.<key>`.
 
-Если секция не задана, по умолчанию используется первый параметр первого модуля.
+Если секция не задана, система выбирает первый числовой (`integer` / `number`) параметр первого модуля. Если у модулей нет числовых параметров (например, `external_series` без собственных числовых параметров), fallback — первый числовой system-param (`params.upper_threshold` и т.п.).
+
+## Внешние серии как модули
+
+Все внешние данные (macro и on-chain), синкнутые в `macro_series`, подключаются через модуль `external_series`. `source` можно не указывать — он подставляется автоматически из каталога по `key`.
+
+```yaml
+modules:
+  mvrv:
+    type: external_series
+    key: mvrv_ratio
+  mvrv_z:
+    type: external_series
+    key: mvrv_z_score
+
+params:
+  position_mode: long_only
+  lower_threshold: 1.0
+  upper_threshold: 7.0
+
+conditions:
+  long_entry: "(mvrv.value < params.lower_threshold) || (mvrv_z.value < 0)"
+  long_exit: "mvrv_z.value > params.upper_threshold"
+```
+
+On-chain метрики (`mvrv_ratio`, `mvrv_z_score`, `nupl`, `realized_price`) вычисляются из Coin Metrics Community API при синке:
+
+| Indicator | Source | Расчет |
+| --- | --- | --- |
+| `mvrv_ratio` | Coin Metrics `CapMVRVCur` | готовая community-метрика |
+| `mvrv_z_score` | Coin Metrics `CapMrktCurUSD`, `CapMVRVCur` | `(CapMrktCurUSD - CapMrktCurUSD / CapMVRVCur) / cumulative_std(CapMrktCurUSD)` |
+| `nupl` | Coin Metrics `CapMVRVCur` | `1 - 1 / CapMVRVCur` |
+| `realized_price` | Coin Metrics `CapMrktCurUSD`, `CapMVRVCur`, `SplyCur` | `(CapMrktCurUSD / CapMVRVCur) / SplyCur` |
 
 ## Как это исполняется
 
@@ -318,21 +352,19 @@ POST /api/research/run
 
 - нормализацию `modules`;
 - формирование runtime-параметров вида `ema_fast_period`;
-- разрешение ссылок вроде `ema_fast.value`, `params.threshold`, `fear_greed`;
-- mapping optimization target `ema_fast.period -> ema_fast_period`;
-- определение `referenced_macro_keys` — список макро-полей, используемых в условиях.
+- разрешение ссылок вроде `ema_fast.value`, `params.threshold`;
+- mapping optimization target `ema_fast.period -> ema_fast_period`.
 
 ### Research::Backtest
 
 `Backtest`:
 
 - загружает свечи через `Candle::FindQuery`;
-- загружает макро-данные через `Macro::FindQuery` (только если система ссылается на макро-поля);
-- строит series для каждого alias модуля через `Research::Modules.for(type)`;
+- строит series для каждого alias модуля через `Research::Modules.for(type)` (включая `external_series` для macro/on-chain данных);
 - кэширует результаты модулей по паре `module_type + params` внутри одного экземпляра `Backtest`;
 - симулирует сделки по `conditions` через `Research::Runtime::RowCursor`.
 
-Несколько alias одного типа работают независимо на уровне сигналов, но переиспользуют вычисления если параметры совпадают. Макро-данные загружаются один раз и переиспользуются во всех итерациях оптимизации.
+Несколько alias одного типа работают независимо на уровне сигналов, но переиспользуют вычисления если параметры совпадают.
 
 ## API
 
@@ -398,7 +430,7 @@ app/services/research/
 
 ```text
 config/research/
-├── dictionary.yml                # Типы модулей, params, condition keys, макро-индикаторы
+├── dictionary.yml                # Структурные правила DSL (condition keys, references, optimization)
 └── systems/
     ├── examples/
     │   ├── price_ema_cross.yml
@@ -413,17 +445,35 @@ config/research/
 
 ## Как добавить новый тип модуля
 
-1. Добавить класс в `app/services/research/modules/`, наследующий `Research::Modules::Base`.
-   - Класс должен называться так, чтобы `"TechnicalAnalysis::#{demodulize}"` резолвился в нужный класс из `technical_analysis` gem.
-   - Если gem уже поддерживает индикатор, достаточно создать пустой класс-наследник.
-2. Добавить тип и параметры в `config/research/dictionary.yml` в секцию `modules.types`.
-   - `Research::Modules.for(type)` автоматически найдет класс по константному имени.
+1. Добавить класс в `app/services/research/modules/`, наследующий `Research::Modules::Base` и реализующий `def call(**params)`. `Research::Modules.for(type)` найдёт класс автоматически по имени константы.
 
-После этого его можно использовать в YAML:
+2. Добавить запись в `IndicatorsConfig::INDICATORS` (`config/configs/indicators_config.rb`):
+
+```ruby
+my_indicator: {
+  label: 'My Indicator',
+  params: { period: integer(label: 'Period', min: 1) }
+},
+```
+
+3. Добавить LLM-описание в `app/prompts/llm/system_editor/modules_meta.yml`:
+
+```yaml
+my_indicator:
+  label: My Indicator
+  description: Что делает индикатор.
+  output: value
+  params:
+    period: Lookback period.
+```
+
+После этого модуль доступен в YAML систем:
 
 ```yaml
 modules:
-  my_alias:
-    type: sma
-    period: 50
+  sig:
+    type: my_indicator
+    period: 14
+conditions:
+  long_entry: "sig.value > 0"
 ```

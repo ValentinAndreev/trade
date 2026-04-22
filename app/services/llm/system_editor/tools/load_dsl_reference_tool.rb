@@ -12,6 +12,7 @@ module Llm
           {
             dsl: KnowledgeBase.dsl,
             modules: KnowledgeBase.modules,
+            macro_indicators: KnowledgeBase.macro_indicators,
             examples: KnowledgeBase.examples,
             condition_expression: Research::Systems::EditorMetadata.response[:condition_expression]
           }

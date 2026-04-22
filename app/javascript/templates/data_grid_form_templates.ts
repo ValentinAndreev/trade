@@ -1,4 +1,4 @@
-import { escapeHTML } from "../utils/dom"
+import { escapeHTML, isExternalCategory } from "../utils/dom"
 import type { DataColumn } from "../types/store"
 import { columnFieldKey } from "../types/store"
 import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
@@ -12,6 +12,7 @@ const COLUMN_TYPES: Array<{ value: string; label: string }> = [
 ]
 
 const CHANGE_PERIODS = ["1m", "5m", "15m", "1h", "4h", "1d"]
+
 
 export const INPUT_CLS = "px-2 py-1.5 text-sm text-white bg-[#2a2a3e] border border-[#3a3a4e] rounded focus:outline-none focus:border-blue-400"
 export const BTN_PRIMARY = "px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded"
@@ -185,7 +186,7 @@ export function indicatorParamsHTML(indicators: IndicatorInfo[]): string {
 }
 
 export function macroParamsHTML(indicators: IndicatorInfo[]): string {
-  const macroInds = indicators.filter(i => i.category === "macro")
+  const macroInds = indicators.filter(i => isExternalCategory(i.category))
   if (!macroInds.length) {
     return `<span class="text-xs text-gray-500 italic">No data sources configured</span>`
   }
@@ -207,10 +208,10 @@ export function changeParamsHTML(): string {
 }
 
 export function formulaParamsHTML(indicators: IndicatorInfo[] = []): string {
-  const macroKeys = indicators.filter(i => i.category === 'macro').map(i => i.key).join(', ')
+  const macroKeys = indicators.filter(i => isExternalCategory(i.category)).map(i => i.key).join(', ')
   const helpLines = [
     "<b>Fields:</b> open high low close volume",
-    macroKeys ? `<b>Macro:</b> ${escapeHTML(macroKeys)}` : null,
+    macroKeys ? `<b>External:</b> ${escapeHTML(macroKeys)}` : null,
     "<b>Indicators:</b> sma_20, ema_10, rsi_14 …",
     "<b>Changes:</b> change_5m, change_1h …",
     "<b>Instruments:</b> btcusd_close …",

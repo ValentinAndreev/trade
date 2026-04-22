@@ -1,4 +1,6 @@
-// Shared DOM utilities
+// Shared DOM and template utilities
+
+export const isExternalCategory = (c?: string): boolean => c === "macro" || c === "onchain"
 
 export function formFieldValue(root: ParentNode, field: string, fallback: string): string {
   const el = root.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[data-field="${field}"]`)

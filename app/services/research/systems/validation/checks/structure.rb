@@ -55,6 +55,11 @@ module Research
 
             validate_unknown_keys(path, module_payload.keys, [ 'type', *module_dict.fetch('params').keys ])
             module_dict.fetch('params').each do |key, rule|
+              if rule['required'] == true && !module_payload.key?(key)
+                add_error(message: "Missing required key: #{key}", path: path + [ key ], code: 'missing_key')
+                next
+              end
+
               validate_scalar(rule, module_payload[key], path + [ key ]) if module_payload.key?(key)
             end
           end
@@ -84,7 +89,12 @@ module Research
               min = rule['min']
               add_error(message: "Value must be >= #{min}", path:, code: 'scalar_min') if min && value.to_i < min.to_i
             when 'number'
-              add_error(message: 'Expected numeric value', path:, code: 'scalar_number') unless numeric_like?(value)
+              unless numeric_like?(value)
+                add_error(message: 'Expected numeric value', path:, code: 'scalar_number')
+                return
+              end
+              min = rule['min']
+              add_error(message: "Value must be >= #{min}", path:, code: 'scalar_min') if min && value.to_f < min.to_f
             when 'enum'
               allowed = Array(rule['values']).map(&:to_s)
               add_error(message: "Expected one of: #{allowed.join(', ')}", path:, code: 'scalar_enum') unless allowed.include?(value.to_s)

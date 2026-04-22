@@ -1,6 +1,6 @@
 import { OVERLAY_COLORS } from "../config/theme"
 import { INDICATOR_META } from "../config/indicators"
-import { escapeHTML } from "../utils/dom"
+import { escapeHTML, isExternalCategory } from "../utils/dom"
 import type { Panel, Overlay } from "../types/store"
 
 const ACTIVE_BTN = "text-white bg-blue-600"
@@ -206,11 +206,12 @@ export function overlayItemHTML(
 function indicatorOptionsHTML(
   indicatorType: string,
   currentSource: string,
-  indicators: Array<{ key: string; category?: string }>,
+  indicators: Array<{ key: string; category?: string; name?: string }>,
   indicatorFilter: "all" | "client" | "server" | "macro",
 ): string {
-  const macroKeys = new Set(indicators.filter(i => i.category === "macro").map(i => String(i.key)))
-  const serverKeys = new Set(indicators.filter(i => i.category !== "macro").map(i => String(i.key)))
+  const nameByKey = Object.fromEntries(indicators.map(i => [String(i.key), i.name]))
+  const macroKeys = new Set(indicators.filter(i => isExternalCategory(i.category)).map(i => String(i.key)))
+  const serverKeys = new Set(indicators.filter(i => !isExternalCategory(i.category)).map(i => String(i.key)))
   const clientKeys = new Set(Object.keys(INDICATOR_META).filter(k => !!INDICATOR_META[k]?.lib))
   const allEntries: Array<{ key: string; source: string }> = []
   const processedKeys = new Set<string>()
@@ -233,7 +234,7 @@ function indicatorOptionsHTML(
     .filter(({ source }) => indicatorFilter === "all" || indicatorFilter === source)
     .map(({ key, source }) => {
       const m = INDICATOR_META[key]
-      const label = m?.label || key.toUpperCase()
+      const label = m?.label || nameByKey[key] || key.toUpperCase()
       const icon = source === "client" ? "\u26A1" : source === "macro" ? "\uD83D\uDCCA" : "\uD83C\uDF10"
       const selected = key === indicatorType && source === currentSource
       return `<option value="${key}|${source}"${selected ? " selected" : ""}>${icon} ${label}</option>`
@@ -285,7 +286,7 @@ export function indicatorSettingsHTML(
   indicatorParams: Record<string, number | string> | null,
   selectedOverlay: Overlay | null | undefined,
   panel: Panel,
-  indicators: Array<{ key: string; category?: string }>,
+  indicators: Array<{ key: string; category?: string; name?: string }>,
   indicatorFilter: "all" | "client" | "server" | "macro"
 ): string {
   const isMacro = selectedOverlay?.indicatorSource === "macro"

@@ -83,6 +83,23 @@ RSpec.describe Research::Backtest do
     YAML
   end
 
+  let(:mvrv_filter_system) do
+    Research::Systems::Validation::Validator.new(<<~YAML).call.raise_if_invalid!.compiled
+      id: mvrv_filter_system
+      name: MVRV Filter System
+      modules:
+        mvrv:
+          type: external_series
+          key: mvrv_ratio
+      params:
+        position_mode: long_only
+        upper_threshold: 1.0
+      conditions:
+        long_entry: "mvrv.value < params.upper_threshold"
+        long_exit: "mvrv.value >= params.upper_threshold"
+    YAML
+  end
+
   before do
     Rails.cache.clear
 
@@ -161,6 +178,34 @@ RSpec.describe Research::Backtest do
       expect(result[:trades]).not_to be_empty
     end
 
+    it 'uses external series modules as backtest filters' do
+      # mvrv = 0.8 for candles 0-7; crosses to 1.2 on candle 8 (start_time + 8min)
+      create(:macro_series, source: 'coin_metrics', indicator: 'mvrv_ratio', ts: start_time - 1.day, value: 0.8)
+      create(:macro_series, source: 'coin_metrics', indicator: 'mvrv_ratio', ts: start_time + 8.minutes, value: 1.2)
+
+      result = described_class.new(
+        system: mvrv_filter_system, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      ).run(params: { position_mode: 'long_only', upper_threshold: 1.0 })
+
+      expect(result[:params]).to include(position_mode: 'long_only', upper_threshold: 1.0)
+
+      trades = result[:trades]
+      expect(trades.length).to eq(1)
+
+      trade = trades.first
+      expect(trade[:direction]).to eq('long')
+
+      # Entry fires while mvrv = 0.8 < upper_threshold; fills on the next candle
+      expect(trade[:entryTime]).to be < (start_time + 8.minutes).to_i
+
+      # Exit fires on candle 8 (mvrv crosses to 1.2 >= upper_threshold); fills on candle 9
+      expect(trade[:exitTime]).to eq((start_time + 9.minutes).to_i)
+
+      # No new long entries after mvrv crosses the threshold
+      expect(trades.none? { |t| t[:entryTime] >= (start_time + 8.minutes).to_i }).to be true
+    end
+
     it 'reuses unchanged module results across runs' do
       ema_runner = instance_double(Research::Modules::Ema)
       rsi_runner = instance_double(Research::Modules::Rsi)
@@ -193,7 +238,6 @@ RSpec.describe Research::Backtest do
 
       allow(system).to receive(:module_runtime_configs).and_return({})
       allow(system).to receive(:run_params) { |params| params }
-      allow(system).to receive(:referenced_macro_keys).and_return([])
       allow(system).to receive(:signal_for) do |name, prev_row:, row:, params:|
         signal_calls << name
         name == :long_entry && row[:time] == (start_time + 1.minute).to_i
@@ -216,7 +260,6 @@ RSpec.describe Research::Backtest do
 
       allow(system).to receive(:module_runtime_configs).and_return({})
       allow(system).to receive(:run_params) { |params| params }
-      allow(system).to receive(:referenced_macro_keys).and_return([])
       allow(system).to receive(:signal_for).and_return(false)
 
       backtest = described_class.new(
@@ -233,25 +276,6 @@ RSpec.describe Research::Backtest do
           end
         )
       end.to raise_error(Research::Backtest::Cancelled)
-    end
-
-    it 'uses the last macro value before the backtest range' do
-      create(:macro_series, indicator: 'dxy', source: 'yahoo', ts: start_time - 1.day, value: 101.0)
-
-      system = instance_double(Research::Systems::Definition)
-      allow(system).to receive(:module_runtime_configs).and_return({})
-      allow(system).to receive(:run_params) { |params| params }
-      allow(system).to receive(:referenced_macro_keys).and_return([ 'dxy' ])
-      allow(system).to receive(:signal_for) do |name, prev_row:, row:, params:|
-        name == :long_entry && row.macro_value('dxy').to_f > 100.0
-      end
-
-      result = described_class.new(
-        system:, symbol: 'BTCUSD', timeframe: '1m',
-        start_time: start_time.iso8601, end_time: end_time.iso8601
-      ).run(params: { position_mode: 'long_only' })
-
-      expect(result[:trades]).not_to be_empty
     end
   end
 end

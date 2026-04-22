@@ -38,21 +38,38 @@ class Macro::Syncer
   def build_fetcher(entry)
     case entry.source
     when 'yahoo'
-      yahoo = @yahoo ||= Utils::YahooFinanceClient.new
-      ->(from:) { yahoo.fetch_history(ticker: entry.ticker, from:) }
+      ->(from:) { yahoo_client.fetch_history(ticker: entry[:ticker], from:) }
     when 'fred'
-      fred = @fred ||= Utils::FredClient.new
-      ->(from:) { fred.fetch_series(series_id: entry.series_id, from:) }
+      ->(from:) { fred_client.fetch_series(series_id: entry[:series_id], from:) }
     when 'alternative_me'
-      alt = @alt ||= Utils::AlternativeMeClient.new
       lambda do |from:|
         return [] if from && from.to_date >= Date.current
         # +2: buffer for today's not-yet-finalized entry + potential UTC offset
         limit = from ? (Date.current - from.to_date).to_i + 2 : 0
-        alt.fetch_history(limit:)
+        alternative_me_client.fetch_history(limit:)
+      end
+    when 'coin_metrics'
+      metric  = entry[:metric]
+      formula = entry[:formula]
+      asset   = entry[:asset]
+      raise ArgumentError, "coin_metrics entry '#{entry.key}' requires :metric or :formula" if metric.nil? && formula.nil?
+      raise ArgumentError, "coin_metrics entry '#{entry.key}' requires :asset" if asset.nil?
+      ::Utils::CoinMetricsClient.validate_formula!(formula) if formula
+
+      lambda do |from:|
+        if formula
+          coin_metrics_client.fetch_derived_series(asset:, formula:, from:)
+        else
+          coin_metrics_client.fetch_series(asset:, metric:, from:)
+        end
       end
     else
       raise ArgumentError, "Unknown macro source: #{entry.source}"
     end
   end
+
+  def yahoo_client = @yahoo_client ||= Utils::YahooFinanceClient.new
+  def fred_client = @fred_client ||= Utils::FredClient.new
+  def alternative_me_client = @alternative_me_client ||= Utils::AlternativeMeClient.new
+  def coin_metrics_client = @coin_metrics_client ||= Utils::CoinMetricsClient.new
 end

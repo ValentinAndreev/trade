@@ -5,6 +5,7 @@ module Llm
 
       def self.dsl: () -> Hash[untyped, untyped]
       def self.modules: () -> Hash[untyped, untyped]
+      def self.macro_indicators: () -> Hash[untyped, untyped]
       def self.examples: () -> Hash[untyped, untyped]
 
       private

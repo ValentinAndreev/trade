@@ -1,0 +1,249 @@
+adi:
+  label: ADI
+  description: Accumulation/Distribution Index. Uses high, low, close, volume. No params.
+  output: value
+adtv:
+  label: ADTV
+  description: Average Daily Trading Volume.
+  output: value
+  params:
+    period: Lookback period.
+adx:
+  label: ADX
+  description: Average Directional Index. Returns adx, di_pos, di_neg.
+  output: adx, di_pos, di_neg
+  params:
+    period: Lookback period.
+ao:
+  label: AO
+  description: Awesome Oscillator (momentum).
+  output: value
+  params:
+    short_period: Short period.
+    long_period: Long period.
+atr:
+  label: ATR
+  description: Average True Range (volatility).
+  output: value
+  params:
+    period: Lookback period.
+bb:
+  label: BB
+  description: Bollinger Bands. Returns upper_band, middle_band, lower_band.
+  output: upper_band, middle_band, lower_band
+  params:
+    period: Lookback period.
+    standard_deviations: Number of standard deviations.
+cci:
+  label: CCI
+  description: Commodity Channel Index.
+  output: value
+  params:
+    period: Lookback period.
+    constant: Scaling constant (default 0.015).
+cmf:
+  label: CMF
+  description: Chaikin Money Flow.
+  output: value
+  params:
+    period: Lookback period.
+cr:
+  label: CR
+  description: Cumulative Return. No params.
+  output: value
+dc:
+  label: DC
+  description: Donchian Channel. Returns upper_bound, lower_bound.
+  output: upper_bound, lower_bound
+  params:
+    period: Lookback period.
+dlr:
+  label: DLR
+  description: Daily Log Return. No params.
+  output: value
+dpo:
+  label: DPO
+  description: Detrended Price Oscillator.
+  output: value
+  params:
+    period: Lookback period.
+dr:
+  label: DR
+  description: Daily Return. No params.
+  output: value
+ema:
+  label: EMA
+  description: Exponential Moving Average over close prices.
+  output: value
+  params:
+    period: Lookback period. Must be >= 1.
+eom:
+  label: EOM
+  description: Ease of Movement.
+  output: value
+  params:
+    period: Lookback period.
+fi:
+  label: FI
+  description: Force Index. Uses close and volume. No params.
+  output: value
+ichimoku:
+  label: Ichimoku
+  description: Ichimoku Kinko Hyo. Returns tenkan_sen, kijun_sen, senkou_span_a, senkou_span_b, chikou_span.
+  output: tenkan_sen, kijun_sen, senkou_span_a, senkou_span_b, chikou_span
+  params:
+    low_period: Tenkan-sen period (default 9).
+    medium_period: Kijun-sen period (default 26).
+    high_period: Senkou Span B period (default 52).
+kc:
+  label: KC
+  description: Keltner Channel. Returns upper_band, middle_band, lower_band.
+  output: upper_band, middle_band, lower_band
+  params:
+    period: Lookback period.
+kst:
+  label: KST
+  description: Know Sure Thing momentum oscillator.
+  output: value
+  params:
+    period: Base period.
+    roc1: ROC period 1.
+    roc2: ROC period 2.
+    roc3: ROC period 3.
+    roc4: ROC period 4.
+    sma1: SMA period 1.
+    sma2: SMA period 2.
+    sma3: SMA period 3.
+    sma4: SMA period 4.
+macd:
+  label: MACD
+  description: MACD. Returns macd_line, signal_line, macd_histogram.
+  output: macd_line, signal_line, macd_histogram
+  params:
+    fast_period: Fast EMA period (default 12).
+    slow_period: Slow EMA period (default 26).
+    signal_period: Signal line period (default 9).
+mfi:
+  label: MFI
+  description: Money Flow Index (volume-weighted RSI).
+  output: value
+  params:
+    period: Lookback period.
+mi:
+  label: MI
+  description: Mass Index (volatility indicator).
+  output: value
+  params:
+    ema_period: EMA period.
+    sum_period: Sum period.
+nvi:
+  label: NVI
+  description: Negative Volume Index. No params.
+  output: value
+external_series:
+  label: External Series
+  description: Any synced macro or on-chain indicator used as a computed module output. Use when you need the indicator value available as module.value in conditions rather than as a direct reference field. See macro_indicators for available keys.
+  output: value
+  params:
+    key: Indicator key — see macro_indicators catalogue. Source is resolved automatically.
+obv:
+  label: OBV
+  description: On-balance Volume. No params.
+  output: value
+obv_mean:
+  label: OBV Mean
+  description: On-balance Volume smoothed with SMA.
+  output: value
+  params:
+    period: Smoothing period.
+rsi:
+  label: RSI
+  description: Relative Strength Index over close prices.
+  output: value
+  params:
+    period: Lookback period. Must be >= 1.
+sma:
+  label: SMA
+  description: Simple Moving Average over close prices.
+  output: value
+  params:
+    period: Lookback period.
+sr:
+  label: SR
+  description: Stochastic Oscillator. Returns sr, sr_signal.
+  output: sr, sr_signal
+  params:
+    period: Lookback period.
+    signal_period: Signal smoothing period.
+trix:
+  label: TRIX
+  description: Triple Exponential Average (momentum).
+  output: value
+  params:
+    period: Lookback period.
+tsi:
+  label: TSI
+  description: True Strength Index.
+  output: value
+  params:
+    low_period: Low period.
+    high_period: High period.
+uo:
+  label: UO
+  description: Ultimate Oscillator (combines three timeframes).
+  output: value
+  params:
+    short_period: Short period (default 7).
+    medium_period: Medium period (default 14).
+    long_period: Long period (default 28).
+    short_weight: Short weight (default 4).
+    medium_weight: Medium weight (default 2).
+    long_weight: Long weight (default 1).
+vi:
+  label: VI
+  description: Vortex Indicator. Returns positive_vi, negative_vi.
+  output: positive_vi, negative_vi
+  params:
+    period: Lookback period.
+vpt:
+  label: VPT
+  description: Volume-price Trend. No params.
+  output: value
+vwap:
+  label: VWAP
+  description: Volume Weighted Average Price. No params.
+  output: value
+wma:
+  label: WMA
+  description: Weighted Moving Average over close prices.
+  output: value
+  params:
+    period: Lookback period.
+wr:
+  label: WR
+  description: Williams %R (momentum oscillator).
+  output: value
+  params:
+    period: Lookback period.
+
+macro_indicators:
+  dxy:
+    description: US Dollar Index — USD strength vs basket of major currencies (EUR, JPY, GBP etc.). Rising DXY often correlates with crypto weakness.
+  vix:
+    description: CBOE Volatility Index — implied volatility of S&P 500. High values indicate market fear; low values indicate complacency.
+  fear_greed:
+    description: Crypto Fear & Greed Index (0=extreme fear, 100=extreme greed). Composite sentiment signal; useful as contrarian macro filter.
+  fed_rate:
+    description: US Federal Funds Rate. Rising rates generally pressure risk assets; falling rates are historically bullish for crypto.
+  m2:
+    description: US M2 Money Supply. Expanding M2 historically correlates with crypto bull markets; contraction with bear markets.
+  cpi:
+    description: US Consumer Price Index (inflation). Elevated CPI often precedes Fed rate hikes which pressure risk assets.
+  mvrv_ratio:
+    description: BTC Market Value / Realized Value. Values > 3.7 historically mark cycle tops; values < 1 mark capitulation zones. Macro-cycle filter, not intraday timing.
+  mvrv_z_score:
+    description: Z-score of (market cap - realized cap) / std dev of market cap history. Values > 7 indicate overvaluation; values < 0 indicate capitulation-like zones.
+  nupl:
+    description: Net Unrealized Profit/Loss = 1 - 1/MVRV. Ranges roughly -0.5 to 0.75; negative values mean the network is in aggregate unrealized loss (capitulation territory).
+  realized_price:
+    description: Average BTC price at which coins last moved on-chain — the network cost basis. Price above realized price = aggregate profit; below = aggregate loss.

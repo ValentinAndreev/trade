@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 class Macro::Catalog
-  Entry = Data.define(:key, :source, :label, :frequency, :ticker, :series_id)
+  Entry = Data.define(:key, :source, :label, :category, :frequency, :source_params) do
+    def [](key) = source_params[key.to_sym]
+  end
 
   MUTEX = Mutex.new
   private_constant :MUTEX
@@ -43,9 +45,9 @@ class Macro::Catalog
         key: key.to_s,
         source: cfg[:source],
         label: cfg[:label],
+        category: cfg[:category],
         frequency: cfg[:frequency],
-        ticker: cfg[:ticker],
-        series_id: cfg[:series_id]
+        source_params: cfg.slice(:ticker, :series_id, :asset, :metric, :formula)
       )
     end
   end

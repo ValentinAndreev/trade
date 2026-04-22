@@ -3,8 +3,9 @@
 class Macro::FindQuery
   DEFAULT_LOOKBACK = 5.years
 
-  def initialize(indicators:, from: nil, to: nil, gapfill: nil)
+  def initialize(indicators:, source: nil, from: nil, to: nil, gapfill: nil)
     @indicators = Array(indicators).map(&:to_s)
+    @source = source.presence&.to_s
     @from = parse_time(from)
     @to   = parse_time(to) || Time.current
     @gapfill = gapfill.nil? ? @from.present? : gapfill
@@ -39,6 +40,7 @@ class Macro::FindQuery
         locf(last(value, ts)) AS value
       FROM macro_series
       WHERE indicator IN (#{indicators_sql})
+        #{source_sql}
         AND ts >= $1
         AND ts <= $2
       GROUP BY indicator, bucket
@@ -51,6 +53,7 @@ class Macro::FindQuery
       SELECT indicator, ts AS bucket, value
       FROM macro_series
       WHERE indicator IN (#{indicators_sql})
+        #{source_sql}
         AND ts >= $1
         AND ts <= $2
       ORDER BY indicator, ts
@@ -64,6 +67,7 @@ class Macro::FindQuery
         SELECT indicator, ts AS bucket, value
         FROM macro_series
         WHERE indicator IN (#{indicators_sql})
+          #{source_sql}
           AND ts >= $1
           AND ts <= $2
         UNION ALL
@@ -72,6 +76,7 @@ class Macro::FindQuery
           SELECT DISTINCT ON (indicator) indicator, ts, value
           FROM macro_series
           WHERE indicator IN (#{indicators_sql})
+            #{source_sql}
             AND ts < $1
           ORDER BY indicator, ts DESC
         ) previous_rows
@@ -102,6 +107,12 @@ class Macro::FindQuery
 
   def indicators_sql
     @indicators.map { |i| connection.quote(i) }.join(', ')
+  end
+
+  def source_sql
+    return '' unless @source
+
+    "AND source = #{connection.quote(@source)}"
   end
 
   def connection

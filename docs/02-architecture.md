@@ -80,7 +80,7 @@ API сгруппирован вокруг нескольких доменных 
 - `CandleSyncSymbolJob`: точечная синхронизация одного символа;
 - `CandleBackfillJob`: историческая загрузка данных назад во времени.
 
-Jobs используют `Candle::Fetcher`, который умеет:
+Jobs используют `Candle::Syncer`, который собирает sync pipeline из объектов `Candle::Sync::*`:
 
 - добирать свежие свечи;
 - выполнять исторический backfill;
@@ -132,6 +132,20 @@ Backend через ActionCable используется для двух пото
 
 Корневой экран переключает `Main` и `Graph`, а также управляет auth-областью.
 
+### Workspace orchestration
+
+Главная точка сборки аналитического workspace на фронтенде — `app/javascript/controllers/tabs_controller.ts`.
+
+Он связывает:
+
+- `TabStore` — локальное состояние tabs, panels, overlays, data/research/system/assistant tabs;
+- `TabRenderer` и sidebar/panel renderers — отрисовку tab bar, панелей и боковой панели;
+- `DrawingActions`, `ChartSidebarActions`, `DataTabActions` — команды пользователя для chart/data workspace;
+- `ChartBridge` — связь data tabs с chart controllers;
+- research/system editor/assistant flows — через typed state, API clients и DOM events.
+
+Практически `TabsController` сейчас является frontend application shell для workspace: он не только подключает Stimulus lifecycle, но и координирует связи между chart, data grid, research, system editor и assistant.
+
 ### Tabs и chart workspace
 
 Графический workspace хранит:
@@ -174,7 +188,8 @@ Data tabs работают как отдельный аналитический 
 | Путь | Назначение |
 | --- | --- |
 | `app/controllers/api` | JSON API |
-| `app/models/candle` | Запросы свечей, fetcher, индикаторы |
+| `app/models` | ActiveRecord-модели: candles, users, presets, macro series, LLM entities |
+| `app/services/candle` | Запросы свечей, sync pipeline, индикаторы |
 | `app/jobs` | Фоновые синхронизации |
 | `app/channels` | Realtime-каналы |
 | `app/javascript/controllers` | Stimulus controllers |

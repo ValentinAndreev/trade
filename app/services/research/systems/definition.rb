@@ -4,7 +4,6 @@ module Research
   module Systems
     class Definition
       BAR_FIELDS = Set.new(%w[open high low close volume]).freeze
-      MACRO_FIELDS = Set.new(MacroConfig.indicator_keys).freeze
 
       private attr_reader :payload, :schema
 
@@ -65,9 +64,9 @@ module Research
         }
 
         modules.each do |module_name, module_config|
-          module_params(module_config).each_key do |param_key|
+          module_params(module_config).each do |param_key, default_value|
             flat_key = module_param_key(module_name, param_key)
-            result[flat_key] = to_numeric(runtime_params.fetch(flat_key))
+            result[flat_key] = to_numeric(runtime_params.fetch(flat_key, default_value))
           end
         end
 
@@ -84,6 +83,7 @@ module Research
 
       def optimization_param_key(target)
         resolved_target = target.presence || default_optimization_target
+        raise ArgumentError, 'No optimizable numeric parameter found in this system' unless resolved_target
         return resolved_target.delete_prefix('params.').to_sym if resolved_target.start_with?('params.')
         return module_param_key(*resolved_target.split('.', 2)) if resolved_target.include?('.')
 
@@ -91,12 +91,6 @@ module Research
       end
 
       def signal_for(name, prev_row:, row:, params:) = signal_evaluator.call(name:, prev_row:, row:, params:)
-
-      def referenced_macro_keys
-        @referenced_macro_keys ||= parsed_conditions.flat_map do |_, ast|
-          Research::Systems::ConditionExpression::Ast.references(ast)
-        end.select { |ref| MACRO_FIELDS.include?(ref) }.uniq
-      end
 
       def module_runtime_configs(params)
         runtime_params = params.to_h.symbolize_keys
@@ -130,7 +124,6 @@ module Research
         reference = ref.to_s
         return to_f_or_nil(resolve_row_value(row, row_offset, :bar, reference.to_sym)) if BAR_FIELDS.include?(reference)
         return to_f_or_nil(params[reference.delete_prefix('params.').to_sym]) if reference.start_with?('params.')
-        return to_f_or_nil(row.macro_value(reference, row_offset)) if MACRO_FIELDS.include?(reference)
 
         module_name, attribute = reference.split('.', 2)
         return nil unless attribute == 'value'
@@ -164,11 +157,26 @@ module Research
       def module_type(module_config) = module_config.to_h['type'].to_s
       def module_params(module_config) = module_config.to_h.except('type')
 
+      NUMERIC_PARAM_TYPES = %w[integer number].freeze
+      private_constant :NUMERIC_PARAM_TYPES
+
       def default_module_target
         modules.filter_map do |module_name, module_config|
-          param_key = module_params(module_config).keys.first
+          mtype = module_type(module_config)
+          param_key = module_params(module_config).keys.find do |k|
+            rule = schema.dig('modules', 'types', mtype, 'params', k)
+            NUMERIC_PARAM_TYPES.include?(rule&.dig('type'))
+          end
           "#{module_name}.#{param_key}" if param_key
-        end.first
+        end.first || default_system_param_target
+      end
+
+      def default_system_param_target
+        param_key = (payload['params'] || {}).keys.find do |k|
+          rule = schema.dig('params', k)
+          NUMERIC_PARAM_TYPES.include?(rule&.dig('type'))
+        end
+        "params.#{param_key}" if param_key
       end
 
       def humanize_token(value) = value.to_s.tr('_', ' ').split.map(&:capitalize).join(' ')

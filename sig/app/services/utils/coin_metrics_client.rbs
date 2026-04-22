@@ -1,0 +1,31 @@
+module Utils
+  class CoinMetricsClient
+    include HTTParty
+
+    BASE_URI: String
+    PAGE_SIZE: Integer
+    MAX_PAGES: Integer
+    FORMULAS: Hash[String, untyped]
+
+    def fetch_series: (asset: String | Symbol, metric: String | Symbol, ?from: Time?) -> Array[{ ts: Time, value: Float }]
+    def fetch_derived_series: (
+      asset: String | Symbol,
+      formula: String | Symbol,
+      ?from: Time?
+    ) -> Array[{ ts: Time, value: Float }]
+
+    private
+
+    def fetch_metric_rows: (asset: String | Symbol, metrics: Array[String], from: Time?) -> Array[Hash[String, untyped]]
+    def build_derived_records: (Array[Hash[String, untyped]] rows, String formula) -> Array[{ ts: Time, value: Float }]
+    def formula_definition: (String | Symbol formula) -> untyped
+    def formula_context: (untyped definition) -> Hash[Symbol, untyped]
+    def validate_metric_presence!: (Array[Hash[String, untyped]] rows, Array[String] metrics) -> void
+    def self.cumulative_market_cap_stats: () -> ^(Float?) -> Float?
+    def self.divide_values: (untyped numerator, untyped denominator) -> Float?
+    def self.numeric_value: (untyped value) -> Float?
+    def divide_values: (untyped numerator, untyped denominator) -> Float?
+    def numeric_value: (untyped value) -> Float?
+    def parse_time: (untyped value) -> Time
+  end
+end
