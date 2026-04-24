@@ -21,6 +21,14 @@ export type ResearchPositionMode = "long_short" | "long_only" | "short_only"
 export type ResearchOptimizationTarget = string
 export type ResearchTopPaneKey = "equity" | "optimization_chart" | "optimization_table"
 
+export interface IndicatorInfo {
+  key: string
+  name: string
+  options: string[]
+  min_data: number
+  category?: string
+}
+
 export interface ResearchConfig {
   symbol: string
   timeframe: string
@@ -188,8 +196,6 @@ export interface TradingSystem {
   longColor?: string;
   /** Colour for short entry/exit markers */
   shortColor?: string;
-  /** @deprecated — use longColor/shortColor instead */
-  color?: string;
   /** Slippage added/subtracted from the fill price on cross-type conditions (absolute value) */
   slippage?: number;
   /** ID of the stats tab created for this system, if any. */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { generateTrades, getSystemSignals, computeSystemStats } from "../../data_grid/system_engine"
+import { generateTrades, getSystemSignals, computeSystemStats } from "../../data_grid/engines"
 import type { TradingSystem, DataTableRow } from "../../types/store"
 
 // ---------------------------------------------------------------------------

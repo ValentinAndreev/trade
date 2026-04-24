@@ -2,7 +2,7 @@ import type TabStore from "../store"
 import type TabRenderer from "../renderer"
 import type ChartBridge from "../../data_grid/chart_bridge"
 import type { DataGridControllerAPI, StimulusApp, DataColumn, Panel } from "../../types/store"
-import type { IndicatorInfo } from "../../data_grid/sidebar_renderer"
+import type { IndicatorInfo } from "../../types/store"
 
 import { ColumnActions }    from "./column_actions"
 import { ConditionActions } from "./condition_actions"

@@ -263,7 +263,7 @@ LLM-ассистент — это встроенный чат-бот, котор
 Канонический файл всех типов и функций для работы с API ассистента. Типы: `AssistantDraftPayload`, `AssistantChatPayload`, `AssistantContextPayload` и другие. Функции: `sendAssistantMessage`, `createAssistantChat`, `fetchAssistantChats` и т.д.
 
 ### `assistant/state.ts`
-Нормализация состояния из localStorage. `hydrateWorkspaceAssistantState` восстанавливает и очищает legacy-поля. `normalizeAssistantTarget` валидирует `linkedTarget` — если нет `tabId` или не `type: 'system_editor'`, возвращает `null`.
+Нормализация состояния из localStorage. `hydrateWorkspaceAssistantState` принимает только текущие поля workspace assistant state. `normalizeAssistantTarget` валидирует `linkedTarget` — если нет `tabId` или не `type: 'system_editor'`, возвращает `null`.
 
 ### `assistant/templates.ts`
 HTML-шаблоны для рендеринга сообщений. Рендерит draft-card только для структурных черновиков из metadata (через `assistantDraftFromMetadata`). YAML code-block в тексте получает только кнопку "Open editor" (`openAssistantYamlSnippetInSystemEditor`) без "Apply" — применять без валидированного `suggested_target` небезопасно.

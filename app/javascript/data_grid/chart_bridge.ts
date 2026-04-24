@@ -1,5 +1,5 @@
 import { evaluateConditions, getChartMarkers, getColorZones } from "./condition_engine"
-import { generateTrades } from "./system_engine"
+import { generateTrades } from "./engines"
 import type { Tab, DataTableRow, StimulusApp, ChartControllerAPI, TradingSystem, LabelMarkerInput } from "../types/store"
 import { UP_COLOR, DOWN_COLOR } from "../config/theme"
 

@@ -9,6 +9,12 @@ export const HISTORY_LOAD_LIMIT = 500
 export const LOAD_MORE_THRESHOLD = 50
 export const DEFAULT_VISIBLE_BARS = 100
 
+// Workspace defaults
+export const DEFAULT_RESEARCH_SYMBOL = "BTCUSD"
+export const DEFAULT_RESEARCH_TIMEFRAME = "1h"
+export const CLEARED_RESEARCH_SYSTEM_VALUE = ""
+export const DEFAULT_CUSTOM_SYSTEM_ID = "custom_system"
+
 // Timing
 export const LINKED_DATA_REFRESH_MS = 30_000
 export const SYSTEM_STATS_RETRY_DELAY_MS = 300

@@ -1,7 +1,7 @@
 import { escapeHTML, isExternalCategory } from "../utils/dom"
 import type { DataColumn } from "../types/store"
 import { columnFieldKey } from "../types/store"
-import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
+import type { IndicatorInfo } from "../types/store"
 
 const COLUMN_TYPES: Array<{ value: string; label: string }> = [
   { value: "indicator", label: "Indicator" },

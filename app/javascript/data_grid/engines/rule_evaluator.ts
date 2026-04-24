@@ -12,7 +12,7 @@ export function resolveColumnValue(row: DataTableRow, column: string): number | 
 
 /**
  * Evaluates a single ConditionRule against the current and previous rows.
- * This shared implementation is used by both condition_engine and system_engine.
+ * This shared implementation is used by condition and trading-system engines.
  * Note: "expression" rules are not supported here — they are only handled in condition_engine.
  */
 export function evaluateRule(

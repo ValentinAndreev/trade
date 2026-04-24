@@ -1,5 +1,5 @@
 import candleCache from "../data/candle_cache"
-import type { Tab, DataColumn, Condition, DataConfig, TradingSystem } from "../types/store"
+import type { Tab, DataColumn, Condition, DataConfig, TradingSystem, IndicatorInfo } from "../types/store"
 import { systemBuilderHTML, systemItemHTML } from "../templates/system_templates"
 import {
   symbolSelectHTML,
@@ -22,14 +22,6 @@ import {
   conditionBuilderHTML,
 } from "../templates/condition_templates"
 import type { ChartTabOption } from "../tabs/renderer"
-
-export interface IndicatorInfo {
-  key: string
-  name: string
-  options: string[]
-  min_data: number
-  category?: string
-}
 
 export default class DataSidebarRenderer {
   sidebarEl: HTMLElement

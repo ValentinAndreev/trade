@@ -130,9 +130,10 @@ describe("hydrateWorkspaceAssistantState", () => {
     expect(state.provider).toBe("openai")
   })
 
-  it("strips legacy lastDraftMessageId field", () => {
-    const stored = { currentChatId: 1, lastDraftMessageId: 99 } as Record<string, unknown>
+  it("ignores unknown stored fields", () => {
+    const stored = { currentChatId: 1, unknownField: 99, lastDraftMessageId: 7 } as Record<string, unknown>
     const state = hydrateWorkspaceAssistantState(stored as never)
+    expect(state).not.toHaveProperty("unknownField")
     expect(state).not.toHaveProperty("lastDraftMessageId")
   })
 

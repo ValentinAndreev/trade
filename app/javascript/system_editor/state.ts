@@ -1,8 +1,9 @@
+import { DEFAULT_CUSTOM_SYSTEM_ID } from "../config/constants"
 import type { SystemEditorConfig } from "../types/store"
 
 export function buildDefaultSystemEditorState(): SystemEditorConfig {
   return {
-    systemId: "custom_system",
+    systemId: DEFAULT_CUSTOM_SYSTEM_ID,
     sourceSystemId: null,
     sourcePath: null,
     directoryPath: null,
@@ -19,7 +20,7 @@ export function hydrateSystemEditorState(stored: Partial<SystemEditorConfig> | n
 }
 
 export function normalizeSystemEditorState(state: SystemEditorConfig): void {
-  if (typeof state.systemId !== "string") state.systemId = "custom_system"
+  if (typeof state.systemId !== "string") state.systemId = DEFAULT_CUSTOM_SYSTEM_ID
   if (typeof state.sourceSystemId !== "string" && state.sourceSystemId !== null) state.sourceSystemId = state.systemId || null
   if (typeof state.sourcePath !== "string" && state.sourcePath !== null) state.sourcePath = null
   if (typeof state.directoryPath !== "string" && state.directoryPath !== null) state.directoryPath = null
@@ -27,7 +28,7 @@ export function normalizeSystemEditorState(state: SystemEditorConfig): void {
   if (typeof state.searchQuery !== "string") state.searchQuery = ""
 }
 
-export function buildStarterSystemYaml(systemId = "custom_system"): string {
+export function buildStarterSystemYaml(systemId = DEFAULT_CUSTOM_SYSTEM_ID): string {
   const name = systemId
     .split(/[_-]+/)
     .filter(Boolean)

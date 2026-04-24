@@ -18,6 +18,7 @@ import {
 } from "../research/file_manager"
 import { showToast } from "../services/toast"
 import { buildStarterSystemYaml } from "../system_editor/state"
+import { DEFAULT_CUSTOM_SYSTEM_ID } from "../config/constants"
 import type { SystemEditorConfig } from "../types/store"
 
 export type FilePickerState = {
@@ -118,7 +119,7 @@ export class FilePickerModule {
   }
 
   async createFile(): Promise<void> {
-    const nextId = window.prompt("New system id", "custom_system")?.trim()
+    const nextId = window.prompt("New system id", DEFAULT_CUSTOM_SYSTEM_ID)?.trim()
     if (!nextId) return
 
     const yaml = buildStarterSystemYaml(nextId)

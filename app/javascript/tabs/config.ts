@@ -1,5 +1,5 @@
 import { apiFetch } from "../services/api_fetch"
-import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
+import type { IndicatorInfo } from "../types/store"
 
 export interface AppConfig {
   symbols: string[]

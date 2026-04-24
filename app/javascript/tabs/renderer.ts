@@ -5,7 +5,7 @@ import type { ResearchCatalogEntry, ResearchValidatedSystem } from "../research/
 import PanelRenderer from "./panel_renderer"
 import { tabButtonHTML, quickLaunchButtonsHTML } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
-import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
+import type { IndicatorInfo } from "../types/store"
 
 export interface ChartTabOption {
   id: string

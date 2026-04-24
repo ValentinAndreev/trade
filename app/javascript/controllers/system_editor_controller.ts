@@ -31,6 +31,7 @@ import { EditorCore } from "../system_editor/editor_core"
 import { FilePickerModule } from "../system_editor/file_picker"
 import { ValidationModule } from "../system_editor/validation"
 import { setHighlightConfig } from "../system_editor/yaml_highlighter"
+import { DEFAULT_CUSTOM_SYSTEM_ID } from "../config/constants"
 import type { SystemEditorConfig } from "../types/store"
 
 type ConfirmDialogState = {
@@ -203,7 +204,7 @@ export default class extends Controller {
   newSystem() {
     if (!this.state) return
 
-    this.state.systemId = "custom_system"
+    this.state.systemId = DEFAULT_CUSTOM_SYSTEM_ID
     this.state.sourceSystemId = null
     this.state.sourcePath = null
     this.state.directoryPath = this._currentDirectoryPath()

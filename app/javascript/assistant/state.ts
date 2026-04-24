@@ -13,9 +13,9 @@ export function hydrateWorkspaceAssistantState(
 ): WorkspaceAssistantState {
   const state = buildDefaultWorkspaceAssistantState()
   if (stored) {
-    // Strip legacy fields before merging so they don't survive into the normalized state
-    const { lastDraftMessageId: _removed, ...rest } = stored as Partial<WorkspaceAssistantState> & { lastDraftMessageId?: unknown }
-    Object.assign(state, rest)
+    state.currentChatId = stored.currentChatId ?? null
+    state.provider = stored.provider ?? null
+    state.linkedTarget = stored.linkedTarget ?? null
   }
   normalizeWorkspaceAssistantState(state)
   return state

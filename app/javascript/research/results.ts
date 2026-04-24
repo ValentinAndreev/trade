@@ -1,4 +1,4 @@
-import { computeSystemStats } from "../data_grid/system_engine"
+import { computeSystemStats } from "../data_grid/engines"
 import type { ResearchResult, ResearchRunPayload } from "../types/store"
 import type { ProcessedResearchRun } from "./types"
 

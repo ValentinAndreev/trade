@@ -279,7 +279,7 @@ export default class SidebarRenderer {
         </div>
         <span class="flex gap-1">
           ${toolButtons}
-          <button data-action="click->${this.ctrl}#clearAllLabels"
+          <button data-action="click->${this.ctrl}#clearAllDrawings"
                   class="text-sm px-2 py-1 rounded cursor-pointer text-gray-400 bg-[#2a2a3e] hover:bg-red-500/20 hover:text-red-300"
                   title="Clear all labels, lines, HL, VL on this panel">
             Clear

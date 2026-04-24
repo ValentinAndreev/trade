@@ -134,17 +134,17 @@ Backend через ActionCable используется для двух пото
 
 ### Workspace orchestration
 
-Главная точка сборки аналитического workspace на фронтенде — `app/javascript/controllers/tabs_controller.ts`.
+Главная Stimulus-точка аналитического workspace — `app/javascript/controllers/tabs_controller.ts`, но feature orchestration вынесена в `app/javascript/workspace`.
 
-Он связывает:
+`TabsController` отвечает за lifecycle, создание базовых dependencies, chart/panel/drawing действия и финальный render. Feature-координация разложена так:
 
-- `TabStore` — локальное состояние tabs, panels, overlays, data/research/system/assistant tabs;
-- `TabRenderer` и sidebar/panel renderers — отрисовку tab bar, панелей и боковой панели;
-- `DrawingActions`, `ChartSidebarActions`, `DataTabActions` — команды пользователя для chart/data workspace;
-- `ChartBridge` — связь data tabs с chart controllers;
-- research/system editor/assistant flows — через typed state, API clients и DOM events.
+- `ResearchCoordinator` — catalog, file picker, research config sync и server validation;
+- `SystemEditorCoordinator` — system editor state, diagnostics и переходы editor -> research/assistant;
+- `AssistantCoordinator` — workspace assistant state, linked target context и применение drafts к editor;
+- `LinkedDataCoordinator` — linked data refresh, system stats и column state forwarding;
+- `WorkspaceEvents` — подписки на DOM custom events между controllers.
 
-Практически `TabsController` сейчас является frontend application shell для workspace: он не только подключает Stimulus lifecycle, но и координирует связи между chart, data grid, research, system editor и assistant.
+Общее состояние tabs хранится в `TabStore`; schema `localStorage` и `Preset.payload` остаются текущим контрактом workspace state.
 
 ### Tabs и chart workspace
 

@@ -2,8 +2,8 @@ import type { ColDef, GridOptions, ValueFormatterParams, CellClassParams, ValueG
 import { columnFieldKey } from "../types/store"
 import type { DataColumn, Condition, DataTableRow, TradingSystem } from "../types/store"
 import { evaluateFormulaExpression, type ConditionMatch } from "./condition_engine"
-import type { SystemSignal } from "./system_engine"
-import { UP_COLOR, DOWN_COLOR, ACCENT_COLOR } from "../config/theme"
+import type { SystemSignal } from "./engines"
+import { UP_COLOR, DOWN_COLOR } from "../config/theme"
 import { PRICE_PRECISION, CHANGE_PRECISION, VOLUME_PRECISION } from "../config/constants"
 
 function formatPrice(params: ValueFormatterParams): string {
@@ -63,7 +63,6 @@ export function getInitialColumnState(columns: DataColumn[]): Array<{ colId: str
 
 /** Build a ColDef for a TradingSystem signal column. */
 export function buildSystemColDef(system: TradingSystem, signalMap: Map<number, SystemSignal>): ColDef {
-  const color = system.color ?? ACCENT_COLOR
   return {
     colId: `sys_${system.id}`,
     headerName: system.name,
@@ -76,12 +75,12 @@ export function buildSystemColDef(system: TradingSystem, signalMap: Map<number, 
       if (!params.data?.time) return ""
       const sig = signalMap.get(params.data.time)
       if (!sig) return ""
-      return formatSystemSignal(sig, color)
+      return formatSystemSignal(sig)
     },
   }
 }
 
-function formatSystemSignal(sig: SystemSignal, _systemColor: string): string {
+function formatSystemSignal(sig: SystemSignal): string {
   const isLong = sig.direction === "long"
   const dirLabel = isLong ? "▲ LONG" : "▼ SHORT"
   const entryColor = isLong ? UP_COLOR : DOWN_COLOR

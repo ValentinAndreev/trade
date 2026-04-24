@@ -2,33 +2,37 @@ import { Controller } from "@hotwired/stimulus"
 import TabStore from "../tabs/store"
 import TabRenderer from "../tabs/renderer"
 import { fetchConfig } from "../tabs/config"
+import { fetchResearchCatalog } from "../research/dsl"
 import { startPanelResize } from "../tabs/panel_resizer"
 import DrawingActions from "../tabs/drawing_actions"
 import DataTabActions from "../tabs/data_actions"
 import ChartSidebarActions from "../tabs/chart_sidebar_actions"
 import ChartBridge from "../data_grid/chart_bridge"
-import { generateTrades, computeSystemStats } from "../data_grid/system_engine"
-import type { IndicatorInfo } from "../data_grid/sidebar_renderer"
-import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, DataGridControllerAPI, StimulusApp, ResearchConfig, ResearchResult } from "../types/store"
-import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS, SYSTEM_STATS_MAX_RETRIES } from "../config/constants"
-import { buildDefaultResearchState, syncResearchStateFromInputs } from "../research/state"
-import {
-  fetchResearchCatalog,
-  validateResearchSystem,
-  type ResearchCatalogEntry,
-  type ResearchDslDiagnostic,
-  type ResearchValidationResponse,
-  type ResearchValidatedSystem,
-} from "../research/dsl"
-import {
-  relativeDirname,
-} from "../research/file_manager"
-import { ResearchFilePicker } from "../research/research_file_picker"
+import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, StimulusApp, IndicatorInfo } from "../types/store"
+import ResearchCoordinator from "../workspace/research_coordinator"
+import SystemEditorCoordinator from "../workspace/system_editor_coordinator"
+import AssistantCoordinator from "../workspace/assistant_coordinator"
+import LinkedDataCoordinator from "../workspace/linked_data_coordinator"
+import WorkspaceEvents from "../workspace/events"
 import { showToast } from "../services/toast"
-import { loadWorkspaceAssistantState, saveWorkspaceAssistantState } from "../tabs/persistence"
-import { hydrateWorkspaceAssistantState } from "../assistant/state"
-import { hashText } from "../utils/text_hash"
-import type { AssistantTarget, AssistantWorkspaceSnapshot, WorkspaceAssistantState } from "../types/store"
+
+const TAB_SCROLL_THRESHOLD_PX = 4
+
+type SidebarCollapseKey =
+  | "chartsCollapsed"
+  | "labelsCollapsed"
+  | "systemsCollapsed"
+  | "textCollapsed"
+  | "trendLinesCollapsed"
+  | "hlinesCollapsed"
+  | "vlinesCollapsed"
+
+interface WorkspaceCoordinators {
+  research: ResearchCoordinator
+  systemEditor: SystemEditorCoordinator
+  assistant: AssistantCoordinator
+  linkedData: LinkedDataCoordinator
+}
 
 export default class extends Controller {
   static targets = ["tabBar", "panels", "sidebar", "mainPanel", "panelsRow"]
@@ -48,22 +52,19 @@ export default class extends Controller {
   chartBridge!: ChartBridge
   dataActions!: DataTabActions
   chartActions!: ChartSidebarActions
-  private _boundListeners: Record<string, (e: Event) => void> | null = null
-  private _linkedDataRefreshInterval: ReturnType<typeof setInterval> | null = null
+  private research: ResearchCoordinator | null = null
+  private systemEditor: SystemEditorCoordinator | null = null
+  private assistant: AssistantCoordinator | null = null
+  private linkedData: LinkedDataCoordinator | null = null
+  private workspaceEvents: WorkspaceEvents | null = null
   private _tabDragJustEnded = false
-  private _researchCatalog: ResearchCatalogEntry[] = []
-  private _researchDirectories: string[] = []
-  private _researchFilePicker!: ResearchFilePicker
-  private _researchValidation = new Map<string, { key: string; result: ResearchValidationResponse | null }>()
-  private _researchValidationPending = new Map<string, string>()
-  private _systemEditorDiagnostics = new Map<string, ResearchDslDiagnostic[]>()
-  private _assistantState: WorkspaceAssistantState = hydrateWorkspaceAssistantState(loadWorkspaceAssistantState())
   private _boundOpenChart: ((e: Event) => void) | null = null
   private _tabScrollArea: HTMLElement | null = null
   private _lastRenderedActiveTabId: string | null = null
   private _lastRenderedTabCount = 0
   private _tabBarScrollLeft = 0
   private _forceRevealActiveTab = false
+  private _connectVersion = 0
   private readonly _onTabBarScroll = () => {
     this._tabBarScrollLeft = this._tabScrollArea?.scrollLeft ?? 0
     this._syncTabBarScrollControls()
@@ -84,32 +85,24 @@ export default class extends Controller {
     this._syncTabBarScrollControls()
   }
   private readonly _onWindowResize = () => this._syncTabBarScrollControls()
+  private readonly _revealActiveTab = () => {
+    this._forceRevealActiveTab = true
+  }
 
   async connect() {
+    const connectVersion = ++this._connectVersion
     this.store = new TabStore()
     const initialActiveTabId = this.store.activeTabId
     if (initialActiveTabId && this.store.tabs.some(tab => tab.id === initialActiveTabId)) {
       this.store.activateTab(initialActiveTabId)
     }
-    this._reconcileAssistantLinkedTarget()
-    const [ config, researchCatalog ] = await Promise.all([
+    const [config, researchCatalog] = await Promise.all([
       fetchConfig(),
       fetchResearchCatalog(),
     ])
+    if (connectVersion !== this._connectVersion) return
+
     this.config = config
-    this._researchCatalog = researchCatalog.systems
-    this._researchDirectories = researchCatalog.directories
-    this._researchFilePicker = new ResearchFilePicker({
-      getCatalog: () => this._researchCatalog,
-      getDirectories: () => this._researchDirectories,
-      setCatalog: (entries, dirs) => { this._researchCatalog = entries; this._researchDirectories = dirs },
-      getTabSystemPath: (tabId) => this.store.tabs.find(t => t.id === tabId)?.researchConfig?.systemPath || null,
-      onSystemOpened: (tabId, entry) => this._setResearchSystem(tabId, entry),
-      onSystemPathChanged: (tabId, systemPath) => this._syncResearchSystemPath(tabId, systemPath),
-      onSystemRemoved: (tabId) => this._clearResearchSystem(tabId),
-      onRender: () => this.render(),
-      getSidebarElement: () => this.sidebarTarget,
-    })
     this.renderer = new TabRenderer(this.tabBarTarget, this.panelsTarget, this.sidebarTarget, {
       controllerName: "tabs",
     })
@@ -138,11 +131,71 @@ export default class extends Controller {
       chartCtrlFn: () => this._getSelectedChartCtrl(),
       renderFn: () => this.render(),
     })
+    this.research = new ResearchCoordinator({
+      store: this.store,
+      config: this.config,
+      sidebarTarget: this.sidebarTarget,
+      panelsTarget: this.panelsTarget,
+      application: this.application as StimulusApp,
+      renderFn: () => this.render(),
+      revealActiveTab: this._revealActiveTab,
+    })
+    this.research.setCatalogSnapshot(researchCatalog)
+
+    const getSystemEditorDiagnostics = (tabId: string) => this.systemEditor?.diagnosticsFor(tabId) || []
+    const clearSystemEditorDiagnostics = (tabId: string) => { this.systemEditor?.clearDiagnostics(tabId) }
+
+    this.assistant = new AssistantCoordinator({
+      store: this.store,
+      renderFn: () => this.render(),
+      revealActiveTab: this._revealActiveTab,
+      getSystemEditorDiagnostics,
+      clearSystemEditorDiagnostics,
+    })
+    this.systemEditor = new SystemEditorCoordinator({
+      store: this.store,
+      config: this.config,
+      research: this.research,
+      assistant: this.assistant,
+      renderFn: () => this.render(),
+      revealActiveTab: this._revealActiveTab,
+    })
+    this.assistant.reconcileLinkedTarget()
+    this.linkedData = new LinkedDataCoordinator({
+      store: this.store,
+      dataActions: this.dataActions,
+      panelsTarget: this.panelsTarget,
+      application: this.application as StimulusApp,
+      renderFn: () => this.render(),
+    })
+    this.workspaceEvents = new WorkspaceEvents(this.element, {
+      onLabelCreated: (e) => this._onDrawingCreated("labels", e),
+      onLineCreated: (e) => this._onLineCreated(e),
+      onHLineCreated: (e) => this._onDrawingCreated("hlines", e, (d) => `${d.symbol || "HL"} HL`),
+      onVLineCreated: (e) => this._onDrawingCreated("vlines", e, (d) => `${d.symbol || "VL"} VL`),
+      onOpenSymbol: (e) => this._onOpenSymbol(e),
+      onDataGridRowClick: (e) => this.dataActions.onDataGridRowClick(e),
+      onDataGridTimeRange: (e) => this.dataActions.onDataGridTimeRange(e),
+      onDataGridLoaded: (_e) => this.dataActions.onDataGridLoaded(),
+      onStartLinkedDataRefresh: (_e) => this.linkedData?.startRefreshIfActive(),
+      onDataGridColumnStateChanged: (e) => this.linkedData?.onColumnStateChanged(e),
+      onOpenSystemStats: (e) => this.linkedData?.onOpenSystemStats(e),
+      onSystemStatsRequest: (e) => this.linkedData?.onSystemStatsRequest(e),
+      onResearchConfigChanged: (e) => this.research?.onConfigChanged(e),
+      onResearchResultChanged: (e) => this.research?.onResultChanged(e),
+      onSystemEditorConfigChanged: (e) => this.systemEditor?.onConfigChanged(e),
+      onSystemEditorCatalogChanged: (e) => { void this.systemEditor?.onCatalogChanged(e) },
+      onSystemEditorOpenResearch: (e) => this.systemEditor?.onOpenResearch(e),
+      onSystemEditorOpenAssistant: (e) => this.systemEditor?.onOpenAssistant(e),
+      onSystemEditorLinkAssistantTarget: (e) => this.systemEditor?.onLinkAssistantTarget(e),
+      onAssistantStateChanged: (e) => this.assistant?.onStateChanged(e),
+      onAssistantOpenDraftInSystemEditor: (e) => this.assistant?.openDraftInSystemEditor(e),
+      onAssistantApplyDraftToLinkedEditor: (e) => this.assistant?.applyDraftToLinkedEditor(e),
+    })
+    this.workspaceEvents.connect()
     if (this.config.indicators?.length) {
       this.renderer.dataSidebar.availableIndicators = this.config.indicators as IndicatorInfo[]
     }
-    this._updateMainPanelVisibility()
-    this.render()
     window.addEventListener("resize", this._onWindowResize)
     window.addEventListener("nav:openChart", this._boundOpenChart = (e: Event) => {
       const symbol = (e as CustomEvent).detail?.symbol
@@ -153,373 +206,81 @@ export default class extends Controller {
         this.render()
       }
     })
-
-    this._boundListeners = {
-      label:  (e) => this._onDrawingCreated("labels", e),
-      line:   (e) => this._onLineCreated(e),
-      hline:  (e) => this._onDrawingCreated("hlines", e, (d) => `${d.symbol || "HL"} HL`),
-      vline:  (e) => this._onDrawingCreated("vlines", e, (d) => `${d.symbol || "VL"} VL`),
-      open:   (e) => this._onOpenSymbol(e),
-      rowClick: (e) => this.dataActions.onDataGridRowClick(e),
-      timeRange: (e) => this.dataActions.onDataGridTimeRange(e),
-      gridLoaded: () => this.dataActions.onDataGridLoaded(),
-      startLinkedDataRefresh: () => this._startLinkedDataRefreshIfActive(),
-      columnStateChanged: (e: Event) => this._onDataGridColumnStateChanged(e),
-      openSystemStats: (e: Event) => this._onOpenSystemStats(e),
-      requestStats: (e: Event) => this._onSystemStatsRequest(e),
-      researchConfigChanged: (e: Event) => this._onResearchConfigChanged(e),
-      researchResultChanged: (e: Event) => this._onResearchResultChanged(e),
-      systemEditorConfigChanged: (e: Event) => this._onSystemEditorConfigChanged(e),
-      systemEditorCatalogChanged: (e: Event) => this._onSystemEditorCatalogChanged(e),
-      systemEditorOpenResearch: (e: Event) => this._onSystemEditorOpenResearch(e),
-      systemEditorOpenAssistant: (e: Event) => this._onSystemEditorOpenAssistant(e),
-      systemEditorLinkAssistantTarget: (e: Event) => this._onSystemEditorLinkAssistantTarget(e),
-      assistantStateChanged: (e: Event) => this._onAssistantStateChanged(e),
-      assistantOpenDraftInSystemEditor: (e: Event) => this._onAssistantOpenDraftInSystemEditor(e),
-      assistantApplyDraftToLinkedEditor: (e: Event) => this._onAssistantApplyDraftToLinkedEditor(e),
-    }
-    this.element.addEventListener("label:created", this._boundListeners.label)
-    this.element.addEventListener("line:created", this._boundListeners.line)
-    this.element.addEventListener("hline:created", this._boundListeners.hline)
-    this.element.addEventListener("vline:created", this._boundListeners.vline)
-    this.element.addEventListener("tabs:openSymbol", this._boundListeners.open)
-    this.element.addEventListener("datagrid:rowclick", this._boundListeners.rowClick)
-    this.element.addEventListener("datagrid:timerange", this._boundListeners.timeRange)
-    this.element.addEventListener("datagrid:loaded", this._boundListeners.gridLoaded)
-    this.element.addEventListener("tabs:startLinkedDataRefresh", this._boundListeners.startLinkedDataRefresh)
-    this.element.addEventListener("datagrid:columnStateChanged", this._boundListeners.columnStateChanged as EventListener)
-    this.element.addEventListener("datatab:openSystemStats", this._boundListeners.openSystemStats as EventListener)
-    this.element.addEventListener("systemstats:requestStats", this._boundListeners.requestStats as EventListener)
-    this.element.addEventListener("research:configChanged", this._boundListeners.researchConfigChanged as EventListener)
-    this.element.addEventListener("research:resultChanged", this._boundListeners.researchResultChanged as EventListener)
-    this.element.addEventListener("systemeditor:configChanged", this._boundListeners.systemEditorConfigChanged as EventListener)
-    this.element.addEventListener("systemeditor:catalogChanged", this._boundListeners.systemEditorCatalogChanged as EventListener)
-    this.element.addEventListener("systemeditor:openResearch", this._boundListeners.systemEditorOpenResearch as EventListener)
-    this.element.addEventListener("systemeditor:openAssistant", this._boundListeners.systemEditorOpenAssistant as EventListener)
-    this.element.addEventListener("systemeditor:linkAssistantTarget", this._boundListeners.systemEditorLinkAssistantTarget as EventListener)
-    this.element.addEventListener("assistant:stateChanged", this._boundListeners.assistantStateChanged as EventListener)
-    this.element.addEventListener("assistant:openDraftInSystemEditor", this._boundListeners.assistantOpenDraftInSystemEditor as EventListener)
-    this.element.addEventListener("assistant:applyDraftToLinkedEditor", this._boundListeners.assistantApplyDraftToLinkedEditor as EventListener)
-  }
-
-  private _onDataGridColumnStateChanged(e: Event) {
-    const detail = (e as CustomEvent<{ tabId: string; columnIds: string[]; widths?: Record<string, number> }>).detail
-    const tabId = detail?.tabId
-    if (tabId && detail?.columnIds?.length && this.store.reorderDataColumns(tabId, detail.columnIds, detail.widths)) {
-      this.render()
-    }
-  }
-
-  private _onOpenSystemStats(e: Event) {
-    const { systemId } = (e as CustomEvent<{ systemId: string }>).detail
-    const dataTab = this.store.activeTab
-    if (!dataTab || dataTab.type !== "data" || !dataTab.dataConfig) return
-    const system = (dataTab.dataConfig.systems ?? []).find(s => s.id === systemId)
-    if (!system) return
-    this.store.addSystemStatsTab(systemId, dataTab.id, system.name)
+    this._updateMainPanelVisibility()
     this.render()
-    // Immediately provide stats
-    this._deliverSystemStats(systemId, dataTab.id)
-  }
-
-  private _onSystemStatsRequest(e: Event) {
-    const { systemId, dataTabId } = (e as CustomEvent<{ systemId: string; dataTabId: string }>).detail
-    this._deliverSystemStats(systemId, dataTabId)
-  }
-
-  private _onResearchConfigChanged(e: Event) {
-    const { tabId, config } = (e as CustomEvent<{ tabId: string; config: Record<string, unknown> }>).detail
-    if (!tabId || !config) return
-    this.store.updateResearchConfig(tabId, config)
-  }
-
-  private _onResearchResultChanged(e: Event) {
-    const { tabId, result } = (e as CustomEvent<{ tabId: string; result: ResearchResult }>).detail
-    if (!tabId || !result) return
-    this.store.updateResearchResult(tabId, result)
-  }
-
-  private _onSystemEditorConfigChanged(e: Event) {
-    const { tabId, config, diagnostics } = (e as CustomEvent<{
-      tabId: string
-      config: Record<string, unknown>
-      diagnostics?: ResearchDslDiagnostic[]
-    }>).detail
-    if (!tabId || !config) return
-    const currentTab = this.store.tabs.find(item => item.id === tabId && item.type === "system_editor")
-    const configChanged = JSON.stringify(currentTab?.systemEditorConfig || null) !== JSON.stringify(config)
-    if (configChanged) {
-      this.store.updateSystemEditorConfig(tabId, config)
-    }
-
-    const tab = this.store.tabs.find(item => item.id === tabId && item.type === "system_editor")
-    if (tab?.systemEditorConfig) {
-      this._systemEditorDiagnostics.set(tabId, Array.isArray(diagnostics) ? diagnostics : [])
-    } else {
-      this._systemEditorDiagnostics.delete(tabId)
-    }
-
-    if (
-      this.store.activeTab?.type === "assistant" &&
-      this._assistantState.linkedTarget?.type === "system_editor" &&
-      this._assistantState.linkedTarget.tabId === tabId
-    ) {
-      this.render()
-    }
-  }
-
-  private async _onSystemEditorCatalogChanged(_e: Event) {
-    const snapshot = await fetchResearchCatalog()
-    this._researchCatalog = snapshot.systems
-    this._researchDirectories = snapshot.directories
-    this.render()
-  }
-
-  private _onSystemEditorOpenResearch(e: Event) {
-    const { systemId, systemPath } = (e as CustomEvent<{ systemId: string; systemPath: string | null }>).detail
-    if (!systemId) return
-
-    const timeframe = this.config.timeframes.includes("1h") ? "1h" : (this.config.timeframes[0] || "1h")
-    const tab = this.store.addResearchTab({ symbol: this.config.symbols[0] || "BTCUSD", timeframe })
-    const entry = this._findResearchCatalogEntry(systemPath || null, systemId)
-    if (entry) {
-      this._setResearchSystem(tab.id, entry)
-    } else {
-      this.store.updateResearchConfig(tab.id, {
-        systemId,
-        systemPath: systemPath || "",
-        systemYaml: "",
-      })
-    }
-    this.render()
-  }
-
-  private _onSystemEditorOpenAssistant(e: Event) {
-    const { tabId } = (e as CustomEvent<{ tabId: string }>).detail
-    this._ensureAssistantTab()
-    if (tabId && this.store.tabs.some(tab => tab.id === tabId && tab.type === "system_editor")) {
-      const previousTabId = this._assistantState.linkedTarget?.tabId ?? null
-      this._assistantState.linkedTarget = { type: "system_editor", tabId }
-      if (previousTabId !== tabId) {
-        // Switching to a different editor: clear the active chat so the model doesn't
-        // receive history from a previous editor's context. The user can explicitly pick
-        // an old chat from the list if they want it.
-        this._assistantState.currentChatId = null
-      }
-      this._persistAssistantState()
-      this._forceRevealActiveTab = true
-    }
-    this.render()
-  }
-
-  private _onSystemEditorLinkAssistantTarget(e: Event) {
-    const detail = (e as CustomEvent<{ tabId: string }>).detail
-    if (!detail?.tabId) return
-    if (!this.store.tabs.some(tab => tab.id === detail.tabId && tab.type === "system_editor")) return
-
-    const previousTabId = this._assistantState.linkedTarget?.tabId ?? null
-    this._assistantState.linkedTarget = { type: "system_editor", tabId: detail.tabId }
-    if (previousTabId !== detail.tabId) {
-      this._assistantState.currentChatId = null
-    }
-    this._persistAssistantState()
-    this.render()
-    showToast("Assistant linked to this system editor", "success")
-  }
-
-  private _onAssistantStateChanged(e: Event) {
-    const detail = (e as CustomEvent<{ state: WorkspaceAssistantState }>).detail
-    if (!detail?.state) return
-
-    this._assistantState = hydrateWorkspaceAssistantState(detail.state)
-    this._reconcileAssistantLinkedTarget()
-    this._persistAssistantState()
-    this.render()
-  }
-
-  private _onAssistantOpenDraftInSystemEditor(e: Event) {
-    const detail = (e as CustomEvent<{
-      yaml: string
-      suggestedSystemId?: string | null
-      sourcePath?: string | null
-    }>).detail
-    if (!detail?.yaml) return
-
-    const sourcePath = detail.sourcePath || null
-    const suggestedSystemId = detail.suggestedSystemId || "custom_system"
-    const tab = this.store.addSystemEditorTab({
-      systemId: suggestedSystemId,
-      sourceSystemId: sourcePath ? suggestedSystemId : null,
-      sourcePath,
-      directoryPath: relativeDirname(sourcePath),
-      systemYaml: detail.yaml,
-    })
-
-    this._assistantState.linkedTarget = {
-      type: "system_editor",
-      tabId: tab.id,
-    }
-    this._systemEditorDiagnostics.delete(tab.id)
-    this._persistAssistantState()
-    this._forceRevealActiveTab = true
-    this.render()
-    showToast("Draft opened in System editor", "success")
-  }
-
-  private _onAssistantApplyDraftToLinkedEditor(e: Event) {
-    const detail = (e as CustomEvent<{
-      yaml: string
-      target: AssistantTarget
-      suggestedSystemId?: string | null
-      sourcePath?: string | null
-    }>).detail
-    if (!detail?.yaml || detail.target?.type !== "system_editor") return
-
-    const tab = this.store.tabs.find(item => item.id === detail.target?.tabId && item.type === "system_editor")
-    if (!tab?.systemEditorConfig) return
-
-    const updates: Record<string, unknown> = {
-      systemYaml: detail.yaml,
-    }
-
-    if (detail.suggestedSystemId && !tab.systemEditorConfig.sourcePath) {
-      updates.systemId = detail.suggestedSystemId
-    }
-    if (detail.sourcePath && !tab.systemEditorConfig.sourcePath) {
-      updates.sourcePath = detail.sourcePath
-      updates.directoryPath = relativeDirname(detail.sourcePath)
-      updates.sourceSystemId = detail.suggestedSystemId || tab.systemEditorConfig.sourceSystemId
-    }
-
-    this.store.updateSystemEditorConfig(tab.id, updates)
-    this._systemEditorDiagnostics.delete(tab.id)
-    this._persistAssistantState()
-    this.render()
-    showToast("Assistant draft applied to linked editor", "success")
-  }
-
-  private _deliverSystemStats(systemId: string, dataTabId: string, attempt = 0) {
-    const dataTab = this.store.tabs.find(t => t.id === dataTabId)
-    if (!dataTab?.dataConfig) return
-    const system = (dataTab.dataConfig.systems ?? []).find(s => s.id === systemId)
-    if (!system) return
-
-    const app = this.application as StimulusApp
-
-    // Find the data grid controller for this data tab
-    const dataWrapper = this.panelsTarget.querySelector(`[data-tab-wrapper="${dataTabId}"]`) as HTMLElement | null
-    const gridEl = dataWrapper?.querySelector("[data-controller='data-grid']") as HTMLElement | null
-    const gridCtrl = gridEl
-      ? app.getControllerForElementAndIdentifier(gridEl, "data-grid") as DataGridControllerAPI | null
-      : null
-
-    const rows = gridCtrl?.getData() ?? []
-
-    // Retry up to SYSTEM_STATS_MAX_RETRIES if grid isn't ready or has no data yet
-    if ((!gridCtrl || !rows.length) && attempt < SYSTEM_STATS_MAX_RETRIES) {
-      setTimeout(() => this._deliverSystemStats(systemId, dataTabId, attempt + 1), SYSTEM_STATS_RETRY_DELAY_MS)
-      return
-    }
-
-    const trades = generateTrades(system, rows)
-    const stats = computeSystemStats(trades)
-
-    // Find stats controller
-    const statsWrapper = this.panelsTarget.querySelector(`[data-system-stats-system-id-value="${systemId}"]`) as HTMLElement | null
-    if (!statsWrapper) return
-    const statsCtrl = app.getControllerForElementAndIdentifier(statsWrapper, "system-stats") as { setStats(stats: unknown, trades: unknown): void } | null
-    statsCtrl?.setStats(stats, trades)
-  }
-
-  private _startLinkedDataRefreshIfActive() {
-    if (this._linkedDataRefreshInterval) {
-      clearInterval(this._linkedDataRefreshInterval)
-      this._linkedDataRefreshInterval = null
-    }
-    const tab = this.store.activeTab
-    if (tab && this.store.isLinkedDataTab(tab)) {
-      this._linkedDataRefreshInterval = setInterval(() => this.dataActions.loadDataGrid(), LINKED_DATA_REFRESH_MS)
-    }
   }
 
   disconnect() {
+    this._connectVersion++
     window.removeEventListener("resize", this._onWindowResize)
     if (this._boundOpenChart) window.removeEventListener("nav:openChart", this._boundOpenChart)
     this._unbindTabBarScrollArea()
-    if (this._linkedDataRefreshInterval) {
-      clearInterval(this._linkedDataRefreshInterval)
-      this._linkedDataRefreshInterval = null
-    }
-    if (this._boundListeners) {
-      this.element.removeEventListener("label:created", this._boundListeners.label)
-      this.element.removeEventListener("line:created", this._boundListeners.line)
-      this.element.removeEventListener("hline:created", this._boundListeners.hline)
-      this.element.removeEventListener("vline:created", this._boundListeners.vline)
-      this.element.removeEventListener("tabs:openSymbol", this._boundListeners.open)
-      this.element.removeEventListener("datagrid:rowclick", this._boundListeners.rowClick)
-      this.element.removeEventListener("datagrid:timerange", this._boundListeners.timeRange)
-      this.element.removeEventListener("datagrid:loaded", this._boundListeners.gridLoaded)
-      this.element.removeEventListener("tabs:startLinkedDataRefresh", this._boundListeners.startLinkedDataRefresh)
-      this.element.removeEventListener("datagrid:columnStateChanged", this._boundListeners.columnStateChanged as EventListener)
-      this.element.removeEventListener("datatab:openSystemStats", this._boundListeners.openSystemStats as EventListener)
-      this.element.removeEventListener("systemstats:requestStats", this._boundListeners.requestStats as EventListener)
-      this.element.removeEventListener("research:configChanged", this._boundListeners.researchConfigChanged as EventListener)
-      this.element.removeEventListener("research:resultChanged", this._boundListeners.researchResultChanged as EventListener)
-      this.element.removeEventListener("systemeditor:configChanged", this._boundListeners.systemEditorConfigChanged as EventListener)
-      this.element.removeEventListener("systemeditor:catalogChanged", this._boundListeners.systemEditorCatalogChanged as EventListener)
-      this.element.removeEventListener("systemeditor:openResearch", this._boundListeners.systemEditorOpenResearch as EventListener)
-      this.element.removeEventListener("systemeditor:openAssistant", this._boundListeners.systemEditorOpenAssistant as EventListener)
-      this.element.removeEventListener("systemeditor:linkAssistantTarget", this._boundListeners.systemEditorLinkAssistantTarget as EventListener)
-      this.element.removeEventListener("assistant:stateChanged", this._boundListeners.assistantStateChanged as EventListener)
-      this.element.removeEventListener("assistant:openDraftInSystemEditor", this._boundListeners.assistantOpenDraftInSystemEditor as EventListener)
-      this.element.removeEventListener("assistant:applyDraftToLinkedEditor", this._boundListeners.assistantApplyDraftToLinkedEditor as EventListener)
-      this._boundListeners = null
-    }
+    this.workspaceEvents?.disconnect()
+    this.workspaceEvents = null
+    this.research?.disconnect()
+    this.systemEditor?.disconnect()
+    this.assistant?.disconnect()
+    this.linkedData?.disconnect()
+    this.research = null
+    this.systemEditor = null
+    this.assistant = null
+    this.linkedData = null
   }
 
   // --- Tab CRUD ---
 
   addTab() {
+    if (!this.workspaceReady()) {
+      this.notifyWorkspaceNotReady()
+      return
+    }
     this.store.addTab()
     this._forceRevealActiveTab = true
     this.render()
   }
   addAssistantTab() {
-    this._ensureAssistantTab()
-    this._forceRevealActiveTab = true
-    this.render()
+    const coordinators = this.workspaceCoordinators()
+    if (!coordinators) {
+      this.notifyWorkspaceNotReady()
+      return
+    }
+    coordinators.assistant.addAssistantTab()
   }
   addChartTab() { this.addTab() }
   addDataTab() {
+    if (!this.workspaceReady()) {
+      this.notifyWorkspaceNotReady()
+      return
+    }
     this.store.addDataTab()
     this._forceRevealActiveTab = true
     this.render()
   }
   addResearchTab() {
-    const timeframe = this.config.timeframes.includes("1h") ? "1h" : (this.config.timeframes[0] || "1h")
-    this.store.addResearchTab({ symbol: this.config.symbols[0] || "BTCUSD", timeframe })
-    this._forceRevealActiveTab = true
-    this.render()
+    const coordinators = this.workspaceCoordinators()
+    if (!coordinators) {
+      this.notifyWorkspaceNotReady()
+      return
+    }
+    coordinators.research.addResearchTab()
   }
   addSystemEditorTab() {
-    const activeResearch = this.store.activeTab?.type === "research" ? this.store.activeTab : null
-    const systemId = activeResearch?.researchConfig?.systemId
-    const sourcePath = activeResearch?.researchConfig?.systemPath || null
-    this.store.addSystemEditorTab(systemId ? {
-      systemId,
-      sourceSystemId: systemId,
-      sourcePath,
-      directoryPath: relativeDirname(sourcePath),
-      systemYaml: "",
-    } : {})
-    this._forceRevealActiveTab = true
-    this.render()
+    const coordinators = this.workspaceCoordinators()
+    if (!coordinators) {
+      this.notifyWorkspaceNotReady()
+      return
+    }
+    coordinators.systemEditor.addSystemEditorTab()
   }
 
   createDataFromChart(e: Event) {
     e.stopPropagation()
     const tabEl = (e.currentTarget as HTMLElement).closest("[data-tab-id]") as HTMLElement | null
-    if (tabEl?.dataset.tabId) { this.store.addDataTabFromChart(tabEl.dataset.tabId); this.render() }
+    const tabId = tabEl?.dataset.tabId
+    if (!tabId) return
+
+    this.store.addDataTabFromChart(tabId)
+    this.render()
   }
 
   removeTab(e: Event) {
@@ -531,10 +292,14 @@ export default class extends Controller {
     if (!this.store.removeTab(tabId)) return
 
     if (removedTab?.type === "system_editor") {
-      this._systemEditorDiagnostics.delete(tabId)
+      this.systemEditor?.onTabRemoved(tabId)
+    } else if (removedTab?.type === "research") {
+      this.research?.onTabRemoved(tabId)
     }
 
-    this._reconcileAssistantLinkedTarget()
+    // These coordinators track cross-tab state, so every removal may matter.
+    this.linkedData?.onTabRemoved(tabId)
+    this.assistant?.onTabRemoved(tabId)
     this._updateMainPanelVisibility()
     this.render()
   }
@@ -547,16 +312,7 @@ export default class extends Controller {
     const tabId = ((e.currentTarget as HTMLElement).closest("[data-tab-id]") as HTMLElement | null)?.dataset.tabId
     if (!tabId || !this.store.activateTab(tabId)) return
     this.render()
-
-    if (this._linkedDataRefreshInterval) {
-      clearInterval(this._linkedDataRefreshInterval)
-      this._linkedDataRefreshInterval = null
-    }
-
-    const tab = this.store.activeTab
-    if (tab && this.store.isLinkedDataTab(tab)) {
-      this._linkedDataRefreshInterval = setInterval(() => this.dataActions.loadDataGrid(), LINKED_DATA_REFRESH_MS)
-    }
+    this.linkedData?.onActiveTabChanged()
   }
 
   tabDragHandleClick(e: Event) {
@@ -721,8 +477,8 @@ export default class extends Controller {
 
   // --- Section collapse ---
 
-  _toggleSidebarSection(key: string): void {
-    ;(this.renderer.sidebar as unknown as Record<string, unknown>)[key] = !(this.renderer.sidebar as unknown as Record<string, unknown>)[key]
+  _toggleSidebarSection(key: SidebarCollapseKey): void {
+    this.renderer.sidebar[key] = !this.renderer.sidebar[key]
     this.render()
   }
 
@@ -736,7 +492,7 @@ export default class extends Controller {
 
   // --- Clear all drawings ---
 
-  clearAllLabels() {
+  clearAllDrawings() {
     const panel = this.store.selectedPanel
     if (!panel) return
     this.store.clearAllDrawings(panel.id)
@@ -763,19 +519,23 @@ export default class extends Controller {
     return { kind: (el.dataset.drawingKind ?? "") as DrawingKind, id: el.dataset.drawingId ?? "" }
   }
 
-  removeDrawing(e: Event) { e.stopPropagation(); const { kind, id } = this._drawingParams(e); this.drawingActions.removeItem(kind, id) }
+  removeDrawing(e: Event) {
+    e.stopPropagation()
+    const { kind: drawingKind, id: drawingId } = this._drawingParams(e)
+    this.drawingActions.removeItem(drawingKind, drawingId)
+  }
   selectDrawing(e: Event) {
     if ((e.target as HTMLElement).closest("input[type='color']") || (e.target as HTMLElement).closest("select") || (e.target as HTMLElement).closest("[data-action*='removeDrawing']")) return
-    const { kind, id } = this._drawingParams(e); this.drawingActions.selectItem(kind, id)
+    const { kind: drawingKind, id: drawingId } = this._drawingParams(e); this.drawingActions.selectItem(drawingKind, drawingId)
   }
   startDrawingRename(e: Event) {
     e.stopPropagation()
     if ((e.target as HTMLElement).closest("input[type='color']") || (e.target as HTMLElement).closest("select")) return
-    const { kind, id } = this._drawingParams(e); this.drawingActions.startRename(kind, id, e.currentTarget as HTMLElement)
+    const { kind: drawingKind, id: drawingId } = this._drawingParams(e); this.drawingActions.startRename(drawingKind, drawingId, e.currentTarget as HTMLElement)
   }
-  changeDrawingColor(e: Event) { e.stopPropagation(); const { kind, id } = this._drawingParams(e); this.drawingActions.changeColor(kind, id, (e.currentTarget as HTMLInputElement).value) }
-  changeDrawingWidth(e: Event) { e.stopPropagation(); const { kind, id } = this._drawingParams(e); this.drawingActions.changeWidth(kind, id, parseInt((e.currentTarget as HTMLInputElement).value, 10)) }
-  changeDrawingFontSize(e: Event) { e.stopPropagation(); const { kind, id } = this._drawingParams(e); this.drawingActions.changeFontSize(kind, id, parseInt((e.currentTarget as HTMLInputElement).value, 10)) }
+  changeDrawingColor(e: Event) { e.stopPropagation(); const { kind: drawingKind, id: drawingId } = this._drawingParams(e); this.drawingActions.changeColor(drawingKind, drawingId, (e.currentTarget as HTMLInputElement).value) }
+  changeDrawingWidth(e: Event) { e.stopPropagation(); const { kind: drawingKind, id: drawingId } = this._drawingParams(e); this.drawingActions.changeWidth(drawingKind, drawingId, parseInt((e.currentTarget as HTMLInputElement).value, 10)) }
+  changeDrawingFontSize(e: Event) { e.stopPropagation(); const { kind: drawingKind, id: drawingId } = this._drawingParams(e); this.drawingActions.changeFontSize(drawingKind, drawingId, parseInt((e.currentTarget as HTMLInputElement).value, 10)) }
 
   // --- Drawing created events ---
 
@@ -871,80 +631,52 @@ export default class extends Controller {
   // --- Research tab ---
 
   updateResearchConfig(e?: Event) {
-    if (e instanceof KeyboardEvent) e.preventDefault()
-    if (!this._syncActiveResearchConfigFromSidebar()) return
+    if (!this.research?.updateActiveConfigFromSidebar(e)) return
     this.render()
   }
 
   async runResearch() {
-    const next = this._syncActiveResearchConfigFromSidebar()
-    if (!next) return
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-
-    this.render()
-    await this._activeResearchController()?.run(next)
+    await this.research?.runActive()
   }
 
   openResearchFilePicker() {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    this._researchFilePicker.openPicker(tab.id, tab.researchConfig?.systemPath || null)
+    this.research?.openFilePicker()
   }
 
   closeResearchFilePicker() {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    this._researchFilePicker.closePicker(tab.id)
+    this.research?.closeFilePicker()
   }
 
   updateResearchFilePickerQuery(e: Event) {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    this._researchFilePicker.updateQuery(tab.id, (e.currentTarget as HTMLInputElement).value)
+    this.research?.updateFilePickerQuery(e)
   }
 
   selectResearchFileManagerEntry(e: Event) {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    this._researchFilePicker.selectEntry(tab.id, e.currentTarget as HTMLElement, (e as MouseEvent).detail >= 2)
+    this.research?.selectFileManagerEntry(e)
   }
 
   navigateResearchFileManager(e: Event) {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    this._researchFilePicker.navigate(tab.id, (e.currentTarget as HTMLElement).dataset.path || "")
+    this.research?.navigateFileManager(e)
   }
 
   openResearchFileManagerEntry(e: Event) {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    const el = e.currentTarget as HTMLElement
-    this._researchFilePicker.openEntry(tab.id, el.dataset.path || "", el.dataset.kind || "file")
+    this.research?.openFileManagerEntry(e)
   }
 
   confirmResearchFileSelection() {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    this._researchFilePicker.confirmSelection(tab.id)
+    this.research?.confirmFileSelection()
   }
 
   async createResearchDirectory() {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    await this._researchFilePicker.createDirectory(tab.id)
+    await this.research?.createDirectory()
   }
 
   async renameResearchEntry() {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    await this._researchFilePicker.renameEntry(tab.id)
+    await this.research?.renameEntry()
   }
 
   async deleteResearchEntry() {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    await this._researchFilePicker.deleteEntry(tab.id)
+    await this.research?.deleteEntry()
   }
 
   stopFileManagerPropagation(e: Event) {
@@ -953,18 +685,7 @@ export default class extends Controller {
 
 
   openResearchSystemEditor() {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return
-    const systemId = tab.researchConfig?.systemId
-    const systemPath = tab.researchConfig?.systemPath || null
-    this.store.addSystemEditorTab(systemId ? {
-      systemId,
-      sourceSystemId: systemId,
-      sourcePath: systemPath,
-      directoryPath: relativeDirname(systemPath),
-      systemYaml: "",
-    } : {})
-    this.render()
+    this.systemEditor?.openFromActiveResearch()
   }
 
   // --- Panel resize ---
@@ -982,30 +703,24 @@ export default class extends Controller {
   // --- Render ---
 
   render(): void {
+    const coordinators = this.workspaceCoordinators()
+    if (!coordinators) return
+
+    const { research, assistant } = coordinators
     this.dataActions.syncIndicatorsFromChart()
-    const activeTab = this.store.activeTab
     const prevScrollLeft = this._tabScrollArea?.scrollLeft ?? this._tabBarScrollLeft
     const shouldRevealActiveTab = this._forceRevealActiveTab
-    let researchValidationSystem: ResearchValidatedSystem | null = null
-
-    if (activeTab?.type === "research" && activeTab.researchConfig) {
-      const entry = this._syncResearchSystemFromCatalog(activeTab.id, activeTab.researchConfig)
-      if (entry) {
-        this._ensureResearchValidation(activeTab.id, entry)
-      } else {
-        this._researchValidation.delete(activeTab.id)
-        this._researchValidationPending.delete(activeTab.id)
-      }
-      researchValidationSystem = this._researchValidation.get(activeTab.id)?.result?.system || null
-    }
+    const researchValidationSystem = research.prepareActiveRender()
 
     const panel = this.store.selectedPanel
     const vp = panel?.volumeProfile ?? { enabled: false, opacity: 0.3 }
     const chartTabOptions = this.store.tabs
       .filter(t => t.type === "chart")
-      .map(t => ({ id: t.id, label: this.store.tabLabel(t), primarySymbol: this.store.primaryPanel(t)?.overlays[0]?.symbol ?? null }))
-    const assistantWorkspaceSnapshot = this._assistantWorkspaceSnapshot()
-    const assistantLinkedTargetContext = this._assistantLinkedTargetContext()
+      .map(t => ({
+        id: t.id,
+        label: this.store.tabLabel(t),
+        primarySymbol: this.store.primaryPanel(t)?.overlays[0]?.symbol ?? null,
+      }))
     this.renderer.render({
       tabs: this.store.tabs,
       activeTabId: this.store.activeTabId,
@@ -1022,16 +737,16 @@ export default class extends Controller {
       hlModeActive: this.drawingActions.modes.hlines,
       vlModeActive: this.drawingActions.modes.vlines,
       chartTabOptions,
-      researchCatalog: this._researchCatalog,
-      researchDirectories: this._researchDirectories,
-      researchFilePickerOpen: this._activeResearchFilePickerOpen(),
-      researchFilePickerQuery: this._activeResearchFilePickerQuery(),
-      researchFilePickerDirectoryPath: this._activeResearchFilePickerDirectoryPath(),
-      researchFilePickerSelectedPath: this._activeResearchFilePickerSelectedPath(),
+      researchCatalog: research.getCatalog(),
+      researchDirectories: research.getDirectories(),
+      researchFilePickerOpen: research.filePickerOpen(),
+      researchFilePickerQuery: research.filePickerQuery(),
+      researchFilePickerDirectoryPath: research.filePickerDirectoryPath(),
+      researchFilePickerSelectedPath: research.filePickerSelectedPath(),
       researchValidationSystem,
-      assistantStateJson: JSON.stringify(this._assistantState),
-      assistantWorkspaceSnapshotJson: JSON.stringify(assistantWorkspaceSnapshot),
-      assistantLinkedTargetContextJson: JSON.stringify(assistantLinkedTargetContext),
+      assistantStateJson: assistant.stateJson(),
+      assistantWorkspaceSnapshotJson: assistant.workspaceSnapshotJson(),
+      assistantLinkedTargetContextJson: assistant.linkedTargetContextJson(),
     })
     this._bindTabBarScrollArea()
     if (this._tabScrollArea) {
@@ -1056,63 +771,25 @@ export default class extends Controller {
 
   // --- Private helpers ---
 
+  private notifyWorkspaceNotReady(): void {
+    showToast("Workspace is still loading", "info")
+  }
+
+  private workspaceReady(): boolean {
+    return this.workspaceCoordinators() !== null
+  }
+
+  private workspaceCoordinators(): WorkspaceCoordinators | null {
+    const { research, systemEditor, assistant, linkedData } = this
+    if (!research || !systemEditor || !assistant || !linkedData) return null
+    return { research, systemEditor, assistant, linkedData }
+  }
+
   private _updateMainPanelVisibility(): void {
     if (!this.hasMainPanelTarget) return
     const isEmpty = this.store.tabs.length === 0
     this.mainPanelTarget.classList.toggle("hidden", !isEmpty)
     if (this.hasPanelsRowTarget) this.panelsRowTarget.classList.toggle("hidden", isEmpty)
-  }
-
-  private _persistAssistantState(): void {
-    saveWorkspaceAssistantState(this._assistantState)
-  }
-
-  private _ensureAssistantTab() {
-    return this.store.addAssistantTab()
-  }
-
-  private _reconcileAssistantLinkedTarget(): void {
-    const target = this._assistantState.linkedTarget
-    if (!target) return
-
-    const tab = this.store.tabs.find(item => item.id === target.tabId && item.type === "system_editor")
-    if (!tab?.systemEditorConfig) {
-      this._assistantState.linkedTarget = null
-      this._persistAssistantState()
-      return
-    }
-
-    this._assistantState.linkedTarget = { type: "system_editor", tabId: tab.id }
-  }
-
-  private _assistantWorkspaceSnapshot(): AssistantWorkspaceSnapshot {
-    return {
-      activeTabId: this.store.activeTabId,
-      tabs: this.store.tabs.map(tab => ({
-        id: tab.id,
-        type: tab.type,
-        label: this.store.tabLabel(tab),
-        sourcePath: tab.type === "system_editor" ? tab.systemEditorConfig?.sourcePath || null : null,
-        systemId: tab.type === "system_editor" ? tab.systemEditorConfig?.systemId || null : null,
-      })),
-    }
-  }
-
-  private _assistantLinkedTargetContext() {
-    const target = this._assistantState.linkedTarget
-    if (!target || target.type !== "system_editor") return null
-
-    const tab = this.store.tabs.find(item => item.id === target.tabId && item.type === "system_editor")
-    const config = tab?.systemEditorConfig
-    if (!config) return null
-
-    return {
-      system_yaml: config.systemYaml || "",
-      system_id: config.systemId || null,
-      source_path: config.sourcePath || null,
-      yaml_hash: hashText(config.systemYaml || ""),
-      diagnostics: this._systemEditorDiagnostics.get(tab.id) || [],
-    }
   }
 
   private _refreshChartLabelsIfNeeded(): void {
@@ -1172,9 +849,9 @@ export default class extends Controller {
     if (!area || !leftBtn || !rightBtn) return
 
     const maxScrollLeft = Math.max(0, area.scrollWidth - area.clientWidth)
-    const overflowed = maxScrollLeft > 4
-    const canScrollLeft = overflowed && area.scrollLeft > 4
-    const canScrollRight = overflowed && area.scrollLeft < maxScrollLeft - 4
+    const overflowed = maxScrollLeft > TAB_SCROLL_THRESHOLD_PX
+    const canScrollLeft = overflowed && area.scrollLeft > TAB_SCROLL_THRESHOLD_PX
+    const canScrollRight = overflowed && area.scrollLeft < maxScrollLeft - TAB_SCROLL_THRESHOLD_PX
 
     this._setTabScrollButtonState(leftBtn, canScrollLeft)
     this._setTabScrollButtonState(rightBtn, canScrollRight)
@@ -1192,150 +869,6 @@ export default class extends Controller {
     const panelEl = (e.target as HTMLElement).closest("[data-panel-id]") as HTMLElement | null
     if (!panelEl) return this.store.selectedPanel
     return this._panelById(panelEl.dataset.panelId ?? "") || this.store.selectedPanel
-  }
-
-  private _syncActiveResearchConfigFromSidebar(): ResearchConfig | null {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return null
-
-    const next = {
-      ...(tab.researchConfig || buildDefaultResearchState({
-        symbols: this.config.symbols,
-        timeframes: this.config.timeframes,
-        indicators: this.config.indicators,
-      })),
-    }
-
-    syncResearchStateFromInputs(this.sidebarTarget, next)
-    this.store.updateResearchConfig(tab.id, next)
-    return next
-  }
-
-  private _activeResearchFilePickerOpen(): boolean {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return false
-    return this._researchFilePicker.isOpen(tab.id)
-  }
-
-  private _activeResearchFilePickerQuery(): string {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return ""
-    return this._researchFilePicker.getQuery(tab.id)
-  }
-
-  private _activeResearchFilePickerDirectoryPath(): string {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return ""
-    return this._researchFilePicker.getDirectory(tab.id, tab.researchConfig?.systemPath || null)
-  }
-
-  private _activeResearchFilePickerSelectedPath(): string | null {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return null
-    return this._researchFilePicker.getSelected(tab.id, tab.researchConfig?.systemPath || null)
-  }
-
-  private _activeResearchController(): { run(state?: ResearchConfig): Promise<void> } | null {
-    const tab = this.store.activeTab
-    if (!tab || tab.type !== "research") return null
-
-    const wrapper = this.panelsTarget.querySelector(`[data-tab-wrapper="${tab.id}"] [data-controller='research']`) as HTMLElement | null
-    if (!wrapper) return null
-
-    const app = this.application as StimulusApp
-    return app.getControllerForElementAndIdentifier(wrapper, "research") as { run(state?: ResearchConfig): Promise<void> } | null
-  }
-
-  private _findResearchCatalogEntry(systemPath: string | null, systemId: string | null): ResearchCatalogEntry | null {
-    if (systemPath) {
-      const byPath = this._researchCatalog.find(entry => entry.relative_path === systemPath)
-      if (byPath) return byPath
-    }
-    if (systemId) {
-      const byId = this._researchCatalog.find(entry => entry.id === systemId)
-      if (byId) return byId
-    }
-    return null
-  }
-
-  private _setResearchSystem(tabId: string, entry: ResearchCatalogEntry) {
-    this.store.updateResearchConfig(tabId, {
-      systemId: entry.id,
-      systemPath: entry.relative_path,
-      systemYaml: entry.yaml,
-    })
-    this._researchValidation.delete(tabId)
-    this._researchValidationPending.delete(tabId)
-    this._ensureResearchValidation(tabId, entry)
-  }
-
-  private _syncResearchSystemPath(tabId: string, systemPath: string) {
-    const entry = this._findResearchCatalogEntry(systemPath, null)
-    if (entry) {
-      this._setResearchSystem(tabId, entry)
-      return
-    }
-
-    this.store.updateResearchConfig(tabId, {
-      systemPath,
-      systemYaml: "",
-    })
-    this._researchValidation.delete(tabId)
-    this._researchValidationPending.delete(tabId)
-  }
-
-  private _clearResearchSystem(tabId: string) {
-    this.store.updateResearchConfig(tabId, {
-      systemId: "",
-      systemPath: "",
-      systemYaml: "",
-    })
-    this._researchValidation.delete(tabId)
-    this._researchValidationPending.delete(tabId)
-  }
-
-  private _syncResearchSystemFromCatalog(tabId: string, config: ResearchConfig): ResearchCatalogEntry | null {
-    const entry = this._findResearchCatalogEntry(config.systemPath || null, config.systemId || null)
-    if (!entry) return null
-
-    if (
-      config.systemId !== entry.id ||
-      config.systemPath !== entry.relative_path ||
-      config.systemYaml !== entry.yaml
-    ) {
-      this.store.updateResearchConfig(tabId, {
-        systemId: entry.id,
-        systemPath: entry.relative_path,
-        systemYaml: entry.yaml,
-      })
-    }
-
-    return entry
-  }
-
-  private _ensureResearchValidation(tabId: string, entry: ResearchCatalogEntry) {
-    const key = `${entry.relative_path}\u0000${entry.yaml}`
-    if (this._researchValidation.get(tabId)?.key === key) return
-    if (this._researchValidationPending.get(tabId) === key) return
-
-    this._researchValidationPending.set(tabId, key)
-
-    void validateResearchSystem(entry.yaml, entry.id).then((result) => {
-      if (this._researchValidationPending.get(tabId) !== key) return
-
-      this._researchValidationPending.delete(tabId)
-      this._researchValidation.set(tabId, { key, result })
-
-      const targets = result?.system?.optimization_targets || []
-      const currentTarget = this.store.tabs.find(tab => tab.id === tabId && tab.type === "research")?.researchConfig?.optimizationTarget
-      const fallbackTarget = targets[0]?.value
-
-      if (fallbackTarget && (!currentTarget || !targets.some(option => option.value === currentTarget))) {
-        this.store.updateResearchConfig(tabId, { optimizationTarget: fallbackTarget })
-      }
-
-      this.render()
-    })
   }
 
   _getSelectedChartCtrl() {

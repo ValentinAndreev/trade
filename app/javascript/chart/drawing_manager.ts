@@ -45,9 +45,6 @@ export interface VLineItem {
   width?: number
 }
 
-/** @deprecated Use RuntimeOverlay from types/store instead. */
-export type OverlayEntry = RuntimeOverlay
-
 interface PrimitiveAttachment<T> {
   id?: string
   primitive: T
@@ -56,7 +53,7 @@ interface PrimitiveAttachment<T> {
 
 export default class DrawingManager {
   chart: IChartApi
-  overlayMap: Map<string, OverlayEntry>
+  overlayMap: Map<string, RuntimeOverlay>
   labels: LabelMarker[]
   conditionLabels: LabelMarker[]
   private _labelMarkersPrimitives: PrimitiveAttachment<InstanceType<typeof TextLabelsPrimitive>>[]
@@ -67,7 +64,7 @@ export default class DrawingManager {
   private _storedHLines: HLineItem[]
   private _storedVLines: VLineItem[]
 
-  constructor(chart: IChartApi, overlayMap: Map<string, OverlayEntry>) {
+  constructor(chart: IChartApi, overlayMap: Map<string, RuntimeOverlay>) {
     this.chart = chart
     this.overlayMap = overlayMap
     this.labels = []
