@@ -37,6 +37,8 @@ interface UtcDateRangeOptions {
   setAction?: string
   dateAction?: string
   timeAction?: string
+  dateWorkspaceEvent?: string
+  timeWorkspaceEvent?: string
 }
 
 export function symbolSelectHTML(ctrl: string, selected: string[], available: string[]): string {
@@ -121,20 +123,24 @@ export function utcDateRangeHTML({
   setAction,
   dateAction,
   timeAction,
+  dateWorkspaceEvent,
+  timeWorkspaceEvent,
 }: UtcDateRangeOptions): string {
   const dateActionAttr = dateAction ? ` data-action="${dateAction}"` : ""
   const timeActionAttr = timeAction ? ` data-action="${timeAction}"` : ""
+  const dateWorkspaceEventAttr = dateWorkspaceEvent ? ` data-workspace-event="${dateWorkspaceEvent}"` : ""
+  const timeWorkspaceEventAttr = timeWorkspaceEvent ? ` data-workspace-event="${timeWorkspaceEvent}"` : ""
   const endRow = linked
     ? ""
     : `
       <div class="flex gap-2 items-center min-w-0 flex-wrap">
-        <input type="date" data-field="${endDateField}" value="${endDate}" class="min-w-0 flex-1 ${INPUT_CLS}"${dateActionAttr}>
+        <input type="date" data-field="${endDateField}" value="${endDate}" class="min-w-0 flex-1 ${INPUT_CLS}"${dateActionAttr}${dateWorkspaceEventAttr}>
         <input type="number" data-field="${endHourField}" min="0" max="23" value="${endHour}" placeholder="HH" title="Hour (0–23)"
-               ${timeActionAttr}
+               ${timeActionAttr}${timeWorkspaceEventAttr}
                class="w-12 number-no-spinner ${INPUT_CLS} text-center">
         <span class="text-gray-500">:</span>
         <input type="number" data-field="${endMinuteField}" min="0" max="59" value="${endMinute}" placeholder="MM" title="Minute (0–59)"
-               ${timeActionAttr}
+               ${timeActionAttr}${timeWorkspaceEventAttr}
                class="w-12 number-no-spinner ${INPUT_CLS} text-center">
       </div>`
 
@@ -152,13 +158,13 @@ export function utcDateRangeHTML({
       <span>${label}</span>
       <div class="flex flex-col gap-2 min-w-0">
         <div class="flex gap-2 items-center min-w-0 flex-wrap">
-          <input type="date" data-field="${startDateField}" value="${startDate}" class="min-w-0 flex-1 ${INPUT_CLS}"${dateActionAttr}>
+          <input type="date" data-field="${startDateField}" value="${startDate}" class="min-w-0 flex-1 ${INPUT_CLS}"${dateActionAttr}${dateWorkspaceEventAttr}>
           <input type="number" data-field="${startHourField}" min="0" max="23" value="${startHour}" placeholder="HH" title="Hour (0–23)"
-                 ${timeActionAttr}
+                 ${timeActionAttr}${timeWorkspaceEventAttr}
                  class="w-12 number-no-spinner ${INPUT_CLS} text-center">
           <span class="text-gray-500">:</span>
           <input type="number" data-field="${startMinuteField}" min="0" max="59" value="${startMinute}" placeholder="MM" title="Minute (0–59)"
-                 ${timeActionAttr}
+                 ${timeActionAttr}${timeWorkspaceEventAttr}
                  class="w-12 number-no-spinner ${INPUT_CLS} text-center">
         </div>
         ${endRow}

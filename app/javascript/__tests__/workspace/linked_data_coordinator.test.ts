@@ -3,6 +3,7 @@ import LinkedDataCoordinator from "../../workspace/linked_data_coordinator"
 import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS } from "../../config/constants"
 import type TabStore from "../../tabs/store"
 import type DataTabActions from "../../tabs/data_actions"
+import type { DataGridControllerAPI } from "../../types/store"
 import type { Tab } from "../../types/store"
 
 function dataTab(): Tab {
@@ -22,6 +23,19 @@ function dataTab(): Tab {
   }
 }
 
+function defaultDeps(overrides: Partial<TabStore> = {}) {
+  return {
+    store: overrides as unknown as TabStore,
+    dataActions: { loadDataGrid: vi.fn() } as unknown as DataTabActions,
+    panelsTarget: document.createElement("main"),
+    application: { getControllerForElementAndIdentifier: vi.fn() },
+    renderFn: vi.fn(),
+    getDataGridController: vi.fn(() => null) as (tabId: string) => DataGridControllerAPI | null,
+    getSystemStatsController: vi.fn(() => null),
+    signal: new AbortController().signal,
+  }
+}
+
 describe("LinkedDataCoordinator", () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -35,14 +49,11 @@ describe("LinkedDataCoordinator", () => {
     const tab = dataTab()
     const loadDataGrid = vi.fn()
     const coordinator = new LinkedDataCoordinator({
-      store: {
+      ...defaultDeps({
         activeTab: tab,
         isLinkedDataTab: vi.fn(() => true),
-      } as unknown as TabStore,
+      }),
       dataActions: { loadDataGrid } as unknown as DataTabActions,
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
-      renderFn: vi.fn(),
     })
 
     coordinator.startRefreshIfActive()
@@ -56,10 +67,7 @@ describe("LinkedDataCoordinator", () => {
     const reorderDataColumns = vi.fn(() => true)
     const renderFn = vi.fn()
     const coordinator = new LinkedDataCoordinator({
-      store: { reorderDataColumns } as unknown as TabStore,
-      dataActions: { loadDataGrid: vi.fn() } as unknown as DataTabActions,
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
+      ...defaultDeps({ reorderDataColumns }),
       renderFn,
     })
 
@@ -80,11 +88,8 @@ describe("LinkedDataCoordinator", () => {
       isLinkedDataTab: vi.fn((item: Tab) => item.type === "data"),
     }
     const coordinator = new LinkedDataCoordinator({
-      store: store as unknown as TabStore,
+      ...defaultDeps(store),
       dataActions: { loadDataGrid } as unknown as DataTabActions,
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
-      renderFn: vi.fn(),
     })
 
     coordinator.startRefreshIfActive()
@@ -99,17 +104,12 @@ describe("LinkedDataCoordinator", () => {
   it("cancels pending system stats retries on disconnect", () => {
     const tab = dataTab()
     if (tab.dataConfig) tab.dataConfig.systems = [{ id: "system-1", name: "System 1", enabled: true }]
-    const getControllerForElementAndIdentifier = vi.fn()
     const coordinator = new LinkedDataCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [tab],
         activeTab: tab,
         isLinkedDataTab: vi.fn(() => false),
-      } as unknown as TabStore,
-      dataActions: { loadDataGrid: vi.fn() } as unknown as DataTabActions,
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier },
-      renderFn: vi.fn(),
+      }),
     })
 
     coordinator.onSystemStatsRequest(new CustomEvent("systemstats:requestStats", {
@@ -120,23 +120,17 @@ describe("LinkedDataCoordinator", () => {
     coordinator.disconnect()
     expect(vi.getTimerCount()).toBe(0)
     vi.advanceTimersByTime(SYSTEM_STATS_RETRY_DELAY_MS)
-
-    expect(getControllerForElementAndIdentifier).not.toHaveBeenCalled()
   })
 
   it("deduplicates pending system stats retries for the same system and data tab", () => {
     const tab = dataTab()
     if (tab.dataConfig) tab.dataConfig.systems = [{ id: "system-1", name: "System 1", enabled: true }]
     const coordinator = new LinkedDataCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [tab],
         activeTab: tab,
         isLinkedDataTab: vi.fn(() => false),
-      } as unknown as TabStore,
-      dataActions: { loadDataGrid: vi.fn() } as unknown as DataTabActions,
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
-      renderFn: vi.fn(),
+      }),
     })
 
     const event = new CustomEvent("systemstats:requestStats", {
@@ -153,15 +147,11 @@ describe("LinkedDataCoordinator", () => {
     const tab = dataTab()
     if (tab.dataConfig) tab.dataConfig.systems = [{ id: "system-1", name: "System 1", enabled: true }]
     const coordinator = new LinkedDataCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [tab],
-        activeTab: null,
+        activeTab: undefined,
         isLinkedDataTab: vi.fn(() => false),
-      } as unknown as TabStore,
-      dataActions: { loadDataGrid: vi.fn() } as unknown as DataTabActions,
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
-      renderFn: vi.fn(),
+      }),
     })
 
     coordinator.onSystemStatsRequest(new CustomEvent("systemstats:requestStats", {

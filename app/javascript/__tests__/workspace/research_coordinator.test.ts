@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import ResearchCoordinator from "../../workspace/research_coordinator"
 import { fetchResearchCatalog, validateResearchSystem, type ResearchCatalogEntry } from "../../research/dsl"
 import { buildDefaultResearchState } from "../../research/state"
+import { showToast } from "../../services/toast"
 import type TabStore from "../../tabs/store"
 import type { Tab } from "../../types/store"
 
@@ -13,6 +14,10 @@ vi.mock("../../research/dsl", async (importOriginal) => {
     validateResearchSystem: vi.fn(),
   }
 })
+
+vi.mock("../../services/toast", () => ({
+  showToast: vi.fn(),
+}))
 
 function researchTab(): Tab {
   return {
@@ -50,6 +55,19 @@ function validationResponse(targets: Array<{ value: string; label: string }> = [
   }
 }
 
+function defaultDeps(overrides: Partial<TabStore> = {}) {
+  return {
+    store: overrides as unknown as TabStore,
+    config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
+    sidebarTarget: document.createElement("aside"),
+    panelsTarget: document.createElement("main"),
+    application: { getControllerForElementAndIdentifier: vi.fn() },
+    renderFn: vi.fn(),
+    revealActiveTab: vi.fn(),
+    signal: new AbortController().signal,
+  }
+}
+
 describe("ResearchCoordinator", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -60,16 +78,12 @@ describe("ResearchCoordinator", () => {
     const revealActiveTab = vi.fn()
     const renderFn = vi.fn()
     const coordinator = new ResearchCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [tab],
         activeTab: tab,
         addResearchTab: vi.fn(() => tab),
         updateResearchConfig: vi.fn(),
-      } as unknown as TabStore,
-      config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
-      sidebarTarget: document.createElement("aside"),
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
+      }),
       renderFn,
       revealActiveTab,
     })
@@ -92,24 +106,21 @@ describe("ResearchCoordinator", () => {
       return true
     })
     const renderFn = vi.fn()
+    const abortController = new AbortController()
     const coordinator = new ResearchCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [tab],
         activeTab: tab,
         addResearchTab: vi.fn(() => tab),
         updateResearchConfig,
-      } as unknown as TabStore,
-      config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
-      sidebarTarget: document.createElement("aside"),
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
+      }),
       renderFn,
-      revealActiveTab: vi.fn(),
+      signal: abortController.signal,
     })
 
     coordinator.setCatalogSnapshot({ systems: [catalogEntry()], directories: [] })
     coordinator.openFromSystemEditor("demo_system", "systems/demo.yml")
-    coordinator.disconnect()
+    abortController.abort()
     resolveValidation(validationResponse([{ value: "profit", label: "Profit" }]))
     await Promise.resolve()
 
@@ -130,18 +141,13 @@ describe("ResearchCoordinator", () => {
     })
     const renderFn = vi.fn()
     const coordinator = new ResearchCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [tab],
         activeTab: tab,
         addResearchTab: vi.fn(() => tab),
         updateResearchConfig,
-      } as unknown as TabStore,
-      config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
-      sidebarTarget: document.createElement("aside"),
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
+      }),
       renderFn,
-      revealActiveTab: vi.fn(),
     })
 
     coordinator.setCatalogSnapshot({ systems: [catalogEntry()], directories: [] })
@@ -162,7 +168,7 @@ describe("ResearchCoordinator", () => {
     const tab = researchTab()
     const renderFn = vi.fn()
     const coordinator = new ResearchCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [tab],
         activeTab: tab,
         addResearchTab: vi.fn(() => tab),
@@ -171,13 +177,8 @@ describe("ResearchCoordinator", () => {
           if (target?.researchConfig) Object.assign(target.researchConfig, updates)
           return true
         }),
-      } as unknown as TabStore,
-      config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
-      sidebarTarget: document.createElement("aside"),
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
+      }),
       renderFn,
-      revealActiveTab: vi.fn(),
     })
 
     coordinator.setCatalogSnapshot({ systems: [catalogEntry()], directories: [] })
@@ -200,7 +201,7 @@ describe("ResearchCoordinator", () => {
       .mockRejectedValueOnce(new Error("validation failed"))
     const tab = researchTab()
     const coordinator = new ResearchCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [tab],
         activeTab: tab,
         addResearchTab: vi.fn(() => tab),
@@ -209,13 +210,8 @@ describe("ResearchCoordinator", () => {
           if (target?.researchConfig) Object.assign(target.researchConfig, updates)
           return true
         }),
-      } as unknown as TabStore,
-      config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
-      sidebarTarget: document.createElement("aside"),
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
+      }),
       renderFn: vi.fn(),
-      revealActiveTab: vi.fn(),
     })
 
     const firstEntry = catalogEntry()
@@ -237,27 +233,23 @@ describe("ResearchCoordinator", () => {
     consoleError.mockRestore()
   })
 
-  it("does not apply refreshed catalog after disconnect", async () => {
+  it("does not apply refreshed catalog after abort", async () => {
     let resolveCatalog: (value: Awaited<ReturnType<typeof fetchResearchCatalog>>) => void = () => {}
     vi.mocked(fetchResearchCatalog).mockReturnValue(new Promise((resolve) => {
       resolveCatalog = resolve
     }))
+    const abortController = new AbortController()
     const coordinator = new ResearchCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [],
-        activeTab: null,
+        activeTab: undefined,
         updateResearchConfig: vi.fn(),
-      } as unknown as TabStore,
-      config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
-      sidebarTarget: document.createElement("aside"),
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
-      renderFn: vi.fn(),
-      revealActiveTab: vi.fn(),
+      }),
+      signal: abortController.signal,
     })
 
     const refresh = coordinator.refreshCatalog()
-    coordinator.disconnect()
+    abortController.abort()
     resolveCatalog({ systems: [catalogEntry()], directories: ["systems"] })
     await refresh
 
@@ -271,17 +263,11 @@ describe("ResearchCoordinator", () => {
       resolveCatalog = resolve
     }))
     const coordinator = new ResearchCoordinator({
-      store: {
+      ...defaultDeps({
         tabs: [],
-        activeTab: null,
+        activeTab: undefined,
         updateResearchConfig: vi.fn(),
-      } as unknown as TabStore,
-      config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
-      sidebarTarget: document.createElement("aside"),
-      panelsTarget: document.createElement("main"),
-      application: { getControllerForElementAndIdentifier: vi.fn() },
-      renderFn: vi.fn(),
-      revealActiveTab: vi.fn(),
+      }),
     })
 
     const first = coordinator.refreshCatalog()
@@ -292,5 +278,22 @@ describe("ResearchCoordinator", () => {
     expect(fetchResearchCatalog).toHaveBeenCalledTimes(1)
     expect(coordinator.getCatalog()).toEqual([catalogEntry()])
     expect(coordinator.getDirectories()).toEqual(["systems"])
+  })
+
+  it("shows toast on catalog refresh error", async () => {
+    vi.mocked(fetchResearchCatalog).mockRejectedValueOnce(new Error("network error"))
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    const coordinator = new ResearchCoordinator({
+      ...defaultDeps({
+        tabs: [],
+        activeTab: undefined,
+        updateResearchConfig: vi.fn(),
+      }),
+    })
+
+    await coordinator.refreshCatalog()
+
+    expect(showToast).toHaveBeenCalledWith("Failed to refresh research catalog", "error")
+    consoleError.mockRestore()
   })
 })

@@ -8,13 +8,16 @@ import DrawingActions from "../tabs/drawing_actions"
 import DataTabActions from "../tabs/data_actions"
 import ChartSidebarActions from "../tabs/chart_sidebar_actions"
 import ChartBridge from "../data_grid/chart_bridge"
-import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, StimulusApp, IndicatorInfo } from "../types/store"
+import type { Panel, DrawingKind, DrawingItem, ChartControllerAPI, LabelMarkerInput, StimulusApp, IndicatorInfo, DataGridControllerAPI } from "../types/store"
+import type { SystemStatsControllerLookup } from "../workspace/types"
 import ResearchCoordinator from "../workspace/research_coordinator"
 import SystemEditorCoordinator from "../workspace/system_editor_coordinator"
 import AssistantCoordinator from "../workspace/assistant_coordinator"
 import LinkedDataCoordinator from "../workspace/linked_data_coordinator"
+import DiagnosticsStore from "../workspace/diagnostics_store"
 import WorkspaceEvents from "../workspace/events"
 import { showToast } from "../services/toast"
+import { dispatchWorkspaceEvent as dispatchWorkspaceEventUtil } from "../utils/dom"
 
 const TAB_SCROLL_THRESHOLD_PX = 4
 
@@ -57,6 +60,8 @@ export default class extends Controller {
   private assistant: AssistantCoordinator | null = null
   private linkedData: LinkedDataCoordinator | null = null
   private workspaceEvents: WorkspaceEvents | null = null
+  private diagnosticsStore = new DiagnosticsStore()
+  private abortController: AbortController | null = null
   private _tabDragJustEnded = false
   private _boundOpenChart: ((e: Event) => void) | null = null
   private _tabScrollArea: HTMLElement | null = null
@@ -91,6 +96,8 @@ export default class extends Controller {
 
   async connect() {
     const connectVersion = ++this._connectVersion
+    this.abortController = new AbortController()
+    const signal = this.abortController.signal
     this.store = new TabStore()
     const initialActiveTabId = this.store.activeTabId
     if (initialActiveTabId && this.store.tabs.some(tab => tab.id === initialActiveTabId)) {
@@ -98,7 +105,7 @@ export default class extends Controller {
     }
     const [config, researchCatalog] = await Promise.all([
       fetchConfig(),
-      fetchResearchCatalog(),
+      fetchResearchCatalog(signal),
     ])
     if (connectVersion !== this._connectVersion) return
 
@@ -139,26 +146,26 @@ export default class extends Controller {
       application: this.application as StimulusApp,
       renderFn: () => this.render(),
       revealActiveTab: this._revealActiveTab,
+      signal,
     })
     this.research.setCatalogSnapshot(researchCatalog)
-
-    const getSystemEditorDiagnostics = (tabId: string) => this.systemEditor?.diagnosticsFor(tabId) || []
-    const clearSystemEditorDiagnostics = (tabId: string) => { this.systemEditor?.clearDiagnostics(tabId) }
 
     this.assistant = new AssistantCoordinator({
       store: this.store,
       renderFn: () => this.render(),
       revealActiveTab: this._revealActiveTab,
-      getSystemEditorDiagnostics,
-      clearSystemEditorDiagnostics,
+      diagnosticsStore: this.diagnosticsStore,
+      signal,
     })
     this.systemEditor = new SystemEditorCoordinator({
       store: this.store,
       config: this.config,
       research: this.research,
       assistant: this.assistant,
+      diagnosticsStore: this.diagnosticsStore,
       renderFn: () => this.render(),
       revealActiveTab: this._revealActiveTab,
+      signal,
     })
     this.assistant.reconcileLinkedTarget()
     this.linkedData = new LinkedDataCoordinator({
@@ -167,6 +174,9 @@ export default class extends Controller {
       panelsTarget: this.panelsTarget,
       application: this.application as StimulusApp,
       renderFn: () => this.render(),
+      getDataGridController: (tabId) => this._getDataGridController(tabId),
+      getSystemStatsController: (systemId) => this._getSystemStatsController(systemId),
+      signal,
     })
     this.workspaceEvents = new WorkspaceEvents(this.element, {
       onLabelCreated: (e) => this._onDrawingCreated("labels", e),
@@ -191,6 +201,21 @@ export default class extends Controller {
       onAssistantStateChanged: (e) => this.assistant?.onStateChanged(e),
       onAssistantOpenDraftInSystemEditor: (e) => this.assistant?.openDraftInSystemEditor(e),
       onAssistantApplyDraftToLinkedEditor: (e) => this.assistant?.applyDraftToLinkedEditor(e),
+      onResearchRun: () => { void this.research?.runActive() },
+      onResearchOpenFilePicker: () => this.research?.openFilePicker(),
+      onResearchCloseFilePicker: () => this.research?.closeFilePicker(),
+      onResearchUpdateConfig: (e) => {
+        if (!this.research?.updateActiveConfigFromSidebar(e)) return
+        this.render()
+      },
+      onResearchUpdateFilePickerQuery: (e) => this.research?.onFilePickerQueryChanged(e),
+      onResearchSelectFileManagerEntry: (e) => this.research?.onFileManagerEntrySelected(e),
+      onResearchNavigateFileManager: (e) => this.research?.onFileManagerNavigated(e),
+      onResearchConfirmFileSelection: () => this.research?.confirmFileSelection(),
+      onResearchCreateDirectory: () => { void this.research?.createDirectory() },
+      onResearchRenameEntry: () => { void this.research?.renameEntry() },
+      onResearchDeleteEntry: () => { void this.research?.deleteEntry() },
+      onResearchOpenSystemEditor: () => this.systemEditor?.openFromActiveResearch(),
     })
     this.workspaceEvents.connect()
     if (this.config.indicators?.length) {
@@ -212,6 +237,8 @@ export default class extends Controller {
 
   disconnect() {
     this._connectVersion++
+    this.abortController?.abort()
+    this.abortController = null
     window.removeEventListener("resize", this._onWindowResize)
     if (this._boundOpenChart) window.removeEventListener("nav:openChart", this._boundOpenChart)
     this._unbindTabBarScrollArea()
@@ -225,6 +252,7 @@ export default class extends Controller {
     this.systemEditor = null
     this.assistant = null
     this.linkedData = null
+    this.diagnosticsStore.clear()
   }
 
   // --- Tab CRUD ---
@@ -628,64 +656,14 @@ export default class extends Controller {
   loadDataGrid()                     { return this.dataActions.loadDataGrid() }
   exportCsv()                        { this.dataActions.exportCsv() }
 
-  // --- Research tab ---
+  // --- Research tab (event-dispatched via WorkspaceEvents) ---
 
-  updateResearchConfig(e?: Event) {
-    if (!this.research?.updateActiveConfigFromSidebar(e)) return
-    this.render()
+  dispatchWorkspaceEvent(e: Event) {
+    dispatchWorkspaceEventUtil(this.element, e)
   }
 
-  async runResearch() {
-    await this.research?.runActive()
-  }
-
-  openResearchFilePicker() {
-    this.research?.openFilePicker()
-  }
-
-  closeResearchFilePicker() {
-    this.research?.closeFilePicker()
-  }
-
-  updateResearchFilePickerQuery(e: Event) {
-    this.research?.updateFilePickerQuery(e)
-  }
-
-  selectResearchFileManagerEntry(e: Event) {
-    this.research?.selectFileManagerEntry(e)
-  }
-
-  navigateResearchFileManager(e: Event) {
-    this.research?.navigateFileManager(e)
-  }
-
-  openResearchFileManagerEntry(e: Event) {
-    this.research?.openFileManagerEntry(e)
-  }
-
-  confirmResearchFileSelection() {
-    this.research?.confirmFileSelection()
-  }
-
-  async createResearchDirectory() {
-    await this.research?.createDirectory()
-  }
-
-  async renameResearchEntry() {
-    await this.research?.renameEntry()
-  }
-
-  async deleteResearchEntry() {
-    await this.research?.deleteEntry()
-  }
-
-  stopFileManagerPropagation(e: Event) {
+  stopPropagation(e: Event) {
     e.stopPropagation()
-  }
-
-
-  openResearchSystemEditor() {
-    this.systemEditor?.openFromActiveResearch()
   }
 
   // --- Panel resize ---
@@ -711,6 +689,7 @@ export default class extends Controller {
     const prevScrollLeft = this._tabScrollArea?.scrollLeft ?? this._tabBarScrollLeft
     const shouldRevealActiveTab = this._forceRevealActiveTab
     const researchValidationSystem = research.prepareActiveRender()
+    const filePickerState = research.filePickerState()
 
     const panel = this.store.selectedPanel
     const vp = panel?.volumeProfile ?? { enabled: false, opacity: 0.3 }
@@ -739,10 +718,10 @@ export default class extends Controller {
       chartTabOptions,
       researchCatalog: research.getCatalog(),
       researchDirectories: research.getDirectories(),
-      researchFilePickerOpen: research.filePickerOpen(),
-      researchFilePickerQuery: research.filePickerQuery(),
-      researchFilePickerDirectoryPath: research.filePickerDirectoryPath(),
-      researchFilePickerSelectedPath: research.filePickerSelectedPath(),
+      researchFilePickerOpen: filePickerState.open,
+      researchFilePickerQuery: filePickerState.query,
+      researchFilePickerDirectoryPath: filePickerState.directoryPath,
+      researchFilePickerSelectedPath: filePickerState.selectedPath,
       researchValidationSystem,
       assistantStateJson: assistant.stateJson(),
       assistantWorkspaceSnapshotJson: assistant.workspaceSnapshotJson(),
@@ -783,6 +762,21 @@ export default class extends Controller {
     const { research, systemEditor, assistant, linkedData } = this
     if (!research || !systemEditor || !assistant || !linkedData) return null
     return { research, systemEditor, assistant, linkedData }
+  }
+
+  private _getDataGridController(tabId: string): DataGridControllerAPI | null {
+    const dataWrapper = this.panelsTarget.querySelector(`[data-tab-wrapper="${tabId}"]`) as HTMLElement | null
+    const gridEl = dataWrapper?.querySelector("[data-controller='data-grid']") as HTMLElement | null
+    if (!gridEl) return null
+    return this.application.getControllerForElementAndIdentifier(gridEl, "data-grid") as DataGridControllerAPI | null
+  }
+
+  private _getSystemStatsController(systemId: string): SystemStatsControllerLookup | null {
+    const statsWrapper = this.panelsTarget.querySelector(`[data-system-stats-system-id-value="${systemId}"]`) as HTMLElement | null
+    if (!statsWrapper) return null
+    const ctrl = this.application.getControllerForElementAndIdentifier(statsWrapper, "system-stats")
+    if (!ctrl || typeof (ctrl as { setStats?: unknown }).setStats !== "function") return null
+    return ctrl as SystemStatsControllerLookup
   }
 
   private _updateMainPanelVisibility(): void {

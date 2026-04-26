@@ -12,6 +12,7 @@ import {
   isPathInside,
   relativeDirname,
   replacePathPrefix,
+  resolveDirectoryPath,
   syncFileManagerSelectionState,
 } from "./file_manager"
 import { showToast } from "../services/toast"
@@ -26,6 +27,7 @@ export type ResearchFilePickerCallbacks = {
   onSystemRemoved: (tabId: string) => void
   onRender: () => void
   getSidebarElement: () => Element | null
+  signal: AbortSignal
 }
 
 export class ResearchFilePicker {
@@ -66,7 +68,7 @@ export class ResearchFilePicker {
     this.open.add(tabId)
     this.directory.set(
       tabId,
-      this.resolveDirectoryPath(directories, selectedPath ? relativeDirname(selectedPath) : relativeDirname(systemPath || ""))
+      resolveDirectoryPath(directories, selectedPath ? relativeDirname(selectedPath) : relativeDirname(systemPath || ""))
     )
     this.selected.set(tabId, selectedPath)
     this.query.set(tabId, "")
@@ -89,6 +91,10 @@ export class ResearchFilePicker {
   selectEntry(tabId: string, element: HTMLElement, isDoubleClick: boolean): void {
     const path = element.dataset.path || null
     const kind = element.dataset.kind || "file"
+    this.selectEntryByPath(tabId, path, kind, isDoubleClick)
+  }
+
+  selectEntryByPath(tabId: string, path: string | null, kind: string, isDoubleClick: boolean): void {
     this.selected.set(tabId, path)
     this.syncSelection(path, kind)
 
@@ -103,14 +109,12 @@ export class ResearchFilePicker {
     this.cb.onRender()
   }
 
-  openEntry(tabId: string, path: string, kind: string): void {
-    this.openPath(tabId, path, kind)
-  }
-
   confirmSelection(tabId: string): void {
     const selectedPath = this.selected.get(tabId) || null
     if (!selectedPath) return
-    this.openFile(tabId, selectedPath)
+    const catalog = this.cb.getCatalog()
+    const kind = findResearchEntry(catalog, selectedPath) ? "file" : "directory"
+    this.openPath(tabId, selectedPath, kind)
   }
 
   async createDirectory(tabId: string): Promise<void> {
@@ -118,13 +122,15 @@ export class ResearchFilePicker {
     if (!directoryName) return
 
     const parentPath = this.directory.get(tabId) || ""
-    const response = await createResearchDirectory(parentPath || null, directoryName)
+    const response = await createResearchDirectory(parentPath || null, directoryName, this.cb.signal)
+    if (this.cb.signal.aborted) return
     if (!response?.ok || !response.path) {
       showToast(response?.diagnostics?.[0]?.message || "Folder create failed")
       return
     }
 
     await this.refreshCatalog()
+    if (this.cb.signal.aborted) return
     this.directory.set(tabId, response.path)
     this.selected.set(tabId, response.path)
     this.cb.onRender()
@@ -153,13 +159,15 @@ export class ResearchFilePicker {
     const entry = findResearchEntry(catalog, selectedPath)
 
     if (entry) {
-      const response = await deleteResearchSystem(selectedPath)
+      const response = await deleteResearchSystem(selectedPath, this.cb.signal)
+      if (this.cb.signal.aborted) return
       if (!response?.ok) {
         showToast(response?.diagnostics?.[0]?.message || "File delete failed")
         return
       }
     } else {
-      const response = await deleteResearchDirectory(selectedPath)
+      const response = await deleteResearchDirectory(selectedPath, this.cb.signal)
+      if (this.cb.signal.aborted) return
       if (!response?.ok) {
         showToast(response?.diagnostics?.[0]?.message || "Folder delete failed")
         return
@@ -168,6 +176,7 @@ export class ResearchFilePicker {
 
     const currentSystemPath = this.cb.getTabSystemPath(tabId)
     await this.refreshCatalog()
+    if (this.cb.signal.aborted) return
     this.selected.set(tabId, null)
     this.directory.set(tabId, relativeDirname(selectedPath))
     if (currentSystemPath && isPathInside(selectedPath, currentSystemPath)) {
@@ -205,13 +214,15 @@ export class ResearchFilePicker {
     const nextId = window.prompt("New file name", entry.id)?.trim()
     if (!nextId || nextId === entry.id) return
 
-    const response = await renameResearchSystem(selectedPath, nextId, entry.yaml)
+    const response = await renameResearchSystem(selectedPath, nextId, entry.yaml, this.cb.signal)
+    if (this.cb.signal.aborted) return
     if (!response?.ok || !response.system) {
       showToast(response?.diagnostics?.[0]?.message || "File rename failed")
       return
     }
 
     await this.refreshCatalog()
+    if (this.cb.signal.aborted) return
     this.selected.set(tabId, response.system.relative_path)
     this.directory.set(tabId, relativeDirname(response.system.relative_path))
     this.cb.onSystemPathChanged(tabId, response.system.relative_path)
@@ -222,13 +233,15 @@ export class ResearchFilePicker {
     const nextName = window.prompt("New folder name", selectedPath.split("/").pop() || "")?.trim()
     if (!nextName) return
 
-    const response = await renameResearchDirectory(selectedPath, nextName)
+    const response = await renameResearchDirectory(selectedPath, nextName, this.cb.signal)
+    if (this.cb.signal.aborted) return
     if (!response?.ok || !response.path) {
       showToast(response?.diagnostics?.[0]?.message || "Folder rename failed")
       return
     }
 
     await this.refreshCatalog()
+    if (this.cb.signal.aborted) return
     const currentSystemPath = this.cb.getTabSystemPath(tabId)
     this.selected.set(tabId, response.path)
     this.directory.set(tabId, response.path)
@@ -249,17 +262,8 @@ export class ResearchFilePicker {
   }
 
   private async refreshCatalog() {
-    const snapshot = await fetchResearchCatalog()
+    const snapshot = await fetchResearchCatalog(this.cb.signal)
+    if (this.cb.signal.aborted) return
     this.cb.setCatalog(snapshot.systems, snapshot.directories)
-    return snapshot
-  }
-
-  private resolveDirectoryPath(directoryPaths: string[], requestedPath: string | null | undefined): string {
-    let candidate = (requestedPath || "").trim().replace(/^\/+|\/+$/g, "")
-    while (candidate.length > 0) {
-      if (directoryPaths.includes(candidate)) return candidate
-      candidate = relativeDirname(candidate)
-    }
-    return ""
   }
 }

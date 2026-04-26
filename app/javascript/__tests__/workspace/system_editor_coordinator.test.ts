@@ -1,14 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 import SystemEditorCoordinator from "../../workspace/system_editor_coordinator"
+import DiagnosticsStore from "../../workspace/diagnostics_store"
 import type TabStore from "../../tabs/store"
 import type { Tab } from "../../types/store"
 import type AssistantCoordinator from "../../workspace/assistant_coordinator"
 import type ResearchCoordinator from "../../workspace/research_coordinator"
-import { showToast } from "../../services/toast"
-
-vi.mock("../../services/toast", () => ({
-  showToast: vi.fn(),
-}))
 
 function systemEditorTab(overrides: Partial<Tab["systemEditorConfig"]> = {}): Tab {
   return {
@@ -32,13 +28,15 @@ function coordinatorDeps(store: Partial<TabStore>, renderFn = vi.fn(), assistant
   return {
     store: store as unknown as TabStore,
     config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
-    research: { refreshCatalog: vi.fn(() => Promise.resolve()) } as unknown as ResearchCoordinator,
+    research: { refreshCatalog: vi.fn(() => Promise.resolve(true)) } as unknown as ResearchCoordinator,
     assistant: {
       isLinkedToSystemEditor: vi.fn(() => false),
       ...assistant,
     } as unknown as AssistantCoordinator,
+    diagnosticsStore: new DiagnosticsStore(),
     renderFn,
     revealActiveTab: vi.fn(),
+    signal: new AbortController().signal,
   }
 }
 
@@ -115,45 +113,63 @@ describe("SystemEditorCoordinator", () => {
     expect(renderFn).toHaveBeenCalled()
   })
 
-  it("handles catalog refresh failures", async () => {
-    const error = new Error("catalog failed")
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+  it("renders after successful catalog refresh", async () => {
     const renderFn = vi.fn()
     const coordinator = new SystemEditorCoordinator({
       store: { tabs: [] } as unknown as TabStore,
       config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
-      research: { refreshCatalog: vi.fn(() => Promise.reject(error)) } as unknown as ResearchCoordinator,
+      research: { refreshCatalog: vi.fn(() => Promise.resolve(true)) } as unknown as ResearchCoordinator,
       assistant: { isLinkedToSystemEditor: vi.fn(() => false) } as unknown as AssistantCoordinator,
+      diagnosticsStore: new DiagnosticsStore(),
       renderFn,
       revealActiveTab: vi.fn(),
+      signal: new AbortController().signal,
     })
 
     await coordinator.onCatalogChanged(new Event("systemeditor:catalogChanged"))
 
-    expect(consoleError).toHaveBeenCalledWith("Failed to refresh research catalog", error)
-    expect(showToast).toHaveBeenCalledWith("Failed to refresh system catalog", "error")
-    expect(renderFn).not.toHaveBeenCalled()
-    consoleError.mockRestore()
+    expect(renderFn).toHaveBeenCalledTimes(1)
   })
 
-  it("does not render catalog refresh results after disconnect", async () => {
-    let resolveRefresh: () => void = () => {}
-    const refreshCatalog = vi.fn(() => new Promise<void>((resolve) => {
+  it("does not render after catalog refresh failure", async () => {
+    const renderFn = vi.fn()
+    const coordinator = new SystemEditorCoordinator({
+      store: { tabs: [] } as unknown as TabStore,
+      config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
+      research: { refreshCatalog: vi.fn(() => Promise.resolve(false)) } as unknown as ResearchCoordinator,
+      assistant: { isLinkedToSystemEditor: vi.fn(() => false) } as unknown as AssistantCoordinator,
+      diagnosticsStore: new DiagnosticsStore(),
+      renderFn,
+      revealActiveTab: vi.fn(),
+      signal: new AbortController().signal,
+    })
+
+    await coordinator.onCatalogChanged(new Event("systemeditor:catalogChanged"))
+
+    expect(renderFn).not.toHaveBeenCalled()
+  })
+
+  it("does not render catalog refresh results after abort", async () => {
+    let resolveRefresh: (value: boolean) => void = () => {}
+    const refreshCatalog = vi.fn(() => new Promise<boolean>((resolve) => {
       resolveRefresh = resolve
     }))
     const renderFn = vi.fn()
+    const abortController = new AbortController()
     const coordinator = new SystemEditorCoordinator({
       store: { tabs: [] } as unknown as TabStore,
       config: { symbols: ["BTCUSD"], timeframes: ["1h"], indicators: [] },
       research: { refreshCatalog } as unknown as ResearchCoordinator,
       assistant: { isLinkedToSystemEditor: vi.fn(() => false) } as unknown as AssistantCoordinator,
+      diagnosticsStore: new DiagnosticsStore(),
       renderFn,
       revealActiveTab: vi.fn(),
+      signal: abortController.signal,
     })
 
     const refresh = coordinator.onCatalogChanged(new Event("systemeditor:catalogChanged"))
-    coordinator.disconnect()
-    resolveRefresh()
+    abortController.abort()
+    resolveRefresh(true)
     await refresh
 
     expect(refreshCatalog).toHaveBeenCalled()

@@ -37,6 +37,22 @@ export function injectConditionStyles(css: string): void {
   styleEl.textContent = css
 }
 
+export function dispatchWorkspaceEvent(element: Element, e: Event, bubbles = false): void {
+  const el = e.currentTarget as HTMLElement
+  const eventName = el.dataset.workspaceEvent
+  if (!eventName) {
+    if (process.env.NODE_ENV !== "production") console.warn("dispatchWorkspaceEvent: missing data-workspace-event on", el)
+    return
+  }
+  e.stopPropagation()
+  const detail: Record<string, unknown> = {}
+  if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) detail.value = el.value
+  if (e instanceof MouseEvent) detail.mouseDetail = e.detail
+  if ("path" in el.dataset) detail.path = el.dataset.path!
+  if (el.dataset.kind) detail.kind = el.dataset.kind
+  element.dispatchEvent(new CustomEvent(eventName, { detail, bubbles }))
+}
+
 export function createInlineRenameInput(currentText: string, onCommit: (text: string) => void, cssClass?: string): HTMLInputElement {
   const input = document.createElement("input")
   input.type = "text"

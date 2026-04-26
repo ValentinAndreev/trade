@@ -9,8 +9,10 @@ import {
 import { DEFAULT_RESEARCH_SYMBOL, DEFAULT_RESEARCH_TIMEFRAME, CLEARED_RESEARCH_SYSTEM_VALUE } from "../config/constants"
 import { ResearchFilePicker } from "../research/research_file_picker"
 import { hashText } from "../utils/text_hash"
+import { showToast } from "../services/toast"
 import type { ResearchConfig, ResearchResult, Tab } from "../types/store"
-import type { WorkspaceConfig, WorkspaceDomDeps, RevealActiveTabFn } from "./types"
+import type { WorkspaceConfig, WorkspaceDomDeps, RevealActiveTabFn, FilePickerState } from "./types"
+import { EMPTY_FILE_PICKER_STATE } from "./types"
 
 interface ResearchCoordinatorDeps extends WorkspaceDomDeps {
   config: WorkspaceConfig
@@ -23,8 +25,7 @@ export default class ResearchCoordinator {
   private filePicker: ResearchFilePicker
   private validation = new Map<string, { key: string; result: ResearchValidationResponse | null }>()
   private validationPending = new Map<string, string>()
-  private disconnected = false
-  private catalogRefreshPromise: Promise<void> | null = null
+  private catalogRefreshPromise: Promise<boolean> | null = null
 
   constructor(private deps: ResearchCoordinatorDeps) {
     this.filePicker = new ResearchFilePicker({
@@ -40,11 +41,11 @@ export default class ResearchCoordinator {
       onSystemRemoved: (tabId) => this.clearResearchSystem(tabId),
       onRender: () => this.deps.renderFn(),
       getSidebarElement: () => this.deps.sidebarTarget,
+      signal: this.deps.signal,
     })
   }
 
   disconnect(): void {
-    this.disconnected = true
     this.validationPending.clear()
   }
 
@@ -57,14 +58,23 @@ export default class ResearchCoordinator {
     this.directories = snapshot.directories
   }
 
-  async refreshCatalog(): Promise<void> {
-    if (this.catalogRefreshPromise) return this.catalogRefreshPromise
+  async refreshCatalog(errorMessage = "Failed to refresh research catalog"): Promise<boolean> {
+    if (this.catalogRefreshPromise) {
+      // Second caller's errorMessage is discarded — first caller's toast fires on failure.
+      return this.catalogRefreshPromise
+    }
 
     this.catalogRefreshPromise = (async () => {
       try {
-        const snapshot = await fetchResearchCatalog()
-        if (this.disconnected) return
+        const snapshot = await fetchResearchCatalog(this.deps.signal)
+        if (this.deps.signal.aborted) return false
         this.setCatalogSnapshot(snapshot)
+        return true
+      } catch (error) {
+        if (this.deps.signal.aborted) return false
+        console.error(errorMessage, error)
+        showToast(errorMessage, "error")
+        return false
       } finally {
         this.catalogRefreshPromise = null
       }
@@ -117,8 +127,7 @@ export default class ResearchCoordinator {
     this.deps.store.updateResearchResult(tabId, result)
   }
 
-  updateActiveConfigFromSidebar(e?: Event): ResearchConfig | null {
-    if (e instanceof KeyboardEvent) e.preventDefault()
+  updateActiveConfigFromSidebar(_e?: Event): ResearchConfig | null {
     return this.syncActiveResearchConfigFromSidebar()
   }
 
@@ -132,47 +141,53 @@ export default class ResearchCoordinator {
     await this.activeResearchController()?.run(next)
   }
 
-  openFilePicker(): void {
+  filePickerState(): FilePickerState {
     const tab = this.activeResearchTab()
-    if (!tab) return
-    this.filePicker.openPicker(tab.id, tab.researchConfig?.systemPath || null)
+    if (!tab) return EMPTY_FILE_PICKER_STATE
+    return {
+      open: this.filePicker.isOpen(tab.id),
+      query: this.filePicker.getQuery(tab.id),
+      directoryPath: this.filePicker.getDirectory(tab.id, tab.researchConfig?.systemPath || null),
+      selectedPath: this.filePicker.getSelected(tab.id, tab.researchConfig?.systemPath || null),
+    }
+  }
+
+  openFilePicker(): void {
+    this.withActiveResearchTab(tab => {
+      this.filePicker.openPicker(tab.id, tab.researchConfig?.systemPath || null)
+    })
   }
 
   closeFilePicker(): void {
-    const tab = this.activeResearchTab()
-    if (!tab) return
-    this.filePicker.closePicker(tab.id)
+    this.withActiveResearchTab(tab => this.filePicker.closePicker(tab.id))
   }
 
-  updateFilePickerQuery(e: Event): void {
-    const tab = this.activeResearchTab()
-    if (!tab) return
-    this.filePicker.updateQuery(tab.id, (e.currentTarget as HTMLInputElement).value)
+  onFilePickerQueryChanged(e: Event): void {
+    this.withActiveResearchTab(tab => {
+      const value = (e as CustomEvent<{ value?: string }>).detail?.value || ""
+      this.filePicker.updateQuery(tab.id, value)
+    })
   }
 
-  selectFileManagerEntry(e: Event): void {
-    const tab = this.activeResearchTab()
-    if (!tab) return
-    this.filePicker.selectEntry(tab.id, e.currentTarget as HTMLElement, (e as MouseEvent).detail >= 2)
+  onFileManagerEntrySelected(e: Event): void {
+    this.withActiveResearchTab(tab => {
+      const detail = (e as CustomEvent<{ mouseDetail?: number; path?: string; kind?: string }>).detail
+      const path = detail.path || null
+      const kind = detail.kind || "file"
+      const isDoubleClick = (detail.mouseDetail ?? 1) >= 2
+      this.filePicker.selectEntryByPath(tab.id, path, kind, isDoubleClick)
+    })
   }
 
-  navigateFileManager(e: Event): void {
-    const tab = this.activeResearchTab()
-    if (!tab) return
-    this.filePicker.navigate(tab.id, (e.currentTarget as HTMLElement).dataset.path || "")
-  }
-
-  openFileManagerEntry(e: Event): void {
-    const tab = this.activeResearchTab()
-    if (!tab) return
-    const el = e.currentTarget as HTMLElement
-    this.filePicker.openEntry(tab.id, el.dataset.path || "", el.dataset.kind || "file")
+  onFileManagerNavigated(e: Event): void {
+    this.withActiveResearchTab(tab => {
+      const { path } = (e as CustomEvent<{ path: string }>).detail
+      this.filePicker.navigate(tab.id, path)
+    })
   }
 
   confirmFileSelection(): void {
-    const tab = this.activeResearchTab()
-    if (!tab) return
-    this.filePicker.confirmSelection(tab.id)
+    this.withActiveResearchTab(tab => this.filePicker.confirmSelection(tab.id))
   }
 
   async createDirectory(): Promise<void> {
@@ -205,30 +220,6 @@ export default class ResearchCoordinator {
     }
 
     return this.validation.get(activeTab.id)?.result?.system || null
-  }
-
-  filePickerOpen(): boolean {
-    const tab = this.activeResearchTab()
-    if (!tab) return false
-    return this.filePicker.isOpen(tab.id)
-  }
-
-  filePickerQuery(): string {
-    const tab = this.activeResearchTab()
-    if (!tab) return ""
-    return this.filePicker.getQuery(tab.id)
-  }
-
-  filePickerDirectoryPath(): string {
-    const tab = this.activeResearchTab()
-    if (!tab) return ""
-    return this.filePicker.getDirectory(tab.id, tab.researchConfig?.systemPath || null)
-  }
-
-  filePickerSelectedPath(): string | null {
-    const tab = this.activeResearchTab()
-    if (!tab) return null
-    return this.filePicker.getSelected(tab.id, tab.researchConfig?.systemPath || null)
   }
 
   private findResearchCatalogEntry(systemPath: string | null, systemId: string | null): ResearchCatalogEntry | null {
@@ -318,6 +309,11 @@ export default class ResearchCoordinator {
     return this.deps.config.symbols[0] || DEFAULT_RESEARCH_SYMBOL
   }
 
+  private withActiveResearchTab(fn: (tab: Tab & { type: "research" }) => void): void {
+    const tab = this.activeResearchTab()
+    if (tab) fn(tab)
+  }
+
   private clearValidation(tabId: string): void {
     this.validation.delete(tabId)
     this.validationPending.delete(tabId)
@@ -343,7 +339,7 @@ export default class ResearchCoordinator {
   }
 
   private ensureResearchValidation(tabId: string, entry: ResearchCatalogEntry): void {
-    if (this.disconnected) return
+    if (this.deps.signal.aborted) return
 
     const key = `${entry.relative_path}:${hashText(entry.yaml)}`
     if (this.validation.get(tabId)?.key === key) return
@@ -351,9 +347,9 @@ export default class ResearchCoordinator {
 
     this.validationPending.set(tabId, key)
 
-    void validateResearchSystem(entry.yaml, entry.id)
+    void validateResearchSystem(entry.yaml, entry.id, this.deps.signal)
       .then((result) => {
-        if (this.disconnected) return
+        if (this.deps.signal.aborted) return
         if (this.validationPending.get(tabId) !== key) return
 
         this.validationPending.delete(tabId)
@@ -374,7 +370,7 @@ export default class ResearchCoordinator {
         if (this.validationPending.get(tabId) === key) {
           this.validationPending.delete(tabId)
           this.validation.delete(tabId)
-          if (!this.disconnected) this.deps.renderFn()
+          if (!this.deps.signal.aborted) this.deps.renderFn()
         }
       })
   }

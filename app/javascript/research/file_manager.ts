@@ -18,16 +18,15 @@ type FileManagerModalArgs = {
   currentDirectoryPath: string
   selectedPath: string | null
   searchQuery: string
-  closeAction: string
-  navigateAction: string
-  selectAction: string
-  openAction: string
-  confirmAction: string
-  searchAction: string
-  createDirectoryAction?: string
-  createFileAction?: string
-  renameAction?: string
-  deleteAction?: string
+  closeEventName: string
+  navigateEventName: string
+  selectEventName: string
+  confirmEventName: string
+  searchEventName: string
+  createDirectoryEventName?: string
+  createFileEventName?: string
+  renameEventName?: string
+  deleteEventName?: string
   confirmLabel?: string
 }
 
@@ -41,16 +40,15 @@ export function renderFileManagerModal({
   currentDirectoryPath,
   selectedPath,
   searchQuery,
-  closeAction,
-  navigateAction,
-  selectAction,
-  openAction,
-  confirmAction,
-  searchAction,
-  createDirectoryAction,
-  createFileAction,
-  renameAction,
-  deleteAction,
+  closeEventName,
+  navigateEventName,
+  selectEventName,
+  confirmEventName,
+  searchEventName,
+  createDirectoryEventName,
+  createFileEventName,
+  renameEventName,
+  deleteEventName,
   confirmLabel = "Open",
 }: FileManagerModalArgs): string {
   const root = buildDirectoryTree(catalog, directories)
@@ -60,30 +58,35 @@ export function renderFileManagerModal({
   const selectedKind = selectedEntry ? "file" : (selectedDirectory ? "directory" : null)
   const listing = listDirectory(currentDirectory, searchQuery)
 
+  const closeAction = `click->${ctrl}#dispatchWorkspaceEvent`
+  const searchAction = `input->${ctrl}#dispatchWorkspaceEvent`
+
   return `
     <div
       class="fixed inset-0 z-[12000] flex items-center justify-center bg-black/70 px-4 py-6"
-      data-action="click->${ctrl}#${extractMethod(closeAction)}"
+      data-action="${closeAction}"
+      data-workspace-event="${escapeHTML(closeEventName)}"
     >
       <div
         data-file-manager-modal="true"
         class="flex h-[min(85vh,820px)] w-[min(1100px,96vw)] min-h-[520px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[${BORDER_COLOR}] bg-[${BG_MODAL}] shadow-[0_20px_80px_rgba(0,0,0,0.55)]"
         style="${MODAL_GLASS_STYLE}"
-        data-action="click->${ctrl}#stopFileManagerPropagation"
+        data-action="click->${ctrl}#stopPropagation"
       >
         <div class="flex items-center gap-3 border-b border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] px-5 py-4">
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-white">${escapeHTML(title)}</div>
             <div class="mt-1 text-xs text-gray-400 font-mono">${escapeHTML(displayDirectoryPath(currentDirectory.path))}</div>
           </div>
-          ${actionButton("New folder", createDirectoryAction)}
-          ${actionButton("New file", createFileAction)}
-          ${actionButton("Rename", renameAction, !selectedKind, "", "rename")}
-          ${actionButton("Delete", deleteAction, !selectedKind, "border-red-500/30 text-red-200 hover:bg-red-500/10 hover:text-red-100", "delete")}
-          ${actionButton(confirmLabel, confirmAction, !selectedEntry, "", "confirm")}
+          ${eventButton("New folder", ctrl, createDirectoryEventName)}
+          ${eventButton("New file", ctrl, createFileEventName)}
+          ${eventButton("Rename", ctrl, renameEventName, !selectedKind, "", "rename")}
+          ${eventButton("Delete", ctrl, deleteEventName, !selectedKind, "border-red-500/30 text-red-200 hover:bg-red-500/10 hover:text-red-100", "delete")}
+          ${eventButton(confirmLabel, ctrl, confirmEventName, selectedKind !== "file", "", "confirm")}
           <button
             type="button"
             data-action="${closeAction}"
+            data-workspace-event="${escapeHTML(closeEventName)}"
             class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-300 hover:text-white cursor-pointer"
           >Close</button>
         </div>
@@ -91,7 +94,7 @@ export function renderFileManagerModal({
         <div class="flex items-center gap-3 border-b border-[${BORDER_COLOR}] bg-[${BG_TOOLBAR}] px-5 py-3">
           <div class="min-w-0 flex-1 overflow-x-auto">
             <div class="flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap">
-              ${breadcrumbsHTML(currentDirectory.path, navigateAction)}
+              ${breadcrumbsHTML(currentDirectory.path, ctrl, navigateEventName)}
             </div>
           </div>
           <input
@@ -99,6 +102,7 @@ export function renderFileManagerModal({
             value="${escapeHTML(searchQuery)}"
             placeholder="Search in current directory"
             data-action="${searchAction}"
+            data-workspace-event="${escapeHTML(searchEventName)}"
             class="h-10 w-72 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-white"
           >
         </div>
@@ -107,14 +111,14 @@ export function renderFileManagerModal({
           <aside class="min-h-0 overflow-auto border-r border-[${BORDER_COLOR}] bg-[${BG_PANEL}] px-3 py-3">
             <div class="mb-2 px-2 text-[11px] uppercase tracking-[0.18em] text-gray-500">Directories</div>
             <div class="flex flex-col gap-0.5">
-              ${directoryTreeHTML(root, currentDirectory.path, navigateAction)}
+              ${directoryTreeHTML(root, currentDirectory.path, ctrl, navigateEventName)}
             </div>
           </aside>
 
           <section class="min-h-0 overflow-auto px-4 py-4">
             <div class="mb-3 text-[11px] uppercase tracking-[0.18em] text-gray-500">Entries</div>
             <div class="overflow-hidden rounded-xl border border-[${BORDER_COLOR}] bg-[${BG_PANEL}]">
-              ${listing.length ? listing.map(item => listItemHTML(item.kind, item.path, item.label, item.meta, selectedPath, selectAction)).join("") : `
+              ${listing.length ? listing.map(item => listItemHTML(item.kind, item.path, item.label, item.meta, selectedPath, ctrl, selectEventName)).join("") : `
                 <div class="px-4 py-8 text-sm text-gray-500">This directory is empty.</div>
               `}
             </div>
@@ -225,6 +229,15 @@ function normalizeDirectoryPath(path: string | null | undefined): string {
   return (path || "").trim().replace(/^\/+|\/+$/g, "")
 }
 
+export function resolveDirectoryPath(directoryPaths: string[], requestedPath: string | null | undefined): string {
+  let candidate = (requestedPath || "").trim().replace(/^\/+|\/+$/g, "")
+  while (candidate.length > 0) {
+    if (directoryPaths.includes(candidate)) return candidate
+    candidate = relativeDirname(candidate)
+  }
+  return ""
+}
+
 function normalizeFilePath(path: string | null | undefined): string {
   return (path || "").trim().replace(/^\/+/, "").replace(/\/+$/g, "")
 }
@@ -275,7 +288,7 @@ function listDirectory(directory: DirectoryNode, searchQuery: string) {
   return [ ...directories, ...files ]
 }
 
-function breadcrumbsHTML(path: string, navigateAction: string): string {
+function breadcrumbsHTML(path: string, ctrl: string, navigateEventName: string): string {
   const parts = path ? path.split("/") : []
   const crumbs = [
     { label: "systems", path: "" },
@@ -290,13 +303,14 @@ function breadcrumbsHTML(path: string, navigateAction: string): string {
       type="button"
       data-path="${escapeHTML(crumb.path)}"
       data-kind="directory"
-      data-action="${navigateAction}"
+      data-action="click->${ctrl}#dispatchWorkspaceEvent"
+      data-workspace-event="${escapeHTML(navigateEventName)}"
       class="rounded px-2 py-1 hover:bg-white/5 cursor-pointer ${index === crumbs.length - 1 ? "text-white bg-white/5" : "text-gray-400 hover:text-white"}"
     >${escapeHTML(crumb.label)}</button>
   `).join(`<span class="text-gray-600">/</span>`)
 }
 
-function directoryTreeHTML(node: DirectoryNode, currentPath: string, navigateAction: string, depth = 0): string {
+function directoryTreeHTML(node: DirectoryNode, currentPath: string, ctrl: string, navigateEventName: string, depth = 0): string {
   const selected = node.path === currentPath
   const padding = 8 + depth * 14
 
@@ -306,14 +320,15 @@ function directoryTreeHTML(node: DirectoryNode, currentPath: string, navigateAct
         type="button"
         data-path="${escapeHTML(node.path)}"
         data-kind="directory"
-        data-action="${navigateAction}"
+        data-action="click->${ctrl}#dispatchWorkspaceEvent"
+        data-workspace-event="${escapeHTML(navigateEventName)}"
         class="flex w-full items-center rounded px-2 py-1.5 text-left text-sm cursor-pointer ${selected ? "bg-blue-500/15 text-blue-100" : "text-gray-300 hover:bg-white/5 hover:text-white"}"
         style="padding-left:${padding}px"
       >
         <span class="mr-2 text-xs text-gray-500">dir</span>
         <span class="truncate">${escapeHTML(node.name)}</span>
       </button>
-      ${node.directories.map(directory => directoryTreeHTML(directory, currentPath, navigateAction, depth + 1)).join("")}
+      ${node.directories.map(directory => directoryTreeHTML(directory, currentPath, ctrl, navigateEventName, depth + 1)).join("")}
     </div>
   `
 }
@@ -328,7 +343,8 @@ function listItemHTML(
   label: string,
   meta: string,
   selectedPath: string | null,
-  selectAction: string,
+  ctrl: string,
+  selectEventName: string,
 ): string {
   const selected = selectedPath === path
 
@@ -338,7 +354,8 @@ function listItemHTML(
       data-file-manager-entry="true"
       data-path="${escapeHTML(path)}"
       data-kind="${kind}"
-      data-action="${selectAction}"
+      data-action="click->${ctrl}#dispatchWorkspaceEvent"
+      data-workspace-event="${escapeHTML(selectEventName)}"
       class="flex w-full items-center gap-3 border-b border-[${BORDER_COLOR}] px-4 py-3 text-left cursor-pointer ${selected ? "bg-blue-500/10" : "hover:bg-white/5"}"
     >
       <div class="w-12 shrink-0 text-[11px] uppercase tracking-[0.16em] ${kind === "directory" ? "text-amber-300" : "text-sky-300"}">${kind === "directory" ? "dir" : "yml"}</div>
@@ -350,21 +367,17 @@ function listItemHTML(
   `
 }
 
-function actionButton(label: string, action?: string, disabled = false, extraClass = "", buttonKey?: string): string {
-  if (!action) return ""
+function eventButton(label: string, ctrl: string, eventName?: string, disabled = false, extraClass = "", buttonKey?: string): string {
+  if (!eventName) return ""
 
   return `
     <button
       type="button"
       ${buttonKey ? `data-file-manager-button="${escapeHTML(buttonKey)}"` : ""}
-      data-action="${action}"
+      data-action="click->${ctrl}#dispatchWorkspaceEvent"
+      data-workspace-event="${escapeHTML(eventName)}"
       class="h-10 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] px-3 text-sm text-gray-200 hover:bg-white/5 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${extraClass}"
       ${disabled ? "disabled" : ""}
     >${escapeHTML(label)}</button>
   `
-}
-
-function extractMethod(action: string): string {
-  const match = action.match(/->[^#]+#([a-zA-Z0-9_]+)/)
-  return match?.[1] || ""
 }

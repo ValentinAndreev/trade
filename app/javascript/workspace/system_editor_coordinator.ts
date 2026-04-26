@@ -1,10 +1,10 @@
 import { relativeDirname } from "../research/file_manager"
-import { showToast } from "../services/toast"
 import type { ResearchDslDiagnostic } from "../research/dsl"
 import type { SystemEditorConfig } from "../types/store"
 import type { WorkspaceConfig, WorkspaceBaseDeps, RevealActiveTabFn } from "./types"
 import type ResearchCoordinator from "./research_coordinator"
 import type AssistantCoordinator from "./assistant_coordinator"
+import type DiagnosticsStore from "./diagnostics_store"
 
 const SYSTEM_EDITOR_CONFIG_CHANGED_FIELDS = [
   "systemId",
@@ -24,25 +24,21 @@ interface SystemEditorCoordinatorDeps extends WorkspaceBaseDeps {
   config: WorkspaceConfig
   research: ResearchCoordinator
   assistant: AssistantCoordinator
+  diagnosticsStore: DiagnosticsStore
   revealActiveTab: RevealActiveTabFn
 }
 
 export default class SystemEditorCoordinator {
-  private diagnostics = new Map<string, ResearchDslDiagnostic[]>()
-  private disconnected = false
-
   constructor(private deps: SystemEditorCoordinatorDeps) {}
 
-  disconnect(): void {
-    this.disconnected = true
-  }
+  disconnect(): void { /* lifecycle managed by AbortSignal */ }
 
   diagnosticsFor(tabId: string): ResearchDslDiagnostic[] {
-    return this.diagnostics.get(tabId) || []
+    return this.deps.diagnosticsStore.get(tabId)
   }
 
   clearDiagnostics(tabId: string): void {
-    this.diagnostics.delete(tabId)
+    this.deps.diagnosticsStore.delete(tabId)
   }
 
   onTabRemoved(tabId: string): void {
@@ -68,7 +64,7 @@ export default class SystemEditorCoordinator {
     if (!tabId || !config) return
     const currentTab = this.deps.store.tabs.find(item => item.id === tabId && item.type === "system_editor")
     if (!currentTab) {
-      this.diagnostics.delete(tabId)
+      this.deps.diagnosticsStore.delete(tabId)
       return
     }
 
@@ -76,21 +72,21 @@ export default class SystemEditorCoordinator {
     let tab = currentTab
     if (configChanged) {
       if (!this.deps.store.updateSystemEditorConfig(tabId, config)) {
-        this.diagnostics.delete(tabId)
+        this.deps.diagnosticsStore.delete(tabId)
         return
       }
       const updatedTab = this.deps.store.tabs.find(item => item.id === tabId && item.type === "system_editor")
       if (!updatedTab?.systemEditorConfig) {
-        this.diagnostics.delete(tabId)
+        this.deps.diagnosticsStore.delete(tabId)
         return
       }
       tab = updatedTab
     }
 
     if (tab.systemEditorConfig) {
-      this.diagnostics.set(tabId, Array.isArray(diagnostics) ? diagnostics : [])
+      this.deps.diagnosticsStore.set(tabId, Array.isArray(diagnostics) ? diagnostics : [])
     } else {
-      this.diagnostics.delete(tabId)
+      this.deps.diagnosticsStore.delete(tabId)
     }
 
     // SystemEditorController owns its visible editing state while it is active.
@@ -101,14 +97,9 @@ export default class SystemEditorCoordinator {
   }
 
   async onCatalogChanged(_e: Event): Promise<void> {
-    try {
-      await this.deps.research.refreshCatalog()
-      if (this.disconnected) return
-      this.deps.renderFn()
-    } catch (error) {
-      console.error("Failed to refresh research catalog", error)
-      showToast("Failed to refresh system catalog", "error")
-    }
+    const ok = await this.deps.research.refreshCatalog("Failed to refresh system catalog")
+    if (this.deps.signal.aborted || !ok) return
+    this.deps.renderFn()
   }
 
   onOpenResearch(e: Event): void {

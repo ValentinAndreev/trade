@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { escapeHTML, createInlineRenameInput } from "../../utils/dom"
+import { escapeHTML, createInlineRenameInput, dispatchWorkspaceEvent } from "../../utils/dom"
 
 describe("escapeHTML", () => {
   it("escapes ampersand", () => {
@@ -66,5 +66,65 @@ describe("createInlineRenameInput", () => {
   it("applies custom CSS class", () => {
     const input = createInlineRenameInput("x", vi.fn(), "my-class")
     expect(input.className).toBe("my-class")
+  })
+})
+
+describe("dispatchWorkspaceEvent", () => {
+  it("dispatches value and mouse detail from the current target", () => {
+    const host = document.createElement("section")
+    const input = document.createElement("input")
+    const handler = vi.fn()
+
+    input.value = "btc"
+    input.dataset.workspaceEvent = "workspace:test"
+    input.addEventListener("click", event => dispatchWorkspaceEvent(host, event, true))
+    host.addEventListener("workspace:test", handler)
+    host.appendChild(input)
+
+    input.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 2 }))
+
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(handler.mock.calls[0][0].detail).toEqual({ value: "btc", mouseDetail: 2 })
+  })
+
+  it("dispatches path and kind details without bubbling by default", () => {
+    const outer = document.createElement("div")
+    const host = document.createElement("section")
+    const button = document.createElement("button")
+    const hostHandler = vi.fn()
+    const outerHandler = vi.fn()
+
+    button.dataset.workspaceEvent = "workspace:navigate"
+    button.dataset.path = "systems/example.yml"
+    button.dataset.kind = "file"
+    button.addEventListener("click", event => dispatchWorkspaceEvent(host, event))
+    host.addEventListener("workspace:navigate", hostHandler)
+    outer.addEventListener("workspace:navigate", outerHandler)
+    host.appendChild(button)
+    outer.appendChild(host)
+
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+    expect(hostHandler).toHaveBeenCalledTimes(1)
+    expect(hostHandler.mock.calls[0][0].detail).toEqual({
+      mouseDetail: 0,
+      path: "systems/example.yml",
+      kind: "file",
+    })
+    expect(outerHandler).not.toHaveBeenCalled()
+  })
+
+  it("does not dispatch when the target has no workspace event name", () => {
+    const host = document.createElement("section")
+    const button = document.createElement("button")
+    const handler = vi.fn()
+
+    button.addEventListener("click", event => dispatchWorkspaceEvent(host, event, true))
+    host.addEventListener("workspace:test", handler)
+    host.appendChild(button)
+
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+    expect(handler).not.toHaveBeenCalled()
   })
 })

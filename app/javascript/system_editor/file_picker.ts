@@ -13,6 +13,7 @@ import {
   isPathInside,
   relativeDirname,
   replacePathPrefix,
+  resolveDirectoryPath,
   syncFileManagerSelectionState,
   systemIdFromPath,
 } from "../research/file_manager"
@@ -20,13 +21,6 @@ import { showToast } from "../services/toast"
 import { buildStarterSystemYaml } from "../system_editor/state"
 import { DEFAULT_CUSTOM_SYSTEM_ID } from "../config/constants"
 import type { SystemEditorConfig } from "../types/store"
-
-export type FilePickerState = {
-  open: boolean
-  query: string
-  directoryPath: string
-  selectedPath: string | null
-}
 
 export type FilePickerCallbacks = {
   getState: () => SystemEditorConfig | null
@@ -38,6 +32,7 @@ export type FilePickerCallbacks = {
   onPersist: () => void
   onCatalogChanged: (system: ResearchCatalogEntry | null) => void
   onOpenSystem: () => void
+  signal: AbortSignal
 }
 
 export class FilePickerModule {
@@ -58,7 +53,7 @@ export class FilePickerModule {
       ? sourcePath
       : null
 
-    this.directoryPath = this.resolveDirectoryPath(
+    this.directoryPath = resolveDirectoryPath(
       directories,
       selectedPath ? relativeDirname(selectedPath) : currentDirectoryPath
     )
@@ -82,6 +77,10 @@ export class FilePickerModule {
   selectEntry(element: HTMLElement, isDoubleClick: boolean): void {
     const path = element.dataset.path || null
     const kind = element.dataset.kind || "file"
+    this.selectEntryByPath(path, kind, isDoubleClick)
+  }
+
+  selectEntryByPath(path: string | null, kind: string, isDoubleClick: boolean): void {
     this.selectedPath = path
     this.syncSelection(path, kind)
 
@@ -98,20 +97,24 @@ export class FilePickerModule {
 
   confirmSelection(): void {
     if (!this.selectedPath) return
-    this.openSystemFile(this.selectedPath)
+    const catalog = this.cb.getCatalog()
+    const kind = findResearchEntry(catalog, this.selectedPath) ? "file" : "directory"
+    this.openPath(this.selectedPath, kind)
   }
 
   async createDirectory(): Promise<void> {
     const directoryName = window.prompt("New folder name")?.trim()
     if (!directoryName) return
 
-    const response = await createResearchDirectory(this.directoryPath || null, directoryName)
+    const response = await createResearchDirectory(this.directoryPath || null, directoryName, this.cb.signal)
+    if (this.cb.signal.aborted) return
     if (!response?.ok || !response.path) {
       showToast(response?.diagnostics?.[0]?.message || "Folder create failed")
       return
     }
 
     await this.refreshCatalog()
+    if (this.cb.signal.aborted) return
     this.directoryPath = response.path
     this.selectedPath = response.path
     this.cb.onCatalogChanged(null)
@@ -123,13 +126,15 @@ export class FilePickerModule {
     if (!nextId) return
 
     const yaml = buildStarterSystemYaml(nextId)
-    const response = await saveResearchSystem(yaml, null, this.directoryPath || null)
+    const response = await saveResearchSystem(yaml, null, this.directoryPath || null, this.cb.signal)
+    if (this.cb.signal.aborted) return
     if (!response?.ok || !response.system) {
       showToast(response?.diagnostics?.[0]?.message || "File create failed")
       return
     }
 
     await this.refreshCatalog()
+    if (this.cb.signal.aborted) return
     this.query = ""
     this.directoryPath = relativeDirname(response.system.relative_path)
     this.selectedPath = response.system.relative_path
@@ -159,13 +164,15 @@ export class FilePickerModule {
     const entry = findResearchEntry(catalog, selectedPath)
 
     if (entry) {
-      const response = await deleteResearchSystem(selectedPath)
+      const response = await deleteResearchSystem(selectedPath, this.cb.signal)
+      if (this.cb.signal.aborted) return
       if (!response?.ok) {
         showToast(response?.diagnostics?.[0]?.message || "File delete failed")
         return
       }
     } else {
-      const response = await deleteResearchDirectory(selectedPath)
+      const response = await deleteResearchDirectory(selectedPath, this.cb.signal)
+      if (this.cb.signal.aborted) return
       if (!response?.ok) {
         showToast(response?.diagnostics?.[0]?.message || "Folder delete failed")
         return
@@ -173,6 +180,7 @@ export class FilePickerModule {
     }
 
     await this.refreshCatalog()
+    if (this.cb.signal.aborted) return
     const state = this.cb.getState()
     if (state?.sourcePath && isPathInside(selectedPath, state.sourcePath)) {
       this.cb.updateState(s => {
@@ -196,13 +204,15 @@ export class FilePickerModule {
     const nextId = window.prompt("New file name", entry.id)?.trim()
     if (!nextId || nextId === entry.id) return
 
-    const response = await renameResearchSystem(selectedPath, nextId, entry.yaml)
+    const response = await renameResearchSystem(selectedPath, nextId, entry.yaml, this.cb.signal)
+    if (this.cb.signal.aborted) return
     if (!response?.ok || !response.system) {
       showToast(response?.diagnostics?.[0]?.message || "File rename failed")
       return
     }
 
     await this.refreshCatalog()
+    if (this.cb.signal.aborted) return
     this.selectedPath = response.system.relative_path
     this.directoryPath = relativeDirname(response.system.relative_path)
 
@@ -226,13 +236,15 @@ export class FilePickerModule {
     const nextName = window.prompt("New folder name", selectedPath.split("/").pop() || "")?.trim()
     if (!nextName) return
 
-    const response = await renameResearchDirectory(selectedPath, nextName)
+    const response = await renameResearchDirectory(selectedPath, nextName, this.cb.signal)
+    if (this.cb.signal.aborted) return
     if (!response?.ok || !response.path) {
       showToast(response?.diagnostics?.[0]?.message || "Folder rename failed")
       return
     }
 
     await this.refreshCatalog()
+    if (this.cb.signal.aborted) return
     this.selectedPath = response.path
     this.directoryPath = response.path
 
@@ -293,17 +305,8 @@ export class FilePickerModule {
   }
 
   private async refreshCatalog() {
-    const snapshot = await fetchResearchCatalog()
+    const snapshot = await fetchResearchCatalog(this.cb.signal)
+    if (this.cb.signal.aborted) return
     this.cb.setCatalog(snapshot.systems, snapshot.directories)
-    return snapshot
-  }
-
-  private resolveDirectoryPath(directoryPaths: string[], requestedPath: string | null | undefined): string {
-    let candidate = (requestedPath || "").trim().replace(/^\/+|\/+$/g, "")
-    while (candidate.length > 0) {
-      if (directoryPaths.includes(candidate)) return candidate
-      candidate = relativeDirname(candidate)
-    }
-    return ""
   }
 }

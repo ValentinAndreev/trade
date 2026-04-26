@@ -108,8 +108,8 @@ export interface ResearchEditorMetadataResponse {
   condition_expression: ResearchConditionExpressionMetadata
 }
 
-export async function fetchResearchEditorMetadata(): Promise<ResearchEditorMetadataResponse | null> {
-  const response = await apiFetch("/api/research/editor_metadata", {}, { silent: true })
+export async function fetchResearchEditorMetadata(signal?: AbortSignal): Promise<ResearchEditorMetadataResponse | null> {
+  const response = await apiFetch("/api/research/editor_metadata", { signal }, { silent: true })
   if (!response?.ok) return null
   return await response.json() as ResearchEditorMetadataResponse
 }
@@ -122,8 +122,8 @@ export async function cancelResearch(runId: string): Promise<void> {
   }, { silent: true })
 }
 
-export async function fetchResearchCatalog(): Promise<ResearchCatalogSnapshot> {
-  const response = await apiFetch("/api/research/catalog")
+export async function fetchResearchCatalog(signal?: AbortSignal): Promise<ResearchCatalogSnapshot> {
+  const response = await apiFetch("/api/research/catalog", { signal })
   if (!response?.ok) return { systems: [], directories: [] }
 
   const payload = await response.json() as ResearchCatalogSnapshot
@@ -133,7 +133,7 @@ export async function fetchResearchCatalog(): Promise<ResearchCatalogSnapshot> {
   }
 }
 
-export async function validateResearchSystem(systemYaml: string, systemId?: string): Promise<ResearchValidationResponse | null> {
+export async function validateResearchSystem(systemYaml: string, systemId?: string, signal?: AbortSignal): Promise<ResearchValidationResponse | null> {
   const response = await apiFetch("/api/research/systems/validate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -141,6 +141,7 @@ export async function validateResearchSystem(systemYaml: string, systemId?: stri
       system_id: systemId || null,
       system_yaml: systemYaml,
     }),
+    signal,
   })
 
   if (!response) return null
@@ -151,6 +152,7 @@ export async function saveResearchSystem(
   systemYaml: string,
   sourcePath: string | null = null,
   directoryPath: string | null = null,
+  signal?: AbortSignal,
 ): Promise<ResearchSystemSaveResponse | null> {
   const response = await apiFetch("/api/research/systems/save", {
     method: "POST",
@@ -160,6 +162,7 @@ export async function saveResearchSystem(
       directory_path: directoryPath,
       system_yaml: systemYaml,
     }),
+    signal,
   })
 
   if (!response) return null
@@ -170,6 +173,7 @@ export async function renameResearchSystem(
   sourcePath: string,
   targetSystemId: string,
   systemYaml: string,
+  signal?: AbortSignal,
 ): Promise<ResearchSystemSaveResponse | null> {
   const response = await apiFetch("/api/research/systems/rename", {
     method: "POST",
@@ -179,19 +183,21 @@ export async function renameResearchSystem(
       target_system_id: targetSystemId,
       system_yaml: systemYaml,
     }),
+    signal,
   })
 
   if (!response) return null
   return await response.json() as ResearchSystemSaveResponse
 }
 
-export async function deleteResearchSystem(sourcePath: string): Promise<ResearchSystemDeleteResponse | null> {
+export async function deleteResearchSystem(sourcePath: string, signal?: AbortSignal): Promise<ResearchSystemDeleteResponse | null> {
   const response = await apiFetch("/api/research/systems/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       source_path: sourcePath,
     }),
+    signal,
   })
 
   if (!response) return null
@@ -201,6 +207,7 @@ export async function deleteResearchSystem(sourcePath: string): Promise<Research
 export async function createResearchDirectory(
   parentPath: string | null,
   directoryName: string,
+  signal?: AbortSignal,
 ): Promise<ResearchDirectoryMutationResponse | null> {
   const response = await apiFetch("/api/research/directories/create", {
     method: "POST",
@@ -209,6 +216,7 @@ export async function createResearchDirectory(
       parent_path: parentPath,
       directory_name: directoryName,
     }),
+    signal,
   })
 
   if (!response) return null
@@ -218,6 +226,7 @@ export async function createResearchDirectory(
 export async function renameResearchDirectory(
   sourcePath: string,
   targetName: string,
+  signal?: AbortSignal,
 ): Promise<ResearchDirectoryMutationResponse | null> {
   const response = await apiFetch("/api/research/directories/rename", {
     method: "POST",
@@ -226,6 +235,7 @@ export async function renameResearchDirectory(
       source_path: sourcePath,
       target_name: targetName,
     }),
+    signal,
   })
 
   if (!response) return null
@@ -234,6 +244,7 @@ export async function renameResearchDirectory(
 
 export async function deleteResearchDirectory(
   sourcePath: string,
+  signal?: AbortSignal,
 ): Promise<ResearchDirectoryMutationResponse | null> {
   const response = await apiFetch("/api/research/directories/delete", {
     method: "POST",
@@ -241,6 +252,7 @@ export async function deleteResearchDirectory(
     body: JSON.stringify({
       source_path: sourcePath,
     }),
+    signal,
   })
 
   if (!response) return null

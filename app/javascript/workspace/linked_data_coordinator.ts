@@ -1,21 +1,15 @@
 import { generateTrades, computeSystemStats } from "../data_grid/engines"
 import { LINKED_DATA_REFRESH_MS, SYSTEM_STATS_RETRY_DELAY_MS, SYSTEM_STATS_MAX_RETRIES } from "../config/constants"
-import type { DataGridControllerAPI, SystemStats, Trade } from "../types/store"
+import type { SystemStats, Trade } from "../types/store"
 import type { LinkedDataDeps } from "./types"
-
-interface SystemStatsControllerAPI {
-  setStats(stats: SystemStats | null, trades: Trade[]): void
-}
 
 export default class LinkedDataCoordinator {
   private refreshInterval: ReturnType<typeof setInterval> | null = null
   private statsRetryTimeouts = new Map<string, { dataTabId: string; timeout: ReturnType<typeof setTimeout> }>()
-  private disconnected = false
 
   constructor(private deps: LinkedDataDeps) {}
 
   disconnect(): void {
-    this.disconnected = true
     this.stopRefresh()
     this.clearStatsRetryTimeouts()
   }
@@ -54,7 +48,7 @@ export default class LinkedDataCoordinator {
   }
 
   startRefreshIfActive(): void {
-    if (this.disconnected) return
+    if (this.deps.signal.aborted) return
     const tab = this.deps.store.activeTab
     if (!tab || !this.deps.store.isLinkedDataTab(tab)) {
       this.stopRefresh()
@@ -85,7 +79,7 @@ export default class LinkedDataCoordinator {
   }
 
   private scheduleSystemStatsRetry(systemId: string, dataTabId: string, attempt: number): void {
-    if (this.disconnected) return
+    if (this.deps.signal.aborted) return
     const key = this.statsRetryKey(systemId, dataTabId)
     const existingRetry = this.statsRetryTimeouts.get(key)
     if (existingRetry) clearTimeout(existingRetry.timeout)
@@ -103,20 +97,14 @@ export default class LinkedDataCoordinator {
   }
 
   private deliverSystemStats(systemId: string, dataTabId: string, attempt = 0): void {
-    if (this.disconnected) return
+    if (this.deps.signal.aborted) return
 
     const dataTab = this.deps.store.tabs.find(t => t.id === dataTabId)
     if (!dataTab?.dataConfig) return
     const system = (dataTab.dataConfig.systems ?? []).find(s => s.id === systemId)
     if (!system) return
 
-    const app = this.deps.application
-    const dataWrapper = this.deps.panelsTarget.querySelector(`[data-tab-wrapper="${dataTabId}"]`) as HTMLElement | null
-    const gridEl = dataWrapper?.querySelector("[data-controller='data-grid']") as HTMLElement | null
-    const gridCtrl = gridEl
-      ? app.getControllerForElementAndIdentifier(gridEl, "data-grid") as DataGridControllerAPI | null
-      : null
-
+    const gridCtrl = this.deps.getDataGridController(dataTabId)
     const rows = gridCtrl?.getData() ?? []
 
     if ((!gridCtrl || !rows.length) && attempt < SYSTEM_STATS_MAX_RETRIES) {
@@ -127,14 +115,8 @@ export default class LinkedDataCoordinator {
     const trades = generateTrades(system, rows)
     const stats = computeSystemStats(trades)
 
-    const statsWrapper = this.deps.panelsTarget.querySelector(`[data-system-stats-system-id-value="${systemId}"]`) as HTMLElement | null
-    if (!statsWrapper) return
-    const statsCtrl = app.getControllerForElementAndIdentifier(statsWrapper, "system-stats")
-    if (!this.isSystemStatsController(statsCtrl)) return
+    const statsCtrl = this.deps.getSystemStatsController(systemId)
+    if (!statsCtrl) return
     statsCtrl.setStats(stats, trades)
-  }
-
-  private isSystemStatsController(controller: unknown): controller is SystemStatsControllerAPI {
-    return !!controller && typeof (controller as { setStats?: unknown }).setStats === "function"
   }
 }

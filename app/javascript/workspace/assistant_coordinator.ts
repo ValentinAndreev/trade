@@ -12,11 +12,11 @@ import type {
   WorkspaceAssistantState,
 } from "../types/store"
 import type { RevealActiveTabFn, WorkspaceBaseDeps } from "./types"
+import type DiagnosticsStore from "./diagnostics_store"
 
 interface AssistantCoordinatorDeps extends WorkspaceBaseDeps {
   revealActiveTab: RevealActiveTabFn
-  getSystemEditorDiagnostics: (tabId: string) => ResearchDslDiagnostic[]
-  clearSystemEditorDiagnostics: (tabId: string) => void
+  diagnosticsStore: DiagnosticsStore
 }
 
 interface AssistantLinkedTargetContext {
@@ -29,12 +29,13 @@ interface AssistantLinkedTargetContext {
 
 export default class AssistantCoordinator {
   private state: WorkspaceAssistantState = hydrateWorkspaceAssistantState(loadWorkspaceAssistantState())
-  private disconnected = false
 
   constructor(private deps: AssistantCoordinatorDeps) {}
 
-  disconnect(): void {
-    this.disconnected = true
+  disconnect(): void { /* lifecycle managed by AbortSignal */ }
+
+  private get aborted(): boolean {
+    return this.deps.signal.aborted
   }
 
   stateJson(): string {
@@ -133,7 +134,7 @@ export default class AssistantCoordinator {
     })
 
     this.linkToSystemEditor(tab.id, false, false)
-    this.deps.clearSystemEditorDiagnostics(tab.id)
+    this.deps.diagnosticsStore.delete(tab.id)
     this.deps.revealActiveTab()
     this.deps.renderFn()
     showToast("Draft opened in System editor", "success")
@@ -166,7 +167,7 @@ export default class AssistantCoordinator {
 
     this.deps.store.updateSystemEditorConfig(tab.id, updates)
     this.linkToSystemEditor(tab.id, false, false)
-    this.deps.clearSystemEditorDiagnostics(tab.id)
+    this.deps.diagnosticsStore.delete(tab.id)
     this.deps.renderFn()
     showToast("Assistant draft applied to linked editor", "success")
   }
@@ -197,12 +198,12 @@ export default class AssistantCoordinator {
       system_id: config.systemId || null,
       source_path: config.sourcePath || null,
       yaml_hash: hashText(config.systemYaml || ""),
-      diagnostics: this.deps.getSystemEditorDiagnostics(tab.id),
+      diagnostics: this.deps.diagnosticsStore.get(tab.id),
     }
   }
 
   private persist(): void {
-    if (this.disconnected) return
+    if (this.aborted) return
     saveWorkspaceAssistantState(this.state)
   }
 }

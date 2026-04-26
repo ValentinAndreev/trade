@@ -12,6 +12,7 @@ import type {
 import type { SystemEditorConfig } from "../types/store"
 import { renderFileManagerModal } from "../research/file_manager"
 import { getConditionExpressionMetadata } from "./condition_expression"
+import { SYSTEM_EDITOR_EVENTS } from "./events"
 
 type SystemEditorTemplateArgs = {
   state: SystemEditorConfig
@@ -195,16 +196,15 @@ export function renderSystemEditorHTML({
         currentDirectoryPath: filePickerDirectoryPath,
         selectedPath: filePickerSelectedPath,
         searchQuery: filePickerQuery,
-        closeAction: "click->system-editor#closeFilePicker",
-        navigateAction: "click->system-editor#navigateFileManager",
-        selectAction: "click->system-editor#selectFileManagerEntry",
-        openAction: "click->system-editor#openFileManagerEntry",
-        confirmAction: "click->system-editor#confirmFileSelection",
-        searchAction: "input->system-editor#updateFilePickerQuery",
-        createDirectoryAction: "click->system-editor#createDirectory",
-        createFileAction: "click->system-editor#createFile",
-        renameAction: "click->system-editor#renameFileManagerEntry",
-        deleteAction: "click->system-editor#deleteFileManagerEntry",
+        closeEventName: SYSTEM_EDITOR_EVENTS.CLOSE_FILE_PICKER,
+        navigateEventName: SYSTEM_EDITOR_EVENTS.NAVIGATE_FILE_MANAGER,
+        selectEventName: SYSTEM_EDITOR_EVENTS.SELECT_FILE_MANAGER_ENTRY,
+        confirmEventName: SYSTEM_EDITOR_EVENTS.CONFIRM_FILE_SELECTION,
+        searchEventName: SYSTEM_EDITOR_EVENTS.UPDATE_FILE_PICKER_QUERY,
+        createDirectoryEventName: SYSTEM_EDITOR_EVENTS.CREATE_DIRECTORY,
+        createFileEventName: SYSTEM_EDITOR_EVENTS.CREATE_FILE,
+        renameEventName: SYSTEM_EDITOR_EVENTS.RENAME_FILE_MANAGER_ENTRY,
+        deleteEventName: SYSTEM_EDITOR_EVENTS.DELETE_FILE_MANAGER_ENTRY,
         confirmLabel: "Open",
       }) : ""}
     </div>

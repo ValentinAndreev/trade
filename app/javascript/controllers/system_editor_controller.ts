@@ -32,6 +32,9 @@ import { FilePickerModule } from "../system_editor/file_picker"
 import { ValidationModule } from "../system_editor/validation"
 import { setHighlightConfig } from "../system_editor/yaml_highlighter"
 import { DEFAULT_CUSTOM_SYSTEM_ID } from "../config/constants"
+import { dispatchWorkspaceEvent as dispatchWorkspaceEventUtil } from "../utils/dom"
+import { SYSTEM_EDITOR_EVENTS } from "../system_editor/events"
+import { WORKSPACE_EVENTS } from "../workspace/events"
 import type { SystemEditorConfig } from "../types/store"
 
 type ConfirmDialogState = {
@@ -72,9 +75,24 @@ export default class extends Controller {
     if (this.filePicker.open) { this.closeFilePicker(); return }
   }
 
+  private _elementEvents = new AbortController()
+
   async connect() {
-    window.addEventListener("connection:change", this._onConnectionChange)
-    window.addEventListener("keydown", this._onKeydown)
+    const signal = this._elementEvents.signal
+    window.addEventListener("connection:change", this._onConnectionChange, { signal })
+    window.addEventListener("keydown", this._onKeydown, { signal })
+    this.element.addEventListener(SYSTEM_EDITOR_EVENTS.CLOSE_FILE_PICKER, () => this.closeFilePicker(), { signal })
+    this.element.addEventListener(SYSTEM_EDITOR_EVENTS.NAVIGATE_FILE_MANAGER, (e: Event) => this.navigateFileManager(e), { signal })
+    this.element.addEventListener(SYSTEM_EDITOR_EVENTS.SELECT_FILE_MANAGER_ENTRY, (e: Event) => this.selectFileManagerEntry(e), { signal })
+    this.element.addEventListener(SYSTEM_EDITOR_EVENTS.CONFIRM_FILE_SELECTION, () => this.confirmFileSelection(), { signal })
+    this.element.addEventListener(SYSTEM_EDITOR_EVENTS.UPDATE_FILE_PICKER_QUERY, (e: Event) => {
+      const { value } = (e as CustomEvent<{ value?: string }>).detail
+      if (typeof value === "string") this.filePicker.updateQuery(value)
+    }, { signal })
+    this.element.addEventListener(SYSTEM_EDITOR_EVENTS.CREATE_DIRECTORY, () => { void this.createDirectory() }, { signal })
+    this.element.addEventListener(SYSTEM_EDITOR_EVENTS.CREATE_FILE, () => { void this.createFile() }, { signal })
+    this.element.addEventListener(SYSTEM_EDITOR_EVENTS.RENAME_FILE_MANAGER_ENTRY, () => { void this.renameFileManagerEntry() }, { signal })
+    this.element.addEventListener(SYSTEM_EDITOR_EVENTS.DELETE_FILE_MANAGER_ENTRY, () => this.deleteFileManagerEntry(), { signal })
     this.autocomplete = new YamlAutocomplete()
     this.editor = new EditorCore(this.element as HTMLElement)
     this.validator = new ValidationModule((result, validating, updatedId) => {
@@ -96,11 +114,13 @@ export default class extends Controller {
       onPersist: () => this._persistState(),
       onCatalogChanged: system => this._dispatchCatalogChanged(system),
       onOpenSystem: () => this._revalidateOpenedSystem(),
+      signal,
     })
 
     this.element.innerHTML = `<div class="flex h-full items-center justify-center text-sm text-gray-500 animate-pulse">Loading system editor...</div>`
 
-    const [snapshot, editorMetadata] = await Promise.all([fetchResearchCatalog(), fetchResearchEditorMetadata()])
+    const [snapshot, editorMetadata] = await Promise.all([fetchResearchCatalog(signal), fetchResearchEditorMetadata(signal)])
+    if (signal.aborted) return
     const config = editorMetadata
       ? { keywords: new Set(editorMetadata.highlight.keywords), values: new Set(editorMetadata.highlight.values) }
       : { keywords: new Set<string>(), values: new Set<string>() }
@@ -116,14 +136,14 @@ export default class extends Controller {
     this._persistState()
     this._renderSafely()
 
-    await this.validator.run(this.state, true)
+    await this.validator.run(this.state, true, signal)
   }
 
   disconnect() {
+    this._elementEvents.abort()
+    this._elementEvents = new AbortController()
     this.validator.cancel()
     this.autocomplete.destroy()
-    window.removeEventListener("connection:change", this._onConnectionChange)
-    window.removeEventListener("keydown", this._onKeydown)
   }
 
   configValueChanged() {
@@ -139,7 +159,7 @@ export default class extends Controller {
     this._refreshLocalDiagnostics()
     this._persistState()
     this._renderSafely()
-    void this.validator.run(this.state, true)
+    void this.validator.run(this.state, true, this._elementEvents.signal)
   }
 
   openFilePicker() {
@@ -154,21 +174,25 @@ export default class extends Controller {
     this.filePicker.updateQuery((e.currentTarget as HTMLInputElement).value)
   }
 
-  stopFileManagerPropagation(e: Event) {
+  dispatchWorkspaceEvent(e: Event) {
+    dispatchWorkspaceEventUtil(this.element, e)
+  }
+
+  stopPropagation(e: Event) {
     e.stopPropagation()
   }
 
   selectFileManagerEntry(e: Event) {
-    this.filePicker.selectEntry(e.currentTarget as HTMLElement, (e as MouseEvent).detail >= 2)
+    const detail = (e as CustomEvent<{ mouseDetail?: number; path?: string; kind?: string }>).detail
+    const path = detail.path || null
+    const kind = detail.kind || "file"
+    const isDoubleClick = (detail.mouseDetail ?? 1) >= 2
+    this.filePicker.selectEntryByPath(path, kind, isDoubleClick)
   }
 
   navigateFileManager(e: Event) {
-    this.filePicker.navigate((e.currentTarget as HTMLElement).dataset.path || "")
-  }
-
-  openFileManagerEntry(e: Event) {
-    const el = e.currentTarget as HTMLElement
-    this.filePicker.openSystemFile.call(this.filePicker, el.dataset.path || "")
+    const { path } = (e as CustomEvent<{ path: string }>).detail
+    this.filePicker.navigate(path)
   }
 
   confirmFileSelection() {
@@ -213,7 +237,7 @@ export default class extends Controller {
     this._refreshLocalDiagnostics()
     this._persistState()
     this._renderSafely()
-    void this.validator.run(this.state, true)
+    void this.validator.run(this.state, true, this._elementEvents.signal)
   }
 
   resetSystem() {
@@ -232,7 +256,7 @@ export default class extends Controller {
     this._refreshLocalDiagnostics()
     this._persistState()
     this._renderSafely()
-    void this.validator.run(this.state, true)
+    void this.validator.run(this.state, true, this._elementEvents.signal)
   }
 
   updateYaml() {
@@ -246,7 +270,7 @@ export default class extends Controller {
     this._persistState()
     this.autocomplete.handleInput(textarea)
     if (!this._refreshDynamicView()) this._renderSafely()
-    void this.validator.run(this.state, false)
+    void this.validator.run(this.state, false, this._elementEvents.signal)
   }
 
   syncEditorScroll() {
@@ -263,17 +287,19 @@ export default class extends Controller {
   }
 
   async validateNow() {
-    await this.validator.run(this.state, true)
+    await this.validator.run(this.state, true, this._elementEvents.signal)
   }
 
   async saveSystem() {
     if (!this.state) return
 
+    const signal = this._elementEvents.signal
     this.saving = true
     this._renderSafely()
 
     try {
-      const response = await saveResearchSystem(this.state.systemYaml, this.state.sourcePath, this.state.directoryPath)
+      const response = await saveResearchSystem(this.state.systemYaml, this.state.sourcePath, this.state.directoryPath, signal)
+      if (signal.aborted) return
       if (!response) {
         showToast("System save failed")
         return
@@ -301,6 +327,7 @@ export default class extends Controller {
       this._dispatchCatalogChanged(saved)
       showToast(`Saved ${saved.relative_path}`, "success")
     } finally {
+      if (signal.aborted) return
       this.saving = false
       this._renderSafely()
     }
@@ -312,11 +339,13 @@ export default class extends Controller {
     const nextId = window.prompt("New system id", this.state.sourceSystemId)?.trim()
     if (!nextId || nextId === this.state.sourceSystemId) return
 
+    const signal = this._elementEvents.signal
     this.saving = true
     this._renderSafely()
 
     try {
-      const response = await renameResearchSystem(this.state.sourcePath, nextId, this.state.systemYaml)
+      const response = await renameResearchSystem(this.state.sourcePath, nextId, this.state.systemYaml, signal)
+      if (signal.aborted) return
       if (!response) {
         showToast("System rename failed")
         return
@@ -344,6 +373,7 @@ export default class extends Controller {
       this._dispatchCatalogChanged(renamed)
       showToast(`Renamed to ${renamed.relative_path}`, "success")
     } finally {
+      if (signal.aborted) return
       this.saving = false
       this._renderSafely()
     }
@@ -451,21 +481,21 @@ export default class extends Controller {
       showToast("Save the YAML file before using it in Test/Optimization")
       return
     }
-    this.element.dispatchEvent(new CustomEvent("systemeditor:openResearch", {
+    this.element.dispatchEvent(new CustomEvent(WORKSPACE_EVENTS.SYSTEM_EDITOR_OPEN_RESEARCH, {
       bubbles: true,
       detail: { systemId: this.state.sourceSystemId, systemPath: this.state.sourcePath },
     }))
   }
 
   openAssistant() {
-    this.element.dispatchEvent(new CustomEvent("systemeditor:openAssistant", {
+    this.element.dispatchEvent(new CustomEvent(WORKSPACE_EVENTS.SYSTEM_EDITOR_OPEN_ASSISTANT, {
       bubbles: true,
       detail: { tabId: this.tabIdValue },
     }))
   }
 
   linkAssistantTarget() {
-    this.element.dispatchEvent(new CustomEvent("systemeditor:linkAssistantTarget", {
+    this.element.dispatchEvent(new CustomEvent(WORKSPACE_EVENTS.SYSTEM_EDITOR_LINK_ASSISTANT_TARGET, {
       bubbles: true,
       detail: { tabId: this.tabIdValue },
     }))
@@ -512,11 +542,13 @@ export default class extends Controller {
     const sourcePath = this.state.sourcePath
     const sourceFileName = this._currentEntry()?.relative_path || sourcePath
 
+    const signal = this._elementEvents.signal
     this.saving = true
     this._renderSafely()
 
     try {
-      const response = await deleteResearchSystem(sourcePath)
+      const response = await deleteResearchSystem(sourcePath, signal)
+      if (signal.aborted) return
       if (!response) {
         showToast("System delete failed")
         return
@@ -540,6 +572,7 @@ export default class extends Controller {
       this._dispatchCatalogChanged(null)
       showToast(`Deleted ${sourceFileName}`, "success")
     } finally {
+      if (signal.aborted) return
       this.saving = false
       this._renderSafely()
     }
@@ -700,7 +733,7 @@ export default class extends Controller {
 
   private _persistState() {
     if (!this.state) return
-    this.element.dispatchEvent(new CustomEvent("systemeditor:configChanged", {
+    this.element.dispatchEvent(new CustomEvent(WORKSPACE_EVENTS.SYSTEM_EDITOR_CONFIG_CHANGED, {
       bubbles: true,
       detail: {
         tabId: this.tabIdValue,
@@ -711,7 +744,7 @@ export default class extends Controller {
   }
 
   private _dispatchCatalogChanged(system: ResearchCatalogEntry | null) {
-    this.element.dispatchEvent(new CustomEvent("systemeditor:catalogChanged", {
+    this.element.dispatchEvent(new CustomEvent(WORKSPACE_EVENTS.SYSTEM_EDITOR_CATALOG_CHANGED, {
       bubbles: true,
       detail: { system },
     }))
@@ -723,7 +756,7 @@ export default class extends Controller {
     this._refreshLocalDiagnostics()
     this._persistState()
     this._renderSafely()
-    void this.validator.run(this.state, true)
+    void this.validator.run(this.state, true, this._elementEvents.signal)
   }
 
   private _refreshLocalDiagnostics() {

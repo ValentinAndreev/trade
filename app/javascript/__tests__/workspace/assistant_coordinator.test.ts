@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import AssistantCoordinator from "../../workspace/assistant_coordinator"
+import DiagnosticsStore from "../../workspace/diagnostics_store"
 import { loadWorkspaceAssistantState, saveWorkspaceAssistantState } from "../../tabs/persistence"
 import type { ResearchDslDiagnostic } from "../../research/dsl"
 import type TabStore from "../../tabs/store"
@@ -52,7 +53,7 @@ function buildCoordinator(store: TabStore, state?: WorkspaceAssistantState) {
 
   const renderFn = vi.fn()
   const revealActiveTab = vi.fn()
-  const clearDiagnostics = vi.fn()
+  const diagnosticsStore = new DiagnosticsStore()
   const diagnostics: ResearchDslDiagnostic[] = [{
     message: "Broken YAML",
     line: 1,
@@ -61,17 +62,18 @@ function buildCoordinator(store: TabStore, state?: WorkspaceAssistantState) {
     path: null,
     code: null,
   }]
+  diagnosticsStore.set("editor-1", diagnostics)
 
   return {
     renderFn,
     revealActiveTab,
-    clearDiagnostics,
+    diagnosticsStore,
     coordinator: new AssistantCoordinator({
       store,
       renderFn,
       revealActiveTab,
-      getSystemEditorDiagnostics: () => diagnostics,
-      clearSystemEditorDiagnostics: clearDiagnostics,
+      diagnosticsStore,
+      signal: new AbortController().signal,
     }),
   }
 }
@@ -133,15 +135,24 @@ describe("AssistantCoordinator", () => {
     expect(loadWorkspaceAssistantState().linkedTarget).toBeNull()
   })
 
-  it("does not persist assistant state after disconnect", () => {
+  it("does not persist assistant state after abort", () => {
     const store = buildStore([])
-    const { coordinator } = buildCoordinator(store, {
+    const abortController = new AbortController()
+    const diagnosticsStore = new DiagnosticsStore()
+    const coordinator = new AssistantCoordinator({
+      store,
+      renderFn: vi.fn(),
+      revealActiveTab: vi.fn(),
+      diagnosticsStore,
+      signal: abortController.signal,
+    })
+    saveWorkspaceAssistantState({
       currentChatId: 10,
       provider: "openai",
       linkedTarget: { type: "system_editor", tabId: "missing-editor" },
     })
 
-    coordinator.disconnect()
+    abortController.abort()
     coordinator.reconcileLinkedTarget()
 
     expect(loadWorkspaceAssistantState().linkedTarget).toEqual({ type: "system_editor", tabId: "missing-editor" })
@@ -166,14 +177,14 @@ describe("AssistantCoordinator", () => {
   it("applies a draft to the linked system editor without changing the source identity", () => {
     const tab = systemEditorTab()
     const store = buildStore([tab])
-    const clearSystemEditorDiagnostics = vi.fn()
+    const diagnosticsStore = new DiagnosticsStore()
     const renderFn = vi.fn()
     const coordinator = new AssistantCoordinator({
       store,
       renderFn,
       revealActiveTab: vi.fn(),
-      getSystemEditorDiagnostics: () => [],
-      clearSystemEditorDiagnostics,
+      diagnosticsStore,
+      signal: new AbortController().signal,
     })
 
     coordinator.applyDraftToLinkedEditor(new CustomEvent("assistant:applyDraftToLinkedEditor", {
@@ -186,18 +197,18 @@ describe("AssistantCoordinator", () => {
 
     expect(tab.systemEditorConfig?.systemYaml).toContain("Updated")
     expect(tab.systemEditorConfig?.systemId).toBe("demo_system")
-    expect(clearSystemEditorDiagnostics).toHaveBeenCalledWith("editor-1")
     expect(renderFn).toHaveBeenCalled()
   })
 
   it("opens a draft in a new editor and clears the previous chat context", () => {
     const store = buildStore([systemEditorTab("editor-1")])
+    const diagnosticsStore = new DiagnosticsStore()
     const coordinator = new AssistantCoordinator({
       store,
       renderFn: vi.fn(),
       revealActiveTab: vi.fn(),
-      getSystemEditorDiagnostics: () => [],
-      clearSystemEditorDiagnostics: vi.fn(),
+      diagnosticsStore,
+      signal: new AbortController().signal,
     })
     coordinator.linkToSystemEditor("editor-1", false, false)
     coordinator.onStateChanged(new CustomEvent("assistant:stateChanged", {
@@ -217,12 +228,13 @@ describe("AssistantCoordinator", () => {
 
   it("applies a draft to another editor and clears the previous chat context", () => {
     const store = buildStore([systemEditorTab("editor-1"), systemEditorTab("editor-2")])
+    const diagnosticsStore = new DiagnosticsStore()
     const coordinator = new AssistantCoordinator({
       store,
       renderFn: vi.fn(),
       revealActiveTab: vi.fn(),
-      getSystemEditorDiagnostics: () => [],
-      clearSystemEditorDiagnostics: vi.fn(),
+      diagnosticsStore,
+      signal: new AbortController().signal,
     })
     coordinator.onStateChanged(new CustomEvent("assistant:stateChanged", {
       detail: { state: { currentChatId: 42, provider: "openai", linkedTarget: { type: "system_editor", tabId: "editor-1" } } },

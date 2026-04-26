@@ -1,4 +1,5 @@
 import { BORDER_COLOR, BG_SURFACE, BG_INPUT } from "../config/theme"
+import { WORKSPACE_EVENTS } from "../workspace/events"
 import type { ResearchConfig } from "../types/store"
 import { escapeHTML } from "../utils/dom"
 import { utcDateRangeHTML } from "../templates/data_grid_form_templates"
@@ -67,8 +68,10 @@ export default class ResearchSidebarRenderer {
             endDateField: "researchEndDate",
             endHourField: "researchEndHour",
             endMinuteField: "researchEndMinute",
-            dateAction: `change->${this.ctrl}#updateResearchConfig`,
-            timeAction: `keydown.enter->${this.ctrl}#updateResearchConfig`,
+            dateAction: `change->${this.ctrl}#dispatchWorkspaceEvent`,
+            timeAction: `keydown.enter->${this.ctrl}#dispatchWorkspaceEvent`,
+            dateWorkspaceEvent: WORKSPACE_EVENTS.RESEARCH_UPDATE_CONFIG,
+            timeWorkspaceEvent: WORKSPACE_EVENTS.RESEARCH_UPDATE_CONFIG,
           })}
         </div>
 
@@ -82,14 +85,16 @@ export default class ResearchSidebarRenderer {
             </div>
           <button
             type="button"
-            data-action="click->${this.ctrl}#openResearchFilePicker"
+            data-action="click->${this.ctrl}#dispatchWorkspaceEvent"
+            data-workspace-event="${WORKSPACE_EVENTS.RESEARCH_OPEN_FILE_PICKER}"
             class="h-9 rounded border border-[${BORDER_COLOR}] bg-[${BG_INPUT}] text-sm text-gray-200 hover:text-white cursor-pointer"
           >Open file</button>
           </div>
           ${systemSummaryHTML(selectedSystem, metadata)}
           <button
             type="button"
-            data-action="click->${this.ctrl}#openResearchSystemEditor"
+            data-action="click->${this.ctrl}#dispatchWorkspaceEvent"
+            data-workspace-event="${WORKSPACE_EVENTS.RESEARCH_OPEN_SYSTEM_EDITOR}"
             class="h-9 rounded border border-[${BORDER_COLOR}] bg-[${BG_SURFACE}] text-sm text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             ${selectedSystem ? "" : "disabled"}
           >Open in System editor</button>
@@ -109,7 +114,8 @@ export default class ResearchSidebarRenderer {
             <input
               type="checkbox"
               data-field="optimizationEnabled"
-              data-action="change->${this.ctrl}#updateResearchConfig"
+              data-action="change->${this.ctrl}#dispatchWorkspaceEvent"
+              data-workspace-event="${WORKSPACE_EVENTS.RESEARCH_UPDATE_CONFIG}"
               class="accent-blue-500"
               ${config.optimizationEnabled ? "checked" : ""}
             >
@@ -123,7 +129,8 @@ export default class ResearchSidebarRenderer {
         </div>
 
         <button
-          data-action="click->${this.ctrl}#runResearch"
+          data-action="click->${this.ctrl}#dispatchWorkspaceEvent"
+          data-workspace-event="${WORKSPACE_EVENTS.RESEARCH_RUN}"
           class="h-10 px-4 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium cursor-pointer"
           ${runDisabled ? "disabled" : ""}
         >Run</button>
@@ -136,15 +143,14 @@ export default class ResearchSidebarRenderer {
           currentDirectoryPath: filePickerDirectoryPath,
           selectedPath: filePickerSelectedPath,
           searchQuery: filePickerQuery,
-          closeAction: `click->${this.ctrl}#closeResearchFilePicker`,
-          navigateAction: `click->${this.ctrl}#navigateResearchFileManager`,
-          selectAction: `click->${this.ctrl}#selectResearchFileManagerEntry`,
-          openAction: `click->${this.ctrl}#openResearchFileManagerEntry`,
-          confirmAction: `click->${this.ctrl}#confirmResearchFileSelection`,
-          searchAction: `input->${this.ctrl}#updateResearchFilePickerQuery`,
-          createDirectoryAction: `click->${this.ctrl}#createResearchDirectory`,
-          renameAction: `click->${this.ctrl}#renameResearchEntry`,
-          deleteAction: `click->${this.ctrl}#deleteResearchEntry`,
+          closeEventName: WORKSPACE_EVENTS.RESEARCH_CLOSE_FILE_PICKER,
+          navigateEventName: WORKSPACE_EVENTS.RESEARCH_NAVIGATE_FILE_MANAGER,
+          selectEventName: WORKSPACE_EVENTS.RESEARCH_SELECT_FILE_MANAGER_ENTRY,
+          confirmEventName: WORKSPACE_EVENTS.RESEARCH_CONFIRM_FILE_SELECTION,
+          searchEventName: WORKSPACE_EVENTS.RESEARCH_UPDATE_FILE_PICKER_QUERY,
+          createDirectoryEventName: WORKSPACE_EVENTS.RESEARCH_CREATE_DIRECTORY,
+          renameEventName: WORKSPACE_EVENTS.RESEARCH_RENAME_ENTRY,
+          deleteEventName: WORKSPACE_EVENTS.RESEARCH_DELETE_ENTRY,
           confirmLabel: "Open",
         }) : ""}
       </div>
@@ -162,7 +168,8 @@ function selectFieldHTML(ctrl: string, label: string, field: string, options: st
       <span class="text-gray-400">${label}</span>
       <select
         data-field="${field}"
-        data-action="change->${ctrl}#updateResearchConfig"
+        data-action="change->${ctrl}#dispatchWorkspaceEvent"
+        data-workspace-event="${WORKSPACE_EVENTS.RESEARCH_UPDATE_CONFIG}"
         class="${FIELD_CLS}"
         style="color-scheme: dark"
       >${html}</select>
@@ -194,7 +201,8 @@ function inputFieldHTML(
       <input
         ${attrs}
         data-field="${field}"
-        data-action="change->${ctrl}#updateResearchConfig"
+        data-action="change->${ctrl}#dispatchWorkspaceEvent"
+        data-workspace-event="${WORKSPACE_EVENTS.RESEARCH_UPDATE_CONFIG}"
         class="${FIELD_CLS}"
       >
     </label>
@@ -249,7 +257,8 @@ function optimizationFieldHTML(
       <span class="text-gray-400">Optimize</span>
       <select
         data-field="optimizationTarget"
-        data-action="change->${ctrl}#updateResearchConfig"
+        data-action="change->${ctrl}#dispatchWorkspaceEvent"
+        data-workspace-event="${WORKSPACE_EVENTS.RESEARCH_UPDATE_CONFIG}"
         class="${FIELD_CLS}"
         style="color-scheme: dark"
         ${disabled ? "disabled" : ""}
@@ -268,7 +277,8 @@ function metricFieldHTML(ctrl: string, selectedMetric: string, optimizationEnabl
       <span class="text-gray-400">Optimization metric</span>
       <select
         data-field="selectedMetric"
-        data-action="change->${ctrl}#updateResearchConfig"
+        data-action="change->${ctrl}#dispatchWorkspaceEvent"
+        data-workspace-event="${WORKSPACE_EVENTS.RESEARCH_UPDATE_CONFIG}"
         class="${FIELD_CLS}"
         style="color-scheme: dark"
         ${optimizationEnabled ? "" : "disabled"}

@@ -46,6 +46,24 @@ describe("apiFetch", () => {
     expect(showToast).not.toHaveBeenCalled()
   })
 
+  it("returns null without toast when fetch is aborted", async () => {
+    vi.mocked(fetch).mockRejectedValue(new DOMException("Aborted", "AbortError"))
+
+    const result = await apiFetch("/api/test")
+    expect(result).toBeNull()
+    expect(showToast).not.toHaveBeenCalled()
+  })
+
+  it("does not call fetch or toast when signal is already aborted", async () => {
+    const controller = new AbortController()
+    controller.abort()
+
+    const result = await apiFetch("/api/test", { signal: controller.signal })
+    expect(result).toBeNull()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(showToast).not.toHaveBeenCalled()
+  })
+
   it("returns null and shows toast when offline (non-silent, no internet)", async () => {
     Object.defineProperty(monitor, "isOnline", { get: () => false, configurable: true })
     monitor.internetOnline = false
