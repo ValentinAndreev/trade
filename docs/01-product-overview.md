@@ -113,3 +113,4 @@ API-ключи провайдеров вводятся через UI и хран
 5. [07 Jobs and Realtime](07-jobs-and-realtime.md)
 6. [08 Offline Mode](08-offline-mode.md)
 7. [09 Research Systems](09-research-systems.md)
+8. [11 Developer Workflow](11-developer-workflow.md)

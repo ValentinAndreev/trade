@@ -6,6 +6,19 @@ on:
     branches: [ main ]
 
 jobs:
+  memory_bank:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+
+      - name: Validate memory bank
+        run: bin/memory-bank-check
+
   scan_ruby:
     runs-on: ubuntu-latest
 

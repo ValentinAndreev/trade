@@ -111,6 +111,9 @@ bundle exec rails runner "MacroSyncJob.perform_now(frequency: 'daily')"
 - [08 Offline Mode](docs/08-offline-mode.md)
 - [09 Research & Trading Systems](docs/09-research-systems.md)
 - [10 LLM Assistant](docs/10-llm-assistant.md)
+- [11 Developer Workflow](docs/11-developer-workflow.md)
+- [Memory Bank Development Ops](memory_bank/ops/development.md)
+- [Memory Bank CI Ops](memory_bank/ops/ci.md)
 
 ## С чего читать
 
@@ -120,3 +123,4 @@ bundle exec rails runner "MacroSyncJob.perform_now(frequency: 'daily')"
 2. Затем [docs/02-architecture.md](docs/02-architecture.md)
 3. Для локального запуска откройте [docs/04-local-setup.md](docs/04-local-setup.md)
 4. Для прикладной работы с экраном и сценариями откройте [docs/06-ui-workflows.md](docs/06-ui-workflows.md)
+5. Для разработки по memory-bank процессу откройте [docs/11-developer-workflow.md](docs/11-developer-workflow.md)

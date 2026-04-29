@@ -1,0 +1,410 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+ROOT = File.expand_path(ENV.fetch("MEMORY_BANK_ROOT", File.expand_path("..", __dir__)))
+
+STAGE_VALUES_SOURCE = "memory_bank/workflow.md"
+STAGE_VALUES_MARKER = "<!-- stage-values -->"
+SESSION_MENU_SOURCE = "memory_bank/index.md"
+SESSION_MENU_MARKER = "<!-- session-menu -->"
+REVIEW_STATUS_VALUES = %w[advisory blocking].freeze
+REQUIRED_SESSION_COMMANDS = [
+  "resume",
+  "orient",
+  "brief:",
+  "review brief: <id>",
+  "spec: <id>",
+  "review spec: <id>",
+  "plan: <id>",
+  "review plan: <id>",
+  "impl: <id>",
+  "review: <id>",
+  "fix review: <id> <stage>"
+].freeze
+
+REQUIRED_MEMORY_BANK_FILES = %w[
+  CLAUDE.md
+  .claude/session-start-menu.sh
+  .prompts/orient.md
+  .prompts/brief.md
+  .prompts/spec.md
+  .prompts/plan.md
+  .prompts/review-code.md
+  .prompts/fix-review.md
+  memory_bank/index.md
+  memory_bank/workflow.md
+  memory_bank/prd.md
+  memory_bank/features/index.md
+  memory_bank/process/current-focus.md
+  memory_bank/project/overview.md
+  memory_bank/project/glossary.md
+  memory_bank/engineering/conventions.md
+  memory_bank/ops/development.md
+  memory_bank/ops/ci.md
+].freeze
+
+$errors = []
+
+
+def repo_path(relative_path)
+  File.join(ROOT, relative_path)
+end
+
+
+def relative_path(path)
+  path.delete_prefix("#{ROOT}/")
+end
+
+
+def read_lines(relative_path)
+  File.readlines(repo_path(relative_path), chomp: true)
+rescue Errno::ENOENT
+  nil
+end
+
+
+def add_error(relative_path, line_number, message)
+  $errors << "#{relative_path}:#{line_number}: error: #{message}"
+end
+
+
+def fenced_block_after_marker(relative_path, marker)
+  lines = read_lines(relative_path)
+  return [] unless lines
+
+  marker_index = lines.index(marker)
+  unless marker_index
+    add_error(relative_path, 1, "missing marker `#{marker}`")
+    return []
+  end
+
+  fence_start = ((marker_index + 1)...lines.length).find { |index| lines[index].start_with?("```") }
+  unless fence_start
+    add_error(relative_path, marker_index + 1, "missing fenced block after `#{marker}`")
+    return []
+  end
+
+  fence_end = ((fence_start + 1)...lines.length).find { |index| lines[index].start_with?("```") }
+  unless fence_end
+    add_error(relative_path, fence_start + 1, "unclosed fenced block after `#{marker}`")
+    return []
+  end
+
+  lines[(fence_start + 1)...fence_end]
+end
+
+
+def parse_stage_values
+  values = fenced_block_after_marker(STAGE_VALUES_SOURCE, STAGE_VALUES_MARKER).join(" ").split("|").map(&:strip).reject(&:empty?)
+  add_error(STAGE_VALUES_SOURCE, 1, "empty stage values") if values.empty?
+  values
+end
+
+
+def load_stage_contract
+  stage_values = parse_stage_values
+
+  {
+    stage_values: stage_values,
+    stage_order: stage_values.each_with_index.to_h
+  }
+end
+
+
+def require_file(relative_path, source_path, line_number)
+  return true if File.file?(repo_path(relative_path))
+
+  add_error(source_path, line_number, "missing required file `#{relative_path}`")
+  false
+end
+
+
+def table_cells(line)
+  return nil unless line.start_with?("|")
+
+  cells = line.split("|", -1)[1...-1]
+  return nil unless cells
+
+  cells.map(&:strip)
+end
+
+
+def strip_code(cell)
+  cell.delete("`").strip
+end
+
+
+def present_reference?(value)
+  value && !value.empty? && value != "—" && value != "-"
+end
+
+
+def strip_reference(value)
+  strip_code(value.to_s)
+end
+
+
+def check_session_menu
+  menu_lines = fenced_block_after_marker(SESSION_MENU_SOURCE, SESSION_MENU_MARKER)
+  if menu_lines.empty?
+    add_error(SESSION_MENU_SOURCE, 1, "empty session menu")
+    return
+  end
+
+  REQUIRED_SESSION_COMMANDS.each do |command|
+    next if menu_lines.any? { |line| line.strip.start_with?(command) }
+
+    add_error(SESSION_MENU_SOURCE, 1, "session menu missing command `#{command}`")
+  end
+end
+
+
+def parse_feature_index(feature_index_stages)
+  relative_path = "memory_bank/features/index.md"
+  lines = read_lines(relative_path)
+  unless lines
+    add_error(relative_path, 1, "missing feature index")
+    return []
+  end
+
+  rows = []
+  in_feature_table = false
+  lines.each_with_index do |line, index|
+    in_feature_table = true if line.start_with?("| ID | Feature | Stage | PRD Area |")
+    in_feature_table = false if in_feature_table && line.start_with?("## ")
+    next unless in_feature_table
+
+    cells = table_cells(line)
+    next unless cells&.first&.match?(/\A\d{3}\z/)
+
+    line_number = index + 1
+    id = cells[0]
+    feature_cell = cells[1] || ""
+    link = feature_cell.match(/\[[^\]]+\]\(([^)]+)\)/)&.[](1)
+    stage = strip_code(cells[2] || "")
+    prd_area = strip_code(cells[3] || "")
+    main_sources = cells[4] || ""
+
+    add_error(relative_path, line_number, "missing feature package link") unless link
+    unless feature_index_stages.include?(stage)
+      add_error(relative_path, line_number, "invalid Stage `#{stage}`; expected #{feature_index_stages.join(', ')}")
+    end
+
+    rows << {
+      id: id,
+      link: link,
+      stage: stage,
+      prd_area: prd_area,
+      main_sources: main_sources,
+      line_number: line_number
+    }
+  end
+
+  rows
+end
+
+
+def review_status(relative_path)
+  lines = read_lines(relative_path)
+  return nil unless lines
+
+  status_line = lines.find { |line| line.start_with?("Статус:") || line.start_with?("Status:") }
+  return nil unless status_line
+
+  status_line.split(":", 2).last.to_s.strip
+end
+
+
+def check_non_blocking_review(relative_path, context)
+  status = review_status(relative_path)
+  if status.nil?
+    add_error(relative_path, 1, "#{context} requires `Статус:` or `Status:`")
+  elsif status == "blocking"
+    add_error(relative_path, 1, "#{context} requires non-blocking review note")
+  elsif !REVIEW_STATUS_VALUES.include?(status)
+    add_error(relative_path, 1, "invalid review status `#{status}`; expected advisory or blocking")
+  end
+end
+
+
+def check_review_gate(feature_path, review_stage, target_stage, row, stage_order)
+  return unless stage_at_least?(stage_order, row[:stage], target_stage)
+
+  review_path = "#{feature_path}/reviews/#{review_stage}.md"
+  return unless File.file?(repo_path(review_path))
+
+  check_non_blocking_review(review_path, "`Stage: #{row[:stage]}`")
+end
+
+
+def require_sources_line(relative_path)
+  lines = read_lines(relative_path)
+  return unless lines
+  return if lines.any? { |line| line.start_with?("> Sources:") }
+
+  add_error(relative_path, 1, "missing `> Sources:` line")
+end
+
+
+def check_required_memory_bank_files
+  REQUIRED_MEMORY_BANK_FILES.each do |relative_path|
+    next if File.file?(repo_path(relative_path))
+
+    add_error(relative_path, 1, "missing required memory bank file")
+  end
+end
+
+
+def stage_at_least?(stage_order, stage, target)
+  stage_order.key?(stage) && stage_order.key?(target) && stage_order[stage] >= stage_order[target]
+end
+
+
+def check_feature_packages(rows, stage_order)
+  index_path = "memory_bank/features/index.md"
+  indexed_dirs = {}
+
+  rows.each do |row|
+    next unless row[:link]
+
+    feature_dir = row[:link].delete_suffix("/")
+    feature_path = "memory_bank/features/#{feature_dir}"
+    indexed_dirs[feature_dir] = true
+
+    unless File.directory?(repo_path(feature_path))
+      add_error(index_path, row[:line_number], "feature link points to missing directory `#{feature_path}`")
+      next
+    end
+
+    summary_path = "#{feature_path}/summary.md"
+    has_summary = File.file?(repo_path(summary_path))
+    has_forward_artifact = %w[brief.md spec.md plan.md].any? do |artifact|
+      File.file?(repo_path("#{feature_path}/#{artifact}"))
+    end
+
+    if has_summary && !has_forward_artifact
+      add_error(index_path, row[:line_number], "retrospective packages should use `Stage: done`") unless row[:stage] == "done"
+      require_sources_line(summary_path)
+      next
+    end
+
+    require_file("#{feature_path}/brief.md", index_path, row[:line_number]) if stage_at_least?(stage_order, row[:stage], "brief")
+    if stage_at_least?(stage_order, row[:stage], "spec")
+      require_file("#{feature_path}/spec.md", index_path, row[:line_number])
+      check_review_gate(feature_path, "brief", "spec", row, stage_order)
+    end
+    if stage_at_least?(stage_order, row[:stage], "plan")
+      require_file("#{feature_path}/plan.md", index_path, row[:line_number])
+      check_review_gate(feature_path, "spec", "plan", row, stage_order)
+    end
+    check_review_gate(feature_path, "plan", "impl", row, stage_order) if stage_at_least?(stage_order, row[:stage], "impl")
+
+    next unless row[:stage] == "done"
+
+    impl_review = "#{feature_path}/reviews/impl.md"
+    check_non_blocking_review(impl_review, "`Stage: done`") if require_file(impl_review, index_path, row[:line_number])
+  end
+
+  Dir.glob(repo_path("memory_bank/features/[0-9][0-9][0-9]_*")) do |path|
+    next unless File.directory?(path)
+
+    dir = File.basename(path)
+    next if indexed_dirs[dir]
+
+    add_error(index_path, 1, "feature directory `memory_bank/features/#{dir}` is not listed")
+  end
+end
+
+
+def current_focus_value(lines, labels)
+  lines.each_with_index do |line, index|
+    labels.each do |label|
+      marker = "**#{label}:**"
+      next unless line.start_with?(marker)
+
+      return [ line.split(marker, 2).last.to_s.strip, index + 1 ]
+    end
+  end
+  [ nil, nil ]
+end
+
+
+def check_current_focus(rows, stage_values)
+  relative_path = "memory_bank/process/current-focus.md"
+  lines = read_lines(relative_path)
+  unless lines
+    add_error(relative_path, 1, "missing current focus")
+    return
+  end
+
+  feature, feature_line = current_focus_value(lines, [ "Фича", "Feature" ])
+  _started, started_line = current_focus_value(lines, [ "Started" ])
+  stage, stage_line = current_focus_value(lines, [ "Текущий этап", "Stage" ])
+  review_notes, review_notes_line = current_focus_value(lines, [ "Review notes", "Review Notes" ])
+  _next_step, next_step_line = current_focus_value(lines, [ "Следующий шаг", "Next step", "Next Step" ])
+
+  add_error(relative_path, 1, "missing active feature field") unless feature_line
+  add_error(relative_path, 1, "missing started field") unless started_line
+  add_error(relative_path, 1, "missing current stage field") unless stage_line
+  add_error(relative_path, 1, "missing review notes field") unless review_notes_line
+  add_error(relative_path, 1, "missing next step field") unless next_step_line
+  return unless stage_line
+
+  if present_reference?(review_notes)
+    review_notes_path = strip_reference(review_notes)
+    unless File.file?(repo_path(review_notes_path))
+      add_error(relative_path, review_notes_line, "review notes path `#{review_notes_path}` does not exist")
+    end
+  end
+
+  inactive_feature = !present_reference?(feature)
+
+  if inactive_feature
+    add_error(relative_path, stage_line, "inactive current focus should use stage `—`") unless stage == "—" || stage == "-"
+    return
+  end
+
+  unless stage_values.include?(stage)
+    add_error(relative_path, stage_line, "invalid current stage `#{stage}`; expected #{stage_values.join(', ')}")
+    return
+  end
+
+  known_features = rows.filter_map { |row| row[:link]&.delete_suffix("/") }
+  return if known_features.include?(feature)
+
+  add_error(relative_path, feature_line, "active feature `#{feature}` is not listed in features/index.md")
+end
+
+
+def check_review_status_values
+  Dir.glob(repo_path("memory_bank/features/[0-9][0-9][0-9]_*/reviews/*.md")) do |path|
+    relative = relative_path(path)
+    lines = File.readlines(path, chomp: true)
+    status_line = lines.find { |line| line.start_with?("Статус:") || line.start_with?("Status:") }
+    unless status_line
+      add_error(relative, 1, "review note requires `Статус:` or `Status:`")
+      next
+    end
+
+    status = status_line.split(":", 2).last.to_s.strip
+    unless REVIEW_STATUS_VALUES.include?(status)
+      add_error(relative, lines.index(status_line) + 1, "invalid review status `#{status}`; expected advisory or blocking")
+    end
+  end
+end
+
+
+check_required_memory_bank_files
+check_session_menu
+stage_contract = load_stage_contract
+rows = parse_feature_index(stage_contract[:stage_values])
+check_feature_packages(rows, stage_contract[:stage_order])
+check_current_focus(rows, stage_contract[:stage_values])
+check_review_status_values
+
+if $errors.empty?
+  puts "memory bank check passed"
+else
+  warn $errors.join("\n")
+  exit 1
+end
