@@ -6,20 +6,21 @@
 
 ## Активная задача
 
-**Фича:** —
-**Started:** —
-**Текущий этап:** —
+**Фича:** 017_ml_signal_modules
+**Started:** 2026-05-02
+**Текущий этап:** plan
 **Review notes:** —
-**Следующий шаг:** —
+**Следующий шаг:** `impl: 017`
 
 ## Контекст последней сессии
 
-- Сделано: simplified memory-bank retrospective flow, narrowed validator scope, and made session menu derive from `memory_bank/index.md`.
-- Осталось: —
+- Сделано: повторные reviews для 017 и 018 пройдены без блокеров; review notes обновлены.
+- Осталось: перейти к `impl: 017`.
 
 ## Следующие в очереди
 
-- —
+- `impl: 017`
+- `review: 017`
 
 ## Открытые вопросы
 
