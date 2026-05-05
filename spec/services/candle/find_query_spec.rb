@@ -40,6 +40,27 @@ RSpec.describe Candle::FindQuery do
       end
     end
 
+    it 'preserves BigDecimal OHLCV values when requested for stable ML checksums' do
+      result = described_class.new(
+        symbol: 'BTCUSD', timeframe: '1m',
+        start_time: Time.utc(2026, 1, 1, 12, 0),
+        end_time: Time.utc(2026, 1, 1, 12, 0),
+        preserve_decimals: true
+      ).call
+
+      candle = result.first
+      %i[open high low close volume].each do |field|
+        expect(candle[field]).to be_a(BigDecimal)
+      end
+    end
+
+    it 'raises a clear error for missing or invalid numeric candle values' do
+      query = described_class.new(symbol: 'BTCUSD', timeframe: '1m')
+
+      expect { query.send(:decimal_value, nil) }.to raise_error(ArgumentError, /Candle numeric value is missing/)
+      expect { query.send(:decimal_value, 'bad') }.to raise_error(ArgumentError, /Invalid candle numeric value/)
+    end
+
     it 'returns empty array when no data' do
       result = described_class.new(symbol: 'NONEXIST', timeframe: '1m').call
       expect(result).to eq([])
@@ -59,6 +80,16 @@ RSpec.describe Candle::FindQuery do
       expect {
         described_class.new(
           symbol: 'BTCUSD', timeframe: 'invalid',
+          start_time: Time.utc(2026, 1, 1, 12, 0),
+          end_time: Time.utc(2026, 1, 1, 12, 9)
+        ).call
+      }.to raise_error(ArgumentError, /Invalid timeframe/)
+    end
+
+    it 'rejects partially parseable timeframe strings' do
+      expect {
+        described_class.new(
+          symbol: 'BTCUSD', timeframe: '15min',
           start_time: Time.utc(2026, 1, 1, 12, 0),
           end_time: Time.utc(2026, 1, 1, 12, 9)
         ).call

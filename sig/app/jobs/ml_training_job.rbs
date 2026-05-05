@@ -4,5 +4,8 @@ class MlTrainingJob < ApplicationJob
   private
 
   def mark_cancelled_before_start!: (MlTrainingRun training_run) -> void
+  def restore_model_status_after_cancellation!: (MlModel model) -> void
+  def serving_status_after_cancellation: (MlModel model) -> String
   def mark_failed!: (Integer training_run_id, StandardError error) -> void
+  def broadcast_terminal: (Symbol | String event, training_run: MlTrainingRun) -> void
 end

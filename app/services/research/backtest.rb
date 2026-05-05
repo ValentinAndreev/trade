@@ -2,7 +2,7 @@
 
 module Research
   class Backtest
-    class Cancelled < StandardError; end
+    class Cancelled < Research::Cancelled; end
 
     Position = Struct.new(:direction, :entry_time, :entry_price, :entry_index, keyword_init: true)
 
@@ -23,7 +23,7 @@ module Research
 
     def run(params:, mode: :normal, stage: :in_sample, cancel_check: nil)
       cancelled!(cancel_check)
-      p = params.to_h.symbolize_keys
+      p = (params || {}).symbolize_keys
       module_series = module_results_for(system.module_runtime_configs(p), cancel_check:)
       cancelled!(cancel_check)
       {
@@ -68,13 +68,15 @@ module Research
     end
 
     def module_call(module_type, params, cancel_check: nil)
-      call_params = params.symbolize_keys
-      call_params[:cancel_check] = cancel_check if module_type.to_s == 'ml_signal'
+      call_params = (params || {}).symbolize_keys
+      call_params[:cancel_check] = cancel_check if cancel_check
       module_runner(module_type).call(**call_params)
+    rescue Research::Cancelled
+      raise Cancelled
     end
 
     def module_runner(module_type)
-      @module_runners[module_type.to_s] ||= Research::Modules.for(module_type).new(candles:, symbol:, timeframe:, exchange:)
+      @module_runners[module_type.to_s] ||= Research::Modules.for(module_type).new(candles:, symbol:, timeframe:, exchange:, start_time:, end_time:)
     end
 
     def candles
@@ -180,7 +182,10 @@ module Research
     def r(value)   = value.round(4)
 
     def cancelled!(cancel_check)
-      raise Cancelled if cancel_check&.call
+      wrapped = Research::CancellationCheck.wrap(cancel_check)
+      wrapped.check_cancelled! if wrapped
+    rescue Research::Cancelled
+      raise Cancelled
     end
   end
 end

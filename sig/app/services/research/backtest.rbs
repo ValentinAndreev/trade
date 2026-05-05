@@ -13,7 +13,7 @@ module Research
     @candle_index_by_time: Hash[Integer, Integer]
     @candles: Array[ohlcv]
 
-    class Cancelled < StandardError
+    class Cancelled < Research::Cancelled
     end
 
     class Position
@@ -50,7 +50,7 @@ module Research
     ) -> void
 
     def run: (
-      params: Hash[Symbol | String, untyped],
+      params: Hash[Symbol | String, untyped]?,
       ?mode: Symbol,
       ?stage: Symbol,
       ?cancel_check: ^() -> bool

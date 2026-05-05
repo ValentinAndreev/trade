@@ -16,7 +16,7 @@ module Ml
       rows: Array[Hash[Symbol, untyped]],
       predictions: Array[Hash[Symbol | String, untyped]],
       weight_checksum: String
-    ) -> ActiveRecord::Result
+    ) -> Hash[Integer, MlPrediction]
     def value_for: (MlPrediction? prediction, String | Symbol output) -> untyped
   end
 end

@@ -41,7 +41,8 @@ module Ml
       ?candles: Array[ohlcv]?,
       ?batch_size: Integer,
       ?adapter: Ml::Adapters::BaselineDirectionClassifier,
-      ?cancel_check: untyped
+      ?cancel_check: untyped,
+      ?warmup_candle_cache: Hash[untyped, Array[ohlcv]]?
     ) -> void
 
     def call: () -> Result

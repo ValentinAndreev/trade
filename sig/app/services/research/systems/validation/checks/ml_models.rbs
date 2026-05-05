@@ -11,7 +11,9 @@ module Research
           def validate_ml_model: (Hash[String, untyped] module_payload, Array[String] path) -> void
           def validate_ml_model_serving_state: (MlModel model, String model_key, Array[String] path) -> void
           def validate_ml_model_dataset_compatibility: (MlModel model, String model_key, Array[String] path) -> void
+          def normalize_dataset_value: (String | Symbol key, untyped value) -> String
           def validate_ml_feature_spec: (MlModel model, String model_key, Array[String] path) -> void
+          def validate_ml_feature_definition_current: (String model_key, Hash[String, untyped] payload, Integer index, Array[String] path) -> void
           def ml_modules: () -> Array[[String, Hash[String, untyped]]]
           def ml_models_by_key: () -> Hash[String, MlModel]
         end

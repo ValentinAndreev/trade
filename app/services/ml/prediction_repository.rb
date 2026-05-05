@@ -13,7 +13,6 @@ module Ml
       timeframe
       weight_checksum
       source_window_checksum
-      output
       probability
       direction
       confidence
@@ -22,9 +21,7 @@ module Ml
     ].freeze
     GUARDED_UPDATE_COLUMNS = %i[
       ml_training_run_id
-      weight_checksum
       source_window_checksum
-      output
       probability
       direction
       confidence
@@ -70,13 +67,19 @@ module Ml
         predictions:,
         weight_checksum:
       )
-      guarded_upsert(records)
+      persisted_by_time = predictions_by_time(guarded_upsert(records))
+      return persisted_by_time if persisted_by_time.length == records.length
+
+      persisted_by_time.merge(fetch_current(rows: skipped_rows(rows, persisted_by_time), weight_checksum:))
     end
 
     def value_for(prediction, output)
       return unless prediction
 
-      value = prediction.public_send(output.to_s)
+      normalized_output = output.to_s
+      return unless MlPrediction::OUTPUTS.include?(normalized_output)
+
+      value = prediction.public_send(normalized_output)
       value.is_a?(BigDecimal) ? value.to_f : value
     end
 
@@ -105,7 +108,6 @@ module Ml
           timeframe:,
           weight_checksum:,
           source_window_checksum: row.fetch(:source_window_checksum),
-          output: 'probability',
           probability: prediction_value(prediction, :probability),
           direction: prediction_value(prediction, :direction),
           confidence: prediction_value(prediction, :confidence)
@@ -130,9 +132,19 @@ module Ml
       <<~SQL.squish
         INSERT INTO ml_predictions (#{INSERT_COLUMNS.map { |column| connection.quote_column_name(column) }.join(', ')})
         VALUES #{records.map { |record| values_sql(record) }.join(', ')}
-        ON CONFLICT (ml_model_id, exchange, symbol, timeframe, ts)
+        ON CONFLICT (ml_model_id, exchange, symbol, timeframe, ts, weight_checksum)
         DO UPDATE SET #{guarded_update_sql}
-        WHERE ml_predictions.ml_training_run_id <= EXCLUDED.ml_training_run_id
+        WHERE #{training_run_order_sql('ml_predictions.ml_training_run_id')} <= #{training_run_order_sql('EXCLUDED.ml_training_run_id')}
+        RETURNING *
+      SQL
+    end
+
+    def training_run_order_sql(id_expression)
+      <<~SQL.squish
+        (
+          (SELECT created_at FROM ml_training_runs WHERE id = #{id_expression}),
+          #{id_expression}
+        )
       SQL
     end
 
@@ -154,6 +166,21 @@ module Ml
 
     def timestamp_for_time(value)
       value.is_a?(Time) ? value.utc : Time.at(value.to_i).utc
+    end
+
+    def predictions_by_time(result)
+      result.to_a.each_with_object({}) do |attributes, predictions|
+        prediction = MlPrediction.instantiate(attributes)
+        predictions[prediction.ts.to_i] = prediction
+      end
+    end
+
+    def skipped_rows(rows, persisted_by_time)
+      rows.select do |row|
+        row.fetch(:complete) &&
+          row.fetch(:source_window_checksum).present? &&
+          !persisted_by_time.key?(row.fetch(:time).to_i)
+      end
     end
 
     def connection = ActiveRecord::Base.connection

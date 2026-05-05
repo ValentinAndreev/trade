@@ -9,7 +9,7 @@ module Ml
     def initialize(candles:, resolved_feature_spec:, cancel_check: nil)
       @candles = candles
       @resolved_feature_spec = resolved_feature_spec
-      @cancel_check = cancel_check
+      @cancel_check = Research::CancellationCheck.wrap(cancel_check)
     end
 
     def call
@@ -59,9 +59,9 @@ module Ml
     end
 
     def module_points_for(feature)
-      Research::Modules.for(feature.fetch('type'))
-        .new(candles:)
-        .call(**feature.fetch('params').deep_symbolize_keys)
+      runner = Research::Modules.for(feature.fetch('type')).new(candles:)
+      params = feature.fetch('params').deep_symbolize_keys
+      runner.call_from_feature_matrix(**params, cancel_check:)
     end
 
     def feature_names
@@ -81,11 +81,7 @@ module Ml
     end
 
     def check_cancelled!
-      if cancel_check.respond_to?(:check_cancelled!)
-        cancel_check.check_cancelled!
-      elsif cancel_check.respond_to?(:call) && cancel_check.call
-        raise Ml::Cancelled
-      end
+      cancel_check.check_cancelled! if cancel_check
     end
   end
 end

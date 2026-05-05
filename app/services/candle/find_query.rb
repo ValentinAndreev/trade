@@ -9,22 +9,16 @@ class Candle::FindQuery
     '1d' => 'cagg_candles_1d'
   }.freeze
 
-  TIMEFRAMES = {
-    'm' => { unit: 'minutes', duration: 1.minute },
-    'h' => { unit: 'hours',   duration: 1.hour },
-    'd' => { unit: 'days',    duration: 1.day },
-    'w' => { unit: 'weeks',   duration: 1.week }
-  }.freeze
-
   DEFAULT_LIMIT = 1500
 
-  private attr_reader :symbol, :exchange, :timeframe, :start_time, :end_time, :limit, :connection
+  private attr_reader :symbol, :exchange, :timeframe, :start_time, :end_time, :limit, :connection, :preserve_decimals
 
-  def initialize(symbol:, timeframe: '1m', exchange: 'bitfinex', start_time: nil, end_time: nil, limit: nil)
+  def initialize(symbol:, timeframe: '1m', exchange: 'bitfinex', start_time: nil, end_time: nil, limit: nil, preserve_decimals: false)
     @symbol = symbol
     @exchange = exchange
     @timeframe = timeframe
     @limit = limit&.to_i
+    @preserve_decimals = preserve_decimals
     @end_time = parse_time(end_time) || Candle.max_ts(symbol:, exchange:)
     @start_time = parse_time(start_time) || calculate_start_time
     @connection = ActiveRecord::Base.connection
@@ -74,8 +68,8 @@ class Candle::FindQuery
   end
 
   def calculate_on_the_fly
-    amount, tf = parse_timeframe
-    interval = "#{amount} #{TIMEFRAMES[tf][:unit]}"
+    parsed = parse_timeframe
+    interval = "#{parsed.amount} #{parsed.interval_unit}"
     params = [ interval, symbol, exchange, start_time.iso8601, end_time.iso8601 ]
     connection.exec_query(<<-SQL.squish, 'FindCandles', params).to_a
       SELECT
@@ -102,28 +96,35 @@ class Candle::FindQuery
     raw_data.map do |candle|
       {
         time: candle['ts'].to_i,
-        open: BigDecimal(candle['open'].to_s).to_f,
-        high: BigDecimal(candle['high'].to_s).to_f,
-        low: BigDecimal(candle['low'].to_s).to_f,
-        close: BigDecimal(candle['close'].to_s).to_f,
-        volume: BigDecimal(candle['volume'].to_s).to_f
+        open: decimal_value(candle['open']),
+        high: decimal_value(candle['high']),
+        low: decimal_value(candle['low']),
+        close: decimal_value(candle['close']),
+        volume: decimal_value(candle['volume'])
       }
     end
+  end
+
+  def decimal_value(value)
+    raise ArgumentError, 'Candle numeric value is missing' if value.nil? || value.to_s.blank?
+
+    decimal = begin
+      BigDecimal(value.to_s)
+    rescue ArgumentError
+      raise ArgumentError, "Invalid candle numeric value: #{value.inspect}"
+    end
+    preserve_decimals ? decimal : decimal.to_f
   end
 
   def calculate_start_time
     return Candle.min_ts(symbol:, exchange:) unless end_time
 
     count = limit || DEFAULT_LIMIT
-    amount, tf = parse_timeframe
-    end_time - (count * amount * TIMEFRAMES[tf][:duration])
+    end_time - (count * parse_timeframe.duration_seconds)
   end
 
   def parse_timeframe
-    match = timeframe.match(/(\d+)([mhdw])/)
-    raise ArgumentError, "Invalid timeframe format: #{timeframe}" unless match
-
-    [ match[1].to_i, match[2] ]
+    TimeframeParser.parse(timeframe)
   end
 
   def parse_time(value)

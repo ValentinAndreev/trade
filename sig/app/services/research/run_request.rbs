@@ -1,5 +1,7 @@
 module Research
   class RunRequest
+    DEFAULT_EXCHANGE: String
+
     @raw_params: research_request_payload
     @yaml: String
     @system: Research::Systems::Definition
@@ -9,7 +11,7 @@ module Research
       timeframe: String,
       start_time: research_time_value,
       end_time: research_time_value,
-      exchange: String?
+      exchange: String
     }
     @execution: { fee_bps: untyped, slippage_bps: untyped }
     @optimization: { enabled: bool?, target: String?, from: untyped, to: untyped, step: untyped }
@@ -46,7 +48,7 @@ module Research
       timeframe: String,
       start_time: research_time_value,
       end_time: research_time_value,
-      exchange: String?
+      exchange: String
     }
     def execution: () -> { fee_bps: untyped, slippage_bps: untyped }
     def optimization: () -> { enabled: bool?, target: String?, from: untyped, to: untyped, step: untyped }

@@ -2,6 +2,8 @@
 
 class MlModel < ApplicationRecord
   SERVING_STATUSES = %w[draft training trained failed disabled].freeze
+  ARCHITECTURES = %w[baseline_direction_classifier].freeze
+  PREDICTION_TARGETS = %w[direction_classification].freeze
   CANONICAL_METRIC_KEYS = %w[accuracy log_loss auc baseline_majority].freeze
   IMMUTABLE_AFTER_SUCCESSFUL_TRAINING = %w[key display_name architecture prediction_target].freeze
 
@@ -27,8 +29,8 @@ class MlModel < ApplicationRecord
     length: { maximum: 120 },
     format: { with: /\A[a-z0-9][a-z0-9_-]*\z/ }
   validates :display_name, presence: true, length: { maximum: 160 }
-  validates :architecture, presence: true, length: { maximum: 120 }
-  validates :prediction_target, presence: true, length: { maximum: 120 }
+  validates :architecture, presence: true, length: { maximum: 120 }, inclusion: { in: ARCHITECTURES }
+  validates :prediction_target, presence: true, length: { maximum: 120 }, inclusion: { in: PREDICTION_TARGETS }
   validates :serving_status, presence: true, inclusion: { in: SERVING_STATUSES }
   validates :serving_weight_checksum, length: { maximum: 128 }, allow_nil: true
 
@@ -48,7 +50,7 @@ class MlModel < ApplicationRecord
   private
 
   def normalize_key
-    self.key = key.to_s.strip if key.present?
+    self.key = key.to_s.strip.downcase if key.present?
   end
 
   def normalize_metric_summary

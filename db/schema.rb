@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_04_090200) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_06_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "timescaledb"
@@ -132,12 +132,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_090200) do
     t.integer "byte_size", null: false
     t.string "checksum", null: false
     t.datetime "created_at", null: false
-    t.bigint "ml_training_run_id", null: false
     t.datetime "updated_at", null: false
     t.string "weights_format", null: false
     t.binary "weights_payload", null: false
     t.index ["checksum"], name: "index_ml_model_weight_blobs_on_checksum", unique: true
-    t.index ["ml_training_run_id"], name: "index_ml_model_weight_blobs_on_ml_training_run_id", unique: true
     t.index ["weights_format"], name: "index_ml_model_weight_blobs_on_weights_format"
     t.check_constraint "byte_size > 0 AND byte_size <= 16777216", name: "chk_ml_model_weight_blobs_byte_size"
   end
@@ -170,7 +168,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_090200) do
     t.string "exchange", default: "bitfinex", null: false
     t.bigint "ml_model_id", null: false
     t.bigint "ml_training_run_id", null: false
-    t.string "output", default: "probability", null: false
     t.decimal "probability", precision: 12, scale: 10, null: false
     t.string "source_window_checksum", null: false
     t.string "symbol", null: false
@@ -178,7 +175,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_090200) do
     t.timestamptz "ts", null: false
     t.datetime "updated_at", null: false
     t.string "weight_checksum", null: false
-    t.index ["ml_model_id", "exchange", "symbol", "timeframe", "ts"], name: "index_ml_predictions_identity", unique: true
+    t.index ["ml_model_id", "exchange", "symbol", "timeframe", "ts", "weight_checksum"], name: "index_ml_predictions_identity", unique: true
     t.index ["ml_model_id"], name: "index_ml_predictions_on_ml_model_id"
     t.index ["ml_training_run_id"], name: "index_ml_predictions_on_ml_training_run_id"
     t.index ["source_window_checksum"], name: "index_ml_predictions_on_source_window_checksum"
@@ -186,7 +183,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_090200) do
     t.index ["weight_checksum"], name: "index_ml_predictions_on_weight_checksum"
     t.check_constraint "confidence >= 0::numeric AND confidence <= 1::numeric", name: "chk_ml_predictions_confidence"
     t.check_constraint "direction::text = ANY (ARRAY['up'::character varying, 'down'::character varying]::text[])", name: "chk_ml_predictions_direction"
-    t.check_constraint "output::text = ANY (ARRAY['probability'::character varying, 'direction'::character varying, 'confidence'::character varying]::text[])", name: "chk_ml_predictions_output"
     t.check_constraint "probability >= 0::numeric AND probability <= 1::numeric", name: "chk_ml_predictions_probability"
   end
 
@@ -387,9 +383,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_090200) do
   add_foreign_key "ai_messages", "ai_tool_calls"
   add_foreign_key "ai_tool_calls", "ai_messages"
   add_foreign_key "llm_settings", "users"
-  add_foreign_key "ml_model_weight_blobs", "ml_training_runs"
-  add_foreign_key "ml_models", "ml_training_runs", column: "latest_failed_training_run_id"
-  add_foreign_key "ml_models", "ml_training_runs", column: "latest_successful_training_run_id"
+  add_foreign_key "ml_models", "ml_training_runs", column: "latest_failed_training_run_id", on_delete: :nullify
+  add_foreign_key "ml_models", "ml_training_runs", column: "latest_successful_training_run_id", on_delete: :nullify
   add_foreign_key "ml_predictions", "ml_models"
   add_foreign_key "ml_predictions", "ml_training_runs"
   add_foreign_key "ml_training_runs", "ml_models"

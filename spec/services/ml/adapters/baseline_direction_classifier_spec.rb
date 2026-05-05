@@ -43,7 +43,8 @@ RSpec.describe Ml::Adapters::BaselineDirectionClassifier do
       expect(first.metrics.keys).to eq(MlModel::CANONICAL_METRIC_KEYS)
       expect(first.metrics.fetch('accuracy')).to eq(1.0)
       expect(first.metrics.fetch('baseline_majority')).to eq(0.5)
-      expect(first.fitted_metadata).to include('feature_names' => [ 'x' ])
+      expect(first.fitted_metadata).to include('feature_names' => [ 'x' ], 'metrics_scope' => 'training_set')
+      expect(first.diagnostics).to include(metrics_scope: 'training_set')
     end
 
     it 'uses balanced class weights and reports structured insufficient-class failures' do
@@ -66,6 +67,22 @@ RSpec.describe Ml::Adapters::BaselineDirectionClassifier do
       expect(callbacks.checks).to be > 1
       expect(callbacks.events.last).to include(stage: 'training', iteration: 5, max_iterations: 5)
     end
+
+    it 'uses explicit feature names as the canonical training order' do
+      ordered = adapter.train(
+        examples: [
+          { features: { 'b' => -2.0, 'a' => -1.0 }, label: 'down' },
+          { features: { 'b' => -1.0, 'a' => -0.5 }, label: 'down' },
+          { features: { 'b' => 1.0, 'a' => 0.5 }, label: 'up' },
+          { features: { 'b' => 2.0, 'a' => 1.0 }, label: 'up' }
+        ],
+        feature_names: %w[a b],
+        hyperparams: { max_iterations: 5, tolerance: 0.0 }
+      )
+
+      expect(ordered).to be_success
+      expect(JSON.parse(ordered.weights_payload).fetch('feature_names')).to eq(%w[a b])
+    end
   end
 
   describe '#predict' do
@@ -85,7 +102,7 @@ RSpec.describe Ml::Adapters::BaselineDirectionClassifier do
     end
 
     it 'rejects incompatible weight payloads as structured prediction failures' do
-      batch = adapter.predict(features: [ { 'x' => 1.0 } ], weights: { 'weights_format' => 'other:v1' })
+      batch = adapter.predict(features: [ { 'x' => 1.0 } ], weights: JSON.generate('weights_format' => 'other:v1'))
 
       expect(batch).not_to be_success
       expect(batch.error.code).to eq(:unsupported_weights_format)

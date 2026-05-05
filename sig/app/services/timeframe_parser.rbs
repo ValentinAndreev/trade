@@ -1,0 +1,13 @@
+class TimeframeParser
+  class Parsed
+    attr_reader amount: Integer
+    attr_reader unit: String
+    attr_reader interval_unit: String
+    attr_reader duration_seconds: Integer
+  end
+
+  UNITS: Hash[String, { interval_unit: String, duration_seconds: Integer }]
+
+  def self.parse: (untyped value) -> Parsed
+  def self.duration_seconds: (untyped value) -> Integer
+end

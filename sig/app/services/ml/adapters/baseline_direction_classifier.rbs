@@ -4,17 +4,20 @@ module Ml
       WEIGHTS_FORMAT: String
       WEIGHTS_SCHEMA_VERSION: String
       DEFAULT_HYPERPARAMS: Hash[Symbol, untyped]
+      DEFAULT_PROGRESS_INTERVAL: Integer
       EPSILON: Float
+      PARSED_WEIGHTS_CACHE_LIMIT: Integer
 
       def train: (
         examples: Array[Hash[untyped, untyped]],
         ?hyperparams: Hash[untyped, untyped],
-        ?callbacks: untyped
+        ?callbacks: untyped,
+        ?feature_names: Array[String | Symbol]?
       ) -> Result::TrainingResult
 
       def predict: (
         features: Array[Hash[untyped, untyped]],
-        weights: String | Hash[untyped, untyped]
+        weights: String
       ) -> Result::PredictionBatch
     end
   end

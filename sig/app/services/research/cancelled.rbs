@@ -1,0 +1,4 @@
+module Research
+  class Cancelled < StandardError
+  end
+end

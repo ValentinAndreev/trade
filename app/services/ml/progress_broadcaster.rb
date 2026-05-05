@@ -10,6 +10,16 @@ module Ml
 
     def self.stream_name(training_run_id) = "ml_training:#{training_run_id}"
 
+    def self.safely_broadcast_terminal(event, training_run:, broadcaster: new(training_run:))
+      broadcaster.public_send(event, training_run:)
+    rescue StandardError => e
+      Rails.logger.warn(
+        "ML progress broadcast failed event=#{event} training_run_id=#{training_run&.id} " \
+        "error_class=#{e.class.name} message=#{e.message}"
+      )
+      nil
+    end
+
     def initialize(training_run: nil, training_run_id: nil, clock: -> { Time.current }, broadcast_adapter: ActionCable.server)
       @training_run = training_run
       @training_run_id = training_run&.id || training_run_id
@@ -79,7 +89,7 @@ module Ml
         training_run_id: payload_training_run_id(training_run),
         status: training_run&.status,
         model_key: training_run&.ml_model&.key,
-        metrics: presence_hash(training_run&.metrics),
+        metrics: canonical_metrics_for(training_run),
         error: presence_hash(training_run&.error_metadata),
         duration_ms: training_run&.duration_ms,
         heartbeat_at: iso8601(training_run&.heartbeat_at),
@@ -130,12 +140,22 @@ module Ml
     end
 
     def progress_digest(payload)
-      JSON.generate(payload.deep_stringify_keys.sort.to_h)
+      JSON.generate(deep_sort(payload.deep_stringify_keys))
+    end
+
+    def deep_sort(value)
+      case value
+      when Hash
+        value.sort.to_h { |key, nested| [ key, deep_sort(nested) ] }
+      when Array
+        value.map { |nested| deep_sort(nested) }
+      else
+        value
+      end
     end
 
     def clock_seconds
-      value = clock.call
-      value.respond_to?(:to_f) ? value.to_f : value
+      clock.call.to_f
     end
 
     def payload_training_run_id(training_run)
@@ -143,7 +163,15 @@ module Ml
     end
 
     def presence_hash(value)
-      value.to_h.presence if value.respond_to?(:to_h)
+      return if value.nil?
+
+      value.to_h.presence
+    end
+
+    def canonical_metrics_for(training_run)
+      return unless training_run
+
+      MlTrainingRun.canonical_metrics(training_run.metrics)
     end
 
     def iso8601(value)

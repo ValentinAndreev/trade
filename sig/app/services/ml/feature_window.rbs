@@ -1,7 +1,4 @@
 module Ml
-  class Cancelled < StandardError
-  end
-
   class FeatureWindow
     class Error < StandardError
       attr_reader code: Symbol

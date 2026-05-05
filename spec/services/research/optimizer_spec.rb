@@ -202,5 +202,75 @@ RSpec.describe Research::Optimizer do
       expect(progress).to have_received(:cancelled).with(hash_including(total_runs: 3, completed_runs: 1))
       expect(progress).not_to have_received(:finished)
     end
+
+    it 'records ml_signal failures per parameter value without aborting the full optimization' do
+      progress = instance_double(
+        Research::ProgressBroadcaster,
+        started: nil, run_completed: nil, finished: nil, failed: nil
+      )
+      allow(backtest).to receive(:run) do |params:, mode:, stage:, cancel_check:|
+        raise Research::Modules::MlSignal::Error.new('adapter offline', code: :adapter_unavailable, details: { retry: true }) if params[:ema_period] == 7
+
+        { mode: mode.to_s, stage: stage.to_s, params: params, trades: [] }
+      end
+
+      results = described_class.new(
+        backtest: backtest,
+        system: ema_system,
+        base_params: { ema_period: 20 },
+        progress_interval: 0
+      ).call(
+        target: 'ema.period',
+        from: 5,
+        to: 9,
+        step: 2,
+        progress:
+      )
+
+      expect(results.length).to eq(3)
+      expect(results.second).to include(status: 'failed', trades: [])
+      expect(results.second.fetch(:diagnostics)).to include(
+        code: 'adapter_unavailable',
+        message: 'adapter offline',
+        details: { retry: true }
+      )
+      expect(progress).to have_received(:run_completed).exactly(3).times
+      expect(progress).to have_received(:finished).with(hash_including(total_runs: 3))
+      expect(progress).not_to have_received(:failed)
+    end
+
+    it 'does not mask ml_signal failures when failed params serialization raises' do
+      progress = instance_double(
+        Research::ProgressBroadcaster,
+        started: nil, run_completed: nil, finished: nil, failed: nil
+      )
+      allow(backtest).to receive(:run) do
+        raise Research::Modules::MlSignal::Error.new('adapter offline', code: :adapter_unavailable, details: { retry: true })
+      end
+      allow(ema_system).to receive(:run_params).and_raise(ArgumentError, 'bad params')
+
+      results = described_class.new(
+        backtest: backtest,
+        system: ema_system,
+        base_params: { ema_period: 20 },
+        progress_interval: 0
+      ).call(
+        target: 'ema.period',
+        from: 7,
+        to: 7,
+        step: 1,
+        progress:
+      )
+
+      expect(results.length).to eq(1)
+      expect(results.first).to include(status: 'failed', params: { ema_period: 7 }, trades: [])
+      expect(results.first.fetch(:diagnostics)).to include(
+        code: 'adapter_unavailable',
+        message: 'adapter offline',
+        details: { retry: true }
+      )
+      expect(progress).to have_received(:finished).with(hash_including(total_runs: 1))
+      expect(progress).not_to have_received(:failed)
+    end
   end
 end

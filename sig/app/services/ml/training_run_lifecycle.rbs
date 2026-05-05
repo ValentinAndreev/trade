@@ -2,6 +2,8 @@ module Ml
   class TrainingRunLifecycle
     DEFAULT_ARCHITECTURE: String
     DEFAULT_PREDICTION_TARGET: String
+    SUPPORTED_ARCHITECTURES: Array[String]
+    SUPPORTED_PREDICTION_TARGETS: Array[String]
     STALE_HEARTBEAT_AFTER: ActiveSupport::Duration
 
     class Error
@@ -24,11 +26,21 @@ module Ml
     class ActiveRunConflict < StandardError
     end
 
+    class EnqueueFailed < StandardError
+    end
+
     def self.default_enqueuer: () -> Proc
     def self.default_enqueuer=: (Proc enqueuer) -> Proc
 
     def initialize: (?enqueuer: Proc) -> void
     def create: (Hash[untyped, untyped] raw_params) -> Result
     def cancel: (String | Integer training_run_id) -> Result
+
+    private
+
+    def normalize_model_key: (untyped value) -> String
+    def enqueue_training_run!: (MlTrainingRun training_run) -> void
+    def restore_model_status_after_cancellation!: (MlModel model) -> void
+    def serving_status_after_cancellation: (MlModel model) -> String
   end
 end

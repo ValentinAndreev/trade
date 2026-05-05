@@ -1,0 +1,15 @@
+module Ml
+  class FeatureDefinitionCompatibility
+    class Mismatch
+      attr_reader index: Integer?
+      attr_reader code: Symbol
+      attr_reader message: String
+      attr_reader details: Hash[Symbol, untyped]
+
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    def initialize: (Array[Hash[String, untyped]] resolved_feature_spec) -> void
+    def mismatches: () -> Array[Mismatch]
+  end
+end

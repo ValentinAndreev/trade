@@ -190,7 +190,8 @@ module Research
       def resolve_row_value(row, row_offset, *path)
         offset = row_offset.to_i
         return row.dig(*path) if offset.zero?
-        row.dig_at(offset, *path) if row.respond_to?(:dig_at)
+
+        row.dig_at(offset, *path)
       end
 
       def to_numeric(value)

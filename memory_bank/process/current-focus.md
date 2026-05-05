@@ -9,17 +9,17 @@
 **Фича:** 017_ml_signal_modules
 **Started:** 2026-05-02
 **Текущий этап:** impl
-**Review notes:** —
-**Следующий шаг:** `review: 017`
+**Review notes:** `memory_bank/features/017_ml_signal_modules/reviews/impl.md`
+**Следующий шаг:** выполнить deferred verification checks для 017
 
 ## Контекст последней сессии
 
-- Сделано: storage slices 1a-1c и Steps 2a-8 реализованы; добавлены native modules, dataset builder/checksums, baseline adapter, runner/predictor, ML API lifecycle, constrained training job, cancellation, stale heartbeat reconciliation, ActionCable progress, prediction reuse, Research `ml_signal`, RBS audit и русская документация API/Research/LLM/workflow.
-- Осталось: перейти к `review: 017`.
+- Сделано: повторный `review: 017` пройден без blocking замечаний; текущий fix-pass закрыл актуальные замечания и обновил `reviews/impl.md`.
+- Осталось: выполнить deferred checks из `reviews/impl.md`, затем отметить `done: 017`.
 
 ## Следующие в очереди
 
-- `review: 017`
+- deferred checks для 017
 
 ## Открытые вопросы
 

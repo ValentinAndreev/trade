@@ -19,6 +19,8 @@ module Research
       def optimized_runs: (Research::RunRequest request, Research::Backtest backtest) -> Array[research_run]
       def single_run: (Research::RunRequest request, Research::Backtest backtest) -> Array[research_run]
       def log_completion: (Research::RunRequest request, Array[research_run] runs) -> void
+      def cancelled?: (String? run_id) -> bool
+      def ml_signal_error_payload: (Research::Modules::MlSignal::Error error) -> Hash[Symbol, untyped]
     end
   end
 end

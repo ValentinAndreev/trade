@@ -40,18 +40,20 @@ RSpec.describe Ml::SourceWindowChecksum do
         '3bc136dc8c08f672ebf8bc9877595d761e774d995ba66f36864cd26f7353bf54'
       )
     end
-  end
 
-  describe '#ordered_covering_hashes' do
-    it 'pins odd-node duplication behavior' do
-      checksum = described_class.new(fixture_candles)
+    it 'pins decimal precision beyond float mantissa limits' do
+      decimal = BigDecimal('123456789012.1234567891')
 
-      expect(checksum.root_hexdigest).to eq(
-        '9b04b18841584907d9db5968d0d4a5a6aaa11e2e3451d74d04fca4f4083c7951'
-      )
-      expect(checksum.ordered_covering_hashes(start_index: 4, end_index: 4)).to eq(
-        [ 'c0ba1e5a7f2ace15b7a89da1f3a8cfc97bde6193d7b51d9ea5852f65b3012f12' ]
-      )
+      expect(described_class.canonical_decimal(decimal)).to eq('123456789012.1234567891')
+      expect(described_class.canonical_decimal(decimal.to_f)).not_to eq('123456789012.1234567891')
+    end
+
+    it 'rejects missing decimal fields explicitly' do
+      expect { described_class.canonical_decimal(nil) }.to raise_error(ArgumentError, /candle decimal value is missing/)
+    end
+
+    it 'keeps candle_time private' do
+      expect(described_class.private_methods).to include(:candle_time)
     end
   end
 
@@ -60,8 +62,27 @@ RSpec.describe Ml::SourceWindowChecksum do
       checksum = described_class.new(fixture_candles)
 
       expect(checksum.window_checksum(start_index: 1, end_index: 4)).to eq(
-        '3717f31b3af95c54befd03843d37e2dcccce12d2ccfc1917c434cc39c275619e'
+        '882e15e8f112097d19d47dd8a4b171b8d28bf1613410082d5fbb38f0a5be1214'
       )
+    end
+
+    it 'does not depend on unrelated candles before the source window' do
+      full = described_class.new(fixture_candles)
+      trimmed = described_class.new(fixture_candles[1..])
+
+      expect(full.window_checksum(start_index: 1, end_index: 2)).to eq(
+        trimmed.window_checksum(start_index: 0, end_index: 1)
+      )
+    end
+
+    it 'precomputes leaf hashes once per candle' do
+      allow(described_class).to receive(:leaf_hash).and_call_original
+
+      checksum = described_class.new(fixture_candles)
+      checksum.window_checksum(start_index: 1, end_index: 4)
+      checksum.window_checksum(start_index: 2, end_index: 4)
+
+      expect(described_class).to have_received(:leaf_hash).exactly(fixture_candles.length).times
     end
   end
 end

@@ -51,7 +51,7 @@ module Research
             'output' => {
               'type' => 'enum',
               'label' => 'Output',
-              'values' => MlPrediction::OUTPUTS,
+              'values' => Research::Modules::MlSignal::NUMERIC_OUTPUTS,
               'default' => 'probability'
             }
           },

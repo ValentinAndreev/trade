@@ -77,4 +77,52 @@ RSpec.describe Research::RunRequest do
       expect(payload.dig(:optimization, :param)).to eq('params.lower_threshold')
     end
   end
+
+  describe '#revalidate!' do
+    it 'defaults exchange before validating ml_signal model compatibility' do
+      create_trained_ml_model(key: 'coinbase_direction_model', exchange: 'coinbase')
+
+      expect {
+        described_class.new(dsl_params.merge(system_yaml: ml_signal_yaml(model_key: 'coinbase_direction_model')))
+      }.to raise_error(Research::Systems::Validation::Error) { |error|
+        expect(error.diagnostics.map(&:to_h)).to include(hash_including(code: 'ml_model_incompatible'))
+      }
+    end
+  end
+
+  def ml_signal_yaml(model_key:)
+    <<~YAML
+      id: ml_signal_system
+      name: ML Signal System
+      modules:
+        signal:
+          type: ml_signal
+          model_key: #{model_key}
+          output: probability
+      conditions:
+        long_entry: "signal.value > 0.6"
+    YAML
+  end
+
+  def create_trained_ml_model(key:, exchange:)
+    model = create(:ml_model, key:, serving_status: 'draft')
+    resolved_feature_spec = Ml::FeatureWindow.new(feature_spec: [ { type: 'log_return', params: { period: 1 } } ]).resolved_feature_spec
+    run = create(
+      :ml_training_run,
+      :succeeded,
+      ml_model: model,
+      dataset_spec: {
+        symbol: 'BTCUSD',
+        exchange:,
+        timeframe: '1h',
+        label_horizon: 1
+      },
+      resolved_feature_spec:
+    )
+    model.update!(
+      serving_status: 'trained',
+      latest_successful_training_run: run,
+      serving_weight_checksum: run.weight_checksum
+    )
+  end
 end

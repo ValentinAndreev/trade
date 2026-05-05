@@ -24,10 +24,10 @@ CI=true
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/trade_test
 ```
 
-The PostgreSQL service uses `timescale/timescaledb:latest-pg17` and loads schema with:
+The PostgreSQL service uses `timescale/timescaledb:latest-pg17` and prepares schema by running migrations, because Timescale hypertables, compression policies and continuous aggregates are defined in migrations and are not fully represented in `db/schema.rb`:
 
 ```bash
-bin/rails db:schema:load
+bin/rails db:migrate
 ```
 
 ## Dependency Installation

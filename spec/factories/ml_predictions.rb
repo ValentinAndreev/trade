@@ -15,7 +15,6 @@ FactoryBot.define do
     timeframe { '1h' }
     weight_checksum { ml_training_run.weight_checksum }
     source_window_checksum { 'source-window-sha256' }
-    output { 'probability' }
     probability { 0.62 }
     direction { 'up' }
     confidence { 0.24 }

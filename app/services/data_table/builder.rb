@@ -117,16 +117,9 @@ class DataTable::Builder
   end
 
   def parse_period_seconds(period)
-    match = period.to_s.match(/^(\d+)([mhdw])$/)
-    raise ArgumentError, "Invalid period: #{period}" unless match
-
-    amount = match[1].to_i
-    case match[2]
-    when 'm' then amount * 60
-    when 'h' then amount * 3600
-    when 'd' then amount * 86400
-    when 'w' then amount * 604800
-    end
+    TimeframeParser.duration_seconds(period)
+  rescue ArgumentError
+    raise ArgumentError, "Invalid period: #{period}"
   end
 
   def find_closest_close(close_by_time, times, target_time)

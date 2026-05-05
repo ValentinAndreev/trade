@@ -60,6 +60,12 @@ RSpec.describe Ml::FeatureMatrix do
       end.to raise_error(described_class::Error, /does not expose output fields/)
     end
 
+    it 'rejects empty output lists before a feature disappears from the matrix' do
+      expect do
+        described_class.new(feature_spec: [ { type: 'log_return', outputs: [] } ]).resolved_feature_spec
+      end.to raise_error(described_class::Error) { |error| expect(error.code).to eq(:empty_outputs) }
+    end
+
     it 'rejects positive-lookahead feature modules' do
       metadata = IndicatorsConfig.schema_metadata_for(:log_return).merge('lookahead' => 1)
       allow(IndicatorsConfig).to receive(:schema_metadata_for).and_call_original
@@ -68,6 +74,30 @@ RSpec.describe Ml::FeatureMatrix do
       expect do
         described_class.new(feature_spec: [ { type: 'log_return' } ]).resolved_feature_spec
       end.to raise_error(described_class::Error, /positive lookahead/)
+    end
+
+    it 'rejects invalid numeric feature params instead of silently coercing them to zero' do
+      expect do
+        described_class.new(feature_spec: [
+          { type: 'vol_adjust', params: { period: 20, epsilon: 'abc' } }
+        ]).resolved_feature_spec
+      end.to raise_error(ArgumentError, /epsilon must be a number/)
+    end
+
+    it 'does not treat resolved metadata keys as feature params' do
+      resolved = described_class.new(feature_spec: [
+        {
+          type: 'log_return',
+          period: 2,
+          module_version: 'old',
+          definition_checksum: 'not-a-param',
+          warmup: 999,
+          lookback: 999
+        }
+      ]).resolved_feature_spec
+
+      expect(resolved.first.fetch('params')).to eq('period' => 2)
+      expect(resolved.first.fetch('warmup')).to eq(2)
     end
   end
 
@@ -89,12 +119,26 @@ RSpec.describe Ml::FeatureMatrix do
       expect(result.rows[2][:source_window_checksum]).to match(/\A[0-9a-f]{64}\z/)
     end
 
+    it 'marks window-of-period native modules complete on the first full trailing window' do
+      resolved = Ml::FeatureWindow.new(feature_spec: [
+        { type: 'range_position', params: { period: 2 } }
+      ]).resolved_feature_spec
+
+      result = described_class.new(candles:, resolved_feature_spec: resolved).call
+
+      expect(resolved.first).to include('warmup' => 1, 'lookback' => 1)
+      expect(result.effective_window).to eq(1)
+      expect(result.rows[0]).to include(complete: false, source_window_checksum: nil)
+      expect(result.rows[1]).to include(complete: true)
+      expect(result.rows[1][:features].fetch('range_position')).to be_between(0.0, 1.0).inclusive
+    end
+
     it 'checks cooperative cancellation before building module rows' do
       resolved = Ml::FeatureWindow.new(feature_spec: [ { type: 'log_return' } ]).resolved_feature_spec
 
       expect do
         described_class.new(candles:, resolved_feature_spec: resolved, cancel_check: -> { true }).call
-      end.to raise_error(Ml::Cancelled)
+      end.to raise_error(Research::Cancelled)
     end
   end
 end

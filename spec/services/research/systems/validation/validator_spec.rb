@@ -213,6 +213,14 @@ RSpec.describe Research::Systems::Validation::Validator do
       expect(result.diagnostics.map(&:message)).to include('Unknown ML model: missing_model')
     end
 
+    it 'rejects blank ml_signal model keys with a structured diagnostic' do
+      result = described_class.new(ml_signal_yaml(model_key: ''), dataset: ml_dataset).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:to_h)).to include(hash_including(code: 'ml_model_key_required'))
+      expect(result.diagnostics.map(&:message)).to include('ML model key is required')
+    end
+
     it 'rejects untrained ml_signal model references' do
       create(:ml_model, key: 'draft_direction_model', serving_status: 'draft')
 
@@ -228,7 +236,16 @@ RSpec.describe Research::Systems::Validation::Validator do
       result = described_class.new(ml_signal_yaml(model_key: 'btc_direction_v1', output: 'score'), dataset: ml_dataset).call
 
       expect(result).to be_invalid
-      expect(result.diagnostics.map(&:message)).to include('Unsupported ML output: score')
+      expect(result.diagnostics.map(&:message)).to include('Unsupported numeric ML signal output: score')
+    end
+
+    it 'rejects direction ml_signal output because condition expressions are numeric' do
+      create_trained_ml_model(key: 'btc_direction_v1')
+
+      result = described_class.new(ml_signal_yaml(model_key: 'btc_direction_v1', output: 'direction'), dataset: ml_dataset).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:message)).to include('Unsupported numeric ML signal output: direction')
     end
 
     it 'rejects ml_signal models with missing feature metadata' do
@@ -254,6 +271,18 @@ RSpec.describe Research::Systems::Validation::Validator do
       expect(result.diagnostics.map(&:message)).to include('ML model lookahead_model uses positive-lookahead feature 0')
     end
 
+    it 'rejects ml_signal models with stale feature definition checksums' do
+      resolved = Ml::FeatureWindow.new(feature_spec: [ { type: 'log_return', params: { period: 1 } } ]).resolved_feature_spec
+      resolved.first['definition_checksum'] = 'old-definition-checksum'
+      create_trained_ml_model(key: 'stale_definition_model', resolved_feature_spec: resolved)
+
+      result = described_class.new(ml_signal_yaml(model_key: 'stale_definition_model'), dataset: ml_dataset).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:to_h)).to include(hash_including(code: 'ml_model_feature_stale'))
+      expect(result.diagnostics.map(&:message)).to include(a_string_matching(/feature 0 is stale/))
+    end
+
     it 'rejects ml_signal models trained for a different symbol or timeframe' do
       create_trained_ml_model(key: 'eth_direction_v1', symbol: 'ETHUSD', timeframe: '5m')
 
@@ -261,6 +290,15 @@ RSpec.describe Research::Systems::Validation::Validator do
 
       expect(result).to be_invalid
       expect(result.diagnostics.map(&:message)).to include(a_string_matching(/incompatible with dataset/))
+    end
+
+    it 'rejects ml_signal models whose serving snapshot omits exchange' do
+      create_trained_ml_model(key: 'missing_exchange_model', exchange: nil)
+
+      result = described_class.new(ml_signal_yaml(model_key: 'missing_exchange_model'), dataset: ml_dataset).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:message)).to include(a_string_matching(/exchange=<missing>/))
     end
   end
 
@@ -295,10 +333,9 @@ RSpec.describe Research::Systems::Validation::Validator do
       ml_model: model,
       dataset_spec: {
         symbol:,
-        exchange:,
         timeframe:,
         label_horizon: 1
-      },
+      }.tap { |spec| spec[:exchange] = exchange unless exchange.nil? },
       resolved_feature_spec:
     )
     model.update!(

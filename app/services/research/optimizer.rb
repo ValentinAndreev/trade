@@ -34,12 +34,8 @@ module Research
         end
 
         run_started_at = now
-        result = backtest.run(
-          params: base_params.merge(param_key => value),
-          mode:,
-          stage:,
-          cancel_check: -> { cancelled?(run_id, monotonic_now) }
-        )
+        run_params = base_params.merge(param_key => value)
+        result = run_backtest(run_params, run_id:)
         completed_runs << result
         now = monotonic_now
         if progress && should_publish_progress?(now, next_progress_at, index, values.length)
@@ -85,6 +81,36 @@ module Research
     end
 
     def should_publish_progress?(now, next_progress_at, index, total_runs) = progress_interval.zero? || now >= next_progress_at || index == total_runs - 1
+
+    def run_backtest(run_params, run_id:)
+      backtest.run(
+        params: run_params,
+        mode:,
+        stage:,
+        cancel_check: -> { cancelled?(run_id, monotonic_now) }
+      )
+    rescue Research::Modules::MlSignal::Error => e
+      {
+        mode: mode.to_s,
+        stage: stage.to_s,
+        status: 'failed',
+        params: failed_run_params(run_params),
+        trades: [],
+        diagnostics: [
+          {
+            code: e.code.to_s,
+            message: e.message,
+            details: e.details || {}
+          }
+        ]
+      }
+    end
+
+    def failed_run_params(run_params)
+      system.run_params(run_params)
+    rescue StandardError
+      run_params
+    end
 
     def values_for(from:, to:, step:)
       current = from.to_f

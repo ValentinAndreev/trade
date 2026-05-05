@@ -33,7 +33,15 @@ module Api
       end
 
       def training_run_payload
-        params.to_unsafe_h.except('controller', 'action').deep_symbolize_keys
+        params.permit(
+          :model_key,
+          :display_name,
+          :architecture,
+          :prediction_target,
+          dataset_spec: {},
+          hyperparams: {},
+          feature_spec: [ :type, :output, :name, { params: {} } ]
+        ).to_h.deep_symbolize_keys
       end
 
       def render_lifecycle_result(result)

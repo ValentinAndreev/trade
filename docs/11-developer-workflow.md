@@ -148,17 +148,13 @@ git diff --check
 
 ## ML Signal Modules
 
-Фича 017 добавляет ML-слой без внешнего Python/Torch сервиса. Обучение и inference выполняются in-process Ruby baseline adapter-ом, поэтому разработка и CI не требуют отдельного model-serving процесса.
-
-Очередь обучения изолирована в `config/queue.yml`: очередь `ml` настроена с `threads: 1` и `processes: 1`. Это часть контракта MVP: для одной модели допускается только один активный запуск в состоянии `queued` или `running`, а stale `running`-запуск с устаревшим `heartbeat_at` перед replacement-запуском переводится в `failed` с метаданными `stale_worker`.
-
-`ml_predictions` — Timescale hypertable по `ts` без отдельного `id`. Уникальность задается через `(ml_model_id, exchange, symbol, timeframe, ts)`. Prediction rows являются пересчитываемым кэшем: повторное использование разрешено только при совпадении serving `weight_checksum` и `source_window_checksum`; upsert с защитой не дает старому training snapshot перезаписать rows от более нового успешного обучения.
+Feature-level контракты живут в `memory_bank/features/017_ml_signal_modules/spec.md` и `memory_bank/features/017_ml_signal_modules/plan.md`. Этот workflow doc оставляет только команды проверки для изменений в этом пакете.
 
 Практические проверки для ML-срезов:
 
 ```bash
 bundle exec rspec spec/services/ml spec/models/ml_model_spec.rb spec/models/ml_training_run_spec.rb spec/jobs/ml_training_job_spec.rb
-bundle exec rspec spec/services/research/systems/validation/checks/ml_models_spec.rb spec/services/research/modules/ml_signal_spec.rb spec/services/research/backtest_ml_signal_spec.rb
+bundle exec rspec spec/services/research/systems/validation/validator_spec.rb spec/services/research/modules/ml_signal_spec.rb spec/services/research/backtest_spec.rb
 bundle exec steep check
 bin/memory-bank-check
 git diff --check

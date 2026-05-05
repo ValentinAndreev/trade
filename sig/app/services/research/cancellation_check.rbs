@@ -1,0 +1,10 @@
+module Research
+  class CancellationCheck
+    class Callable
+      def initialize: (Proc callable) -> void
+      def check_cancelled!: () -> void
+    end
+
+    def self.wrap: (untyped cancel_check) -> untyped
+  end
+end

@@ -71,10 +71,10 @@ RSpec.describe Research::Systems::ConditionExpression do
       lambda do |ref, row:, params:, row_offset: 0|
         return params[ref.to_sym] if params.key?(ref.to_sym)
 
-        if row.respond_to?(:fetch_with_offset)
-          row.fetch_with_offset(ref.to_sym, row_offset)
-        else
+        if row.is_a?(Hash)
           row.fetch(ref.to_sym, nil)
+        else
+          row.fetch_with_offset(ref.to_sym, row_offset)
         end
       end
     end

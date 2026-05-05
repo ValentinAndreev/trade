@@ -227,7 +227,9 @@ RSpec.describe Research::Backtest do
         candles: kind_of(Array),
         symbol: 'BTCUSD',
         timeframe: '1m',
-        exchange: 'bitfinex'
+        exchange: 'bitfinex',
+        start_time: start_time.iso8601,
+        end_time: end_time.iso8601
       ).and_return(runner)
       allow(runner).to receive(:call) do |model_key:, output: 'probability', cancel_check: nil|
         expect(model_key).to eq('btc_direction_backtest')

@@ -1,6 +1,9 @@
 module Research
   module Modules
-    class MlSignal < Base
+    class MlSignal < CandleAligned
+      NUMERIC_OUTPUTS: Array[String]
+      @warmup_candle_cache: Hash[untyped, Array[ohlcv]]
+
       class Error < StandardError
         attr_reader code: Symbol
         attr_reader details: Hash[Symbol, untyped]
@@ -12,7 +15,9 @@ module Research
         candles: Array[ohlcv],
         ?symbol: String?,
         ?timeframe: String?,
-        ?exchange: String
+        ?exchange: String,
+        ?start_time: String | Time?,
+        ?end_time: String | Time?
       ) -> void
 
       def call: (
@@ -27,9 +32,12 @@ module Research
       attr_reader symbol: String?
       attr_reader timeframe: String?
       attr_reader exchange: String
+      attr_reader start_time: String | Time?
+      attr_reader end_time: String | Time?
+      attr_reader warmup_candle_cache: Hash[untyped, Array[ohlcv]]
 
-      def inferred_symbol: () -> String?
-      def inferred_timeframe: () -> String?
+      def resolved_start_time: () -> (String | Time)?
+      def resolved_end_time: () -> (String | Time)?
     end
   end
 end

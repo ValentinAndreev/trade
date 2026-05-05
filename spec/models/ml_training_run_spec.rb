@@ -87,14 +87,46 @@ RSpec.describe MlTrainingRun, type: :model do
   end
 
   describe 'cancellation' do
-    it 'records a persisted cancellation request' do
-      run = create(:ml_training_run)
+    it 'records a persisted cancellation request for running runs' do
+      run = create(:ml_training_run, :running)
 
       expect { run.request_cancellation! }
         .to change { run.reload.cancellation_requested_at }
         .from(nil)
 
       expect(run).to be_cancellation_requested
+      expect(run.status).to eq('running')
+    end
+
+    it 'cancels queued runs immediately' do
+      run = create(:ml_training_run, status: 'queued')
+
+      expect { run.request_cancellation! }
+        .to change { run.reload.status }
+        .from('queued')
+        .to('cancelled')
+
+      expect(run.cancellation_requested_at).to be_present
+      expect(run.finished_at).to be_present
+      expect(run.error_metadata).to include('code' => 'cancelled')
+    end
+
+    it 'does not mark terminal runs as cancellation requested' do
+      run = create(:ml_training_run, :succeeded)
+
+      expect(run.request_cancellation!).to be(false)
+      expect(run.reload.cancellation_requested_at).to be_nil
+    end
+
+    it 'does not let a stale queued instance overwrite a terminal run' do
+      run = create(:ml_training_run, status: 'queued')
+      stale_instance = described_class.find(run.id)
+      run.update!(status: 'succeeded', weight_checksum: 'a' * 64)
+
+      expect(stale_instance.request_cancellation!).to be(false)
+
+      expect(run.reload.status).to eq('succeeded')
+      expect(run.weight_checksum).to eq('a' * 64)
     end
   end
 end

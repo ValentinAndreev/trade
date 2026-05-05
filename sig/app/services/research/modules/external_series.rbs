@@ -1,12 +1,12 @@
 module Research
   module Modules
-    class ExternalSeries < Base
-      def call: (key: String, **untyped) -> Array[research_module_point]
+    class ExternalSeries < CandleAligned
+      def call: (key: String, ?cancel_check: untyped, **untyped) -> Array[research_module_point]
 
       private
 
       def series_for: (String metric_key, source: String?) -> Array[[Integer, Float]]
-      def align_series: (Array[[Integer, Float]] pairs) -> Array[research_module_point]
+      def align_series: (Array[[Integer, Float]] pairs, ?cancel_check: untyped) -> Array[research_module_point]
     end
   end
 end

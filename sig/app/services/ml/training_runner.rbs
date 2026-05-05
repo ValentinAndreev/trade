@@ -32,7 +32,7 @@ module Ml
         progress_broadcaster: Ml::ProgressBroadcaster
       ) -> void
 
-      def check_cancelled!: () -> void
+      def check_cancelled!: (?force_reload: bool) -> void
       def report_progress: (**untyped payload) -> void
     end
   end

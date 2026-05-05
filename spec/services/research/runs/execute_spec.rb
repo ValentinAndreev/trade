@@ -11,6 +11,7 @@ RSpec.describe Research::Runs::Execute do
       started: nil,
       run_completed: nil,
       finished: nil,
+      cancelled: nil,
       failed: nil,
       current_time: 10.0,
       broadcaster: progress_broadcaster,
@@ -39,6 +40,7 @@ RSpec.describe Research::Runs::Execute do
         },
         optimization_enabled?: false,
         runtime_params: { ema_period: 5 },
+        progress_run_id: 'run-123',
         revalidate!: nil,
         response_payload: { 'runs' => [ { 'params' => { 'ema_period' => 5 } } ] }
       )
@@ -47,7 +49,7 @@ RSpec.describe Research::Runs::Execute do
 
       allow(Research::RunRequest).to receive(:new).with(raw_params).and_return(request)
       allow(Research::Backtest).to receive(:new).and_return(backtest)
-      allow(backtest).to receive(:run).with(params: { ema_period: 5 }).and_return(run)
+      allow(backtest).to receive(:run).with(params: { ema_period: 5 }, cancel_check: kind_of(Proc)).and_return(run)
       allow(request).to receive(:response_payload).with(runs: [ run ]).and_return({ 'runs' => [ run ] })
 
       result = described_class.new(raw_params).call
@@ -61,6 +63,88 @@ RSpec.describe Research::Runs::Execute do
       expect(progress_session).to have_received(:finished).with(total_runs: 1)
       expect(result.status).to eq(:ok)
       expect(result.payload).to eq({ 'runs' => [ run ] })
+    end
+
+    it 'passes cancellation context to single backtests and returns a cancelled result' do
+      request = instance_double(
+        Research::RunRequest,
+        backtest_config: {
+          system: :compiled_system,
+          symbol: 'BTCUSD',
+          timeframe: '1m',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2026-01-02T00:00:00Z',
+          exchange: 'bitfinex',
+          fee_bps: 4,
+          slippage_bps: 2
+        },
+        optimization_enabled?: false,
+        runtime_params: { ema_period: 5 },
+        progress_run_id: 'run-123',
+        revalidate!: nil
+      )
+      backtest = instance_double(Research::Backtest)
+
+      allow(Research::RunRequest).to receive(:new).with(raw_params).and_return(request)
+      allow(Research::Backtest).to receive(:new).and_return(backtest)
+      allow(backtest).to receive(:run) do |params:, cancel_check:|
+        expect(params).to eq(ema_period: 5)
+        Research::CancellationRegistry.cancel('run-123')
+        expect(cancel_check.call).to eq(true)
+        raise Research::Backtest::Cancelled
+      end
+      allow(request).to receive(:response_payload).with(runs: []).and_return({ 'runs' => [] })
+
+      result = described_class.new(raw_params).call
+
+      expect(progress_session).to have_received(:cancelled).with(total_runs: 1, completed_runs: 0)
+      expect(result.status).to eq(:ok)
+      expect(result.payload).to eq({ 'runs' => [] })
+    end
+
+    it 'returns structured ml_signal inference errors' do
+      request = instance_double(
+        Research::RunRequest,
+        backtest_config: {
+          system: :compiled_system,
+          symbol: 'BTCUSD',
+          timeframe: '1m',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2026-01-02T00:00:00Z',
+          exchange: 'bitfinex',
+          fee_bps: 4,
+          slippage_bps: 2
+        },
+        optimization_enabled?: false,
+        runtime_params: { ema_period: 5 },
+        progress_run_id: 'run-123',
+        revalidate!: nil
+      )
+      backtest = instance_double(Research::Backtest)
+      error = Research::Modules::MlSignal::Error.new(
+        'adapter offline',
+        code: :adapter_unavailable,
+        details: { reason: 'maintenance' }
+      )
+
+      allow(Research::RunRequest).to receive(:new).with(raw_params).and_return(request)
+      allow(Research::Backtest).to receive(:new).and_return(backtest)
+      allow(backtest).to receive(:run).and_raise(error)
+
+      result = described_class.new(raw_params).call
+
+      expect(progress_session).to have_received(:failed).with(message: 'adapter offline')
+      expect(result.status).to eq(:unprocessable_entity)
+      expect(result.payload).to eq(
+        error: 'adapter offline',
+        diagnostics: [
+          {
+            code: 'adapter_unavailable',
+            message: 'adapter offline',
+            details: { reason: 'maintenance' }
+          }
+        ]
+      )
     end
 
     it 'delegates optimization runs to Research::Optimizer' do

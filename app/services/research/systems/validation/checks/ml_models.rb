@@ -18,12 +18,15 @@ module Research
 
           def validate_ml_model(module_payload, path)
             model_key = module_payload['model_key'].to_s
-            return if model_key.blank?
+            if model_key.blank?
+              add_error(message: 'ML model key is required', path: path + [ 'model_key' ], code: 'ml_model_key_required')
+              return
+            end
 
             output = module_payload.fetch('output', 'probability').to_s
-            unless MlPrediction::OUTPUTS.include?(output)
+            unless Research::Modules::MlSignal::NUMERIC_OUTPUTS.include?(output)
               add_error(
-                message: "Unsupported ML output: #{output}",
+                message: "Unsupported numeric ML signal output: #{output}",
                 path: path + [ 'output' ],
                 code: 'ml_model_output'
               )
@@ -59,9 +62,10 @@ module Research
             mismatches = %w[symbol timeframe exchange].filter_map do |key|
               expected_value = expected[key].presence
               actual_value = dataset_spec[key].presence
-              next unless expected_value && actual_value && expected_value.to_s != actual_value.to_s
+              next unless expected_value
+              next if actual_value && normalize_dataset_value(key, expected_value) == normalize_dataset_value(key, actual_value)
 
-              "#{key}=#{actual_value}"
+              "#{key}=#{actual_value || '<missing>'}"
             end
             return if mismatches.empty?
 
@@ -70,6 +74,14 @@ module Research
               path: path + [ 'model_key' ],
               code: 'ml_model_incompatible'
             )
+          end
+
+          def normalize_dataset_value(key, value)
+            case key.to_s
+            when 'symbol' then value.to_s.strip.upcase
+            when 'exchange', 'timeframe' then value.to_s.strip.downcase
+            else value.to_s.strip
+            end
           end
 
           def validate_ml_feature_spec(model, model_key, path)
@@ -86,12 +98,25 @@ module Research
                 next
               end
 
+              validate_ml_feature_definition_current(model_key, payload, index, path)
+
               next unless payload.fetch('lookahead').to_i.positive?
 
               add_error(
                 message: "ML model #{model_key} uses positive-lookahead feature #{index}",
                 path: path + [ 'model_key' ],
                 code: 'ml_model_feature_lookahead'
+              )
+            end
+          end
+
+          def validate_ml_feature_definition_current(model_key, payload, index, path)
+            mismatches = Ml::FeatureDefinitionCompatibility.new([ payload ]).mismatches
+            mismatches.each do |mismatch|
+              add_error(
+                message: "ML model #{model_key} feature #{index} is stale: #{mismatch.message}",
+                path: path + [ 'model_key' ],
+                code: 'ml_model_feature_stale'
               )
             end
           end
@@ -106,7 +131,7 @@ module Research
           def ml_models_by_key
             @ml_models_by_key ||= begin
               keys = ml_modules.filter_map { |_name, module_payload| module_payload['model_key'].presence }.map(&:to_s).uniq
-              MlModel.where(key: keys).includes(latest_successful_training_run: :weight_blob).index_by(&:key)
+              MlModel.where(key: keys).includes(:latest_successful_training_run).index_by(&:key)
             end
           end
         end

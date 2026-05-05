@@ -7,11 +7,6 @@ class MlTrainingRun < ApplicationRecord
   CANONICAL_METRIC_KEYS = MlModel::CANONICAL_METRIC_KEYS
 
   belongs_to :ml_model, inverse_of: :training_runs
-  has_one :weight_blob,
-    class_name: 'MlModelWeightBlob',
-    dependent: :restrict_with_error,
-    inverse_of: :ml_training_run
-
   before_validation :normalize_status
   before_validation :normalize_json_snapshots
 
@@ -26,7 +21,6 @@ class MlTrainingRun < ApplicationRecord
     },
     if: :active?
 
-  validate :json_snapshots_are_present
   validate :succeeded_run_has_weight_checksum
   validate :cancelled_run_has_no_weight_checksum
 
@@ -45,7 +39,33 @@ class MlTrainingRun < ApplicationRecord
   def cancellation_requested? = cancellation_requested_at.present?
 
   def request_cancellation!
-    update!(cancellation_requested_at: Time.current)
+    requested = false
+
+    with_lock do
+      unless terminal?
+        now = Time.current
+        if status == 'queued'
+          update!(
+            status: 'cancelled',
+            cancellation_requested_at: now,
+            finished_at: now,
+            weight_checksum: nil,
+            error_metadata: { code: 'cancelled', message: 'training was cancelled before start' }
+          )
+        else
+          update!(cancellation_requested_at: now)
+        end
+        requested = true
+      end
+    end
+
+    requested
+  end
+
+  def weight_blob
+    return if weight_checksum.blank?
+
+    MlModelWeightBlob.find_by(checksum: weight_checksum)
   end
 
   private
@@ -61,15 +81,6 @@ class MlTrainingRun < ApplicationRecord
     self.metrics = self.class.canonical_metrics(metrics)
     self.error_metadata = error_metadata.to_h.deep_stringify_keys
     self.fitted_metadata = fitted_metadata.to_h.deep_stringify_keys
-  end
-
-  def json_snapshots_are_present
-    errors.add(:dataset_spec, "can't be nil") if dataset_spec.nil?
-    errors.add(:resolved_feature_spec, "can't be nil") if resolved_feature_spec.nil?
-    errors.add(:hyperparams, "can't be nil") if hyperparams.nil?
-    errors.add(:metrics, "can't be nil") if metrics.nil?
-    errors.add(:error_metadata, "can't be nil") if error_metadata.nil?
-    errors.add(:fitted_metadata, "can't be nil") if fitted_metadata.nil?
   end
 
   def succeeded_run_has_weight_checksum

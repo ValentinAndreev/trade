@@ -12,14 +12,14 @@ module Ml
         max_iterations: 200,
         tolerance: 0.0001,
         class_weight: 'balanced',
-        learning_rate: 0.1,
-        progress_interval: 25
+        learning_rate: 0.1
       }.freeze
+      DEFAULT_PROGRESS_INTERVAL = 25
       EPSILON = 1e-15
+      PARSED_WEIGHTS_CACHE_LIMIT = 16
 
-      def train(examples:, hyperparams: {}, callbacks: nil)
-        callbacks = callbacks || NullCallbacks.new
-        callbacks.check_cancelled!
+      def train(examples:, hyperparams: {}, callbacks: nil, feature_names: nil)
+        check_cancelled!(callbacks)
 
         normalized_examples = normalize_examples(examples)
         labels = normalized_examples.map { |example| example.fetch(:label) }
@@ -28,8 +28,8 @@ module Ml
           return failure(:insufficient_classes, 'training requires at least one up and one down example', class_counts:)
         end
 
-        params = DEFAULT_HYPERPARAMS.merge(hyperparams.to_h.symbolize_keys)
-        feature_names = feature_names_for(normalized_examples)
+        params = DEFAULT_HYPERPARAMS.merge(hyperparams.to_h.symbolize_keys.slice(*DEFAULT_HYPERPARAMS.keys))
+        feature_names = feature_names_for(normalized_examples, feature_names:)
         weights = sample_weights(labels, params.fetch(:class_weight))
         coefficients = Array.new(feature_names.length, 0.0)
         intercept = 0.0
@@ -37,7 +37,7 @@ module Ml
         iterations = 0
 
         params.fetch(:max_iterations).to_i.times do |iteration|
-          callbacks.check_cancelled!
+          check_cancelled!(callbacks)
           loss, gradients, intercept_gradient = loss_and_gradients(
             normalized_examples, feature_names, coefficients, intercept, weights
           )
@@ -52,7 +52,7 @@ module Ml
           previous_loss = loss
         end
 
-        callbacks.check_cancelled!
+        check_cancelled!(callbacks)
         metrics = metrics_for(normalized_examples, feature_names, coefficients, intercept)
         payload = serialize_weights(
           feature_names:,
@@ -71,19 +71,20 @@ module Ml
           diagnostics: {
             example_count: normalized_examples.length,
             class_counts: class_counts.stringify_keys,
-            iterations:
+            iterations:,
+            metrics_scope: 'training_set'
           },
           error: nil
         )
-      rescue Ml::Cancelled
+      rescue Research::Cancelled
         raise
       rescue StandardError => e
         failure(:adapter_error, e.message)
       end
 
       def predict(features:, weights:)
-        parsed_weights = parse_weights(weights)
-        return parsed_weights if parsed_weights.is_a?(Result::PredictionBatch)
+        parsed_weights, failure = parsed_weights_for(weights)
+        return failure if failure
 
         feature_names = parsed_weights.fetch('feature_names')
         coefficients = parsed_weights.fetch('coefficients').map(&:to_f)
@@ -107,11 +108,6 @@ module Ml
 
       private
 
-      class NullCallbacks
-        def check_cancelled!; end
-        def report_progress(...); end
-      end
-
       def normalize_examples(examples)
         Array(examples).map do |example|
           payload = example.to_h
@@ -122,7 +118,10 @@ module Ml
         end
       end
 
-      def feature_names_for(examples)
+      def feature_names_for(examples, feature_names: nil)
+        explicit = Array(feature_names).map(&:to_s)
+        return explicit if explicit.any?
+
         examples.first.fetch(:features).keys
       end
 
@@ -209,27 +208,41 @@ module Ml
       end
 
       def parse_weights(weights)
-        payload = weights.is_a?(String) ? JSON.parse(weights) : weights.to_h
+        payload = JSON.parse(weights)
         unless payload['schema_version'] == WEIGHTS_SCHEMA_VERSION && payload['weights_format'] == WEIGHTS_FORMAT
-          return prediction_failure(:unsupported_weights_format, 'weights are not baseline_direction_classifier:v1')
+          return [ nil, prediction_failure(:unsupported_weights_format, 'weights are not baseline_direction_classifier:v1') ]
         end
 
-        payload
+        [ payload, nil ]
       rescue JSON::ParserError, TypeError => e
-        prediction_failure(:invalid_weights_payload, e.message)
+        [ nil, prediction_failure(:invalid_weights_payload, e.message) ]
+      end
+
+      def parsed_weights_for(weights)
+        @parsed_weights_cache ||= {}
+        if @parsed_weights_cache.key?(weights)
+          cached = @parsed_weights_cache.delete(weights)
+          @parsed_weights_cache[weights] = cached
+          return cached
+        end
+
+        parsed = parse_weights(weights)
+        @parsed_weights_cache[weights] = parsed
+        @parsed_weights_cache.shift while @parsed_weights_cache.size > PARSED_WEIGHTS_CACHE_LIMIT
+        parsed
       end
 
       def fitted_metadata(feature_names)
         {
           'normalization' => 'module_outputs_no_fit:v1',
           'feature_names' => feature_names,
-          'label_mapping' => { 'down' => 0, 'up' => 1 }
+          'label_mapping' => { 'down' => 0, 'up' => 1 },
+          'metrics_scope' => 'training_set'
         }
       end
 
       def feature_values_for(payload, feature_names)
         features = payload.to_h
-        features = features.fetch(:features, features.fetch('features', features)).to_h
         feature_names.map do |name|
           value = features[name] || features[name.to_sym]
           value.nil? ? nil : value.to_f
@@ -253,9 +266,13 @@ module Ml
       end
 
       def report_progress(callbacks, iteration:, max_iterations:, loss:)
-        return unless (iteration % DEFAULT_HYPERPARAMS.fetch(:progress_interval)).zero? || iteration == max_iterations
+        return unless (iteration % DEFAULT_PROGRESS_INTERVAL).zero? || iteration == max_iterations
 
-        callbacks.report_progress(stage: 'training', iteration:, max_iterations:, loss:)
+        callbacks&.report_progress(stage: 'training', iteration:, max_iterations:, loss:)
+      end
+
+      def check_cancelled!(callbacks)
+        callbacks&.check_cancelled!
       end
 
       def failure(code, message, details = {})

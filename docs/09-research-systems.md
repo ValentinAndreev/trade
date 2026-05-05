@@ -384,7 +384,7 @@ conditions:
 | Параметр | Обязателен | Значения |
 | --- | --- | --- |
 | `model_key` | Да | key существующей обученной ML-модели |
-| `output` | Нет | `probability`, `direction`, `confidence`; по умолчанию `probability` |
+| `output` | Нет | `probability`, `confidence`; по умолчанию `probability` |
 
 Валидация YAML отклоняет:
 
@@ -414,7 +414,7 @@ Backtest/optimization дополнительно повторно валидир
 - serving `weight_checksum`;
 - `source_window_checksum`, посчитанного по стабильному содержимому свечей в effective warmup window.
 
-Если строки отсутствуют или stale, inference вычисляет их батчами, сохраняет успешный batch и только после commit возвращает значения вызывающей стороне Research. Ошибки adapter/persistence не пишутся как rows в `ml_predictions`; backtest/optimization получают структурированную ошибку, и запуск завершается ошибкой, а не продолжается с полностью `nil` ML-серией.
+Если строки отсутствуют или stale, inference вычисляет их батчами, сохраняет успешный batch и только после commit возвращает значения вызывающей стороне Research. Ошибки adapter/persistence не пишутся как rows в `ml_predictions`; backtest получает структурированную ошибку, а optimization помечает конкретный parameter run как failed с diagnostics и продолжает остальные значения.
 
 ### No-lookahead и labels
 
@@ -427,7 +427,7 @@ Inference features для временной метки `t` используют
 MVP-лимит для inference:
 
 ```text
-prediction_cells = candle_count * distinct(model_key, output)
+prediction_cells = candle_count * distinct(model_key)
 max_prediction_cells = 50_000
 ```
 

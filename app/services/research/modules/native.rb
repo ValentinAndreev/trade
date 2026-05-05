@@ -2,10 +2,7 @@
 
 module Research
   module Modules
-    class Native < Base
-      FIELD_KEYS = %i[open high low close volume].freeze
-      private_constant :FIELD_KEYS
-
+    class Native < CandleAligned
       class << self
         def module_key = name.demodulize.underscore.to_sym
         def indicator_name = indicator_definition.fetch(:label)
@@ -18,7 +15,7 @@ module Research
             raw_value = symbolized_params.key?(key) ? symbolized_params[key] : param.default
             next if raw_value.nil?
 
-            value = coerce_param(raw_value, param)
+            value = param.coerce!(raw_value, key:)
             validate_param!(key, value, param)
             result[key] = value
           end
@@ -28,15 +25,6 @@ module Research
 
         def indicator_definition = IndicatorsConfig.all.fetch(module_key)
         def params_definition = indicator_definition.fetch(:params)
-
-        def coerce_param(value, param)
-          case param.type
-          when :integer then value.to_i
-          when :number then value.to_f
-          when :enum then value.to_s
-          else value
-          end
-        end
 
         def validate_param!(key, value, param)
           raise ArgumentError, "#{key} must be >= #{param.min}" if param.min && value.to_f < param.min.to_f
@@ -50,14 +38,27 @@ module Research
         end
       end
 
-      def call(**params)
-        options = self.class.coerce_params(params)
-        candles.each_with_index.map do |candle, index|
-          { time: candle.fetch(:time), result: { value: finite_or_nil(value_at(index, **options)) } }
-        end
+      def call(cancel_check: nil, **params)
+        points_for(self.class.coerce_params(params), cancel_check:)
+      end
+
+      def call_resolved(cancel_check: nil, **params)
+        points_for(params, cancel_check:)
+      end
+
+      def call_from_feature_matrix(cancel_check: nil, **params)
+        call_resolved(**params, cancel_check:)
       end
 
       private
+
+      def points_for(options, cancel_check: nil)
+        candles.each_with_index.map do |candle, index|
+          check_cancelled!(cancel_check) if (index % 512).zero?
+
+          { time: candle.fetch(:time), result: { value: finite_or_nil(value_at(index, **options)) } }
+        end
+      end
 
       def value_at(_index, **)
         raise NotImplementedError
@@ -75,7 +76,7 @@ module Research
       end
 
       def window_values(index, period, field: :close)
-        return if index < period
+        return if index < period - 1
 
         values = ((index - period + 1)..index).map { |window_index| numeric_field(window_index, field) }
         return if values.any?(&:nil?)

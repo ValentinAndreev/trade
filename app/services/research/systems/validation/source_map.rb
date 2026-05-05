@@ -11,7 +11,7 @@ module Research
 
         def value_location_for_offset(path, offset, length = 1)
           node = @value_nodes[path_key(path)]
-          return fallback_location unless node&.respond_to?(:value)
+          return fallback_location unless node.is_a?(Psych::Nodes::Scalar)
 
           line_offset, column_offset = offset_position(node.value.to_s, offset)
           base_column = line_offset.zero? ? node.start_column.to_i + 1 : 1
@@ -58,12 +58,12 @@ module Research
         def path_key(path) = Array(path).map(&:to_s).join("\u0000")
 
         def location_for(node)
-          return fallback_location unless node&.respond_to?(:start_line)
+          return fallback_location unless node.is_a?(Psych::Nodes::Node)
 
           start_line = node.start_line.to_i + 1
           start_column = node.start_column.to_i + 1
-          end_column = node.respond_to?(:end_column) ? node.end_column.to_i : node.start_column.to_i
-          length = if node.respond_to?(:end_line) && node.end_line.to_i == node.start_line.to_i
+          end_column = node.end_column.to_i
+          length = if node.end_line.to_i == node.start_line.to_i
             [ end_column - node.start_column.to_i, 1 ].max
           else
             1

@@ -1,5 +1,12 @@
 module Ml
   class DatasetBuilder
+    class Error < StandardError
+      attr_reader code: Symbol
+      attr_reader details: Hash[Symbol, untyped]
+
+      def initialize: (String message, code: Symbol, ?details: Hash[Symbol, untyped]) -> void
+    end
+
     DEFAULT_DATASET_SPEC: Hash[String, untyped]
     DEFAULT_HYPERPARAMS: Hash[String, untyped]
 

@@ -1,0 +1,3 @@
+module Ml
+  CancellationCheck: singleton(Research::CancellationCheck)
+end

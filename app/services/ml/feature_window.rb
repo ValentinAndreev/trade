@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 module Ml
-  class Cancelled < StandardError; end unless const_defined?(:Cancelled, false)
-
   class FeatureWindow
     class Error < StandardError
       attr_reader :code, :details
@@ -59,7 +57,8 @@ module Ml
       definition = indicator_definition(type)
       metadata = indicator_metadata(type)
       validate_metadata!(type, metadata)
-      concrete_params = resolve_params(type, definition.fetch(:params), payload.fetch('params', payload.except('type', 'name', 'alias', 'output', 'outputs')))
+      params_definition = definition.fetch(:params)
+      concrete_params = resolve_params(type, params_definition, raw_params_for(payload, params_definition))
       outputs = resolve_outputs(type, payload, metadata)
       lookahead = metadata.fetch('lookahead').to_i
       raise Error.new("feature module #{type} has positive lookahead", code: :positive_lookahead, details: { type: }) if lookahead.positive?
@@ -105,6 +104,12 @@ module Ml
       )
     end
 
+    def raw_params_for(payload, params_definition)
+      return payload.fetch('params') if payload.key?('params')
+
+      payload.slice(*params_definition.keys.map(&:to_s))
+    end
+
     def resolve_params(type, params_definition, raw_params)
       raw = raw_params.to_h.deep_symbolize_keys
       params_definition.each_with_object({}) do |(key, param), result|
@@ -115,18 +120,9 @@ module Ml
           next
         end
 
-        value = coerce_param(raw_value, param)
+        value = param.coerce!(raw_value, key:)
         validate_param!(type, key, value, param)
         result[key] = value
-      end
-    end
-
-    def coerce_param(value, param)
-      case param.type
-      when :integer then value.to_i
-      when :number then value.to_f
-      when :enum then value.to_s
-      else value
       end
     end
 
@@ -149,6 +145,14 @@ module Ml
       else
         Array(metadata.fetch('output_fields'))
       end.map(&:to_s)
+      if requested.empty?
+        raise Error.new(
+          "#{type} must request at least one output field",
+          code: :empty_outputs,
+          details: { type: }
+        )
+      end
+
       allowed = Array(metadata.fetch('output_fields')).map(&:to_s)
       unsupported = requested - allowed
       if unsupported.any?

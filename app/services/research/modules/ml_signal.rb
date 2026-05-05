@@ -2,7 +2,7 @@
 
 module Research
   module Modules
-    class MlSignal < Base
+    class MlSignal < CandleAligned
       class Error < StandardError
         attr_reader :code, :details
 
@@ -13,41 +13,75 @@ module Research
         end
       end
 
-      def initialize(candles:, symbol: nil, timeframe: nil, exchange: 'bitfinex')
+      NUMERIC_OUTPUTS = %w[probability confidence].freeze
+
+      def initialize(candles:, symbol: nil, timeframe: nil, exchange: 'bitfinex', start_time: nil, end_time: nil)
         super(candles:)
-        @symbol = symbol
-        @timeframe = timeframe
-        @exchange = exchange
+        @symbol = symbol.to_s.strip.presence
+        @timeframe = timeframe.to_s.strip.presence
+        @exchange = exchange.to_s.strip.presence || 'bitfinex'
+        @start_time = start_time
+        @end_time = end_time
+        @warmup_candle_cache = {}
       end
 
       def call(model_key:, output: 'probability', cancel_check: nil, **)
         raise Error.new('ML model key is required', code: :model_key_required) if model_key.to_s.blank?
+        raise Error.new('ML signal symbol is required', code: :symbol_required) if symbol.blank?
+        raise Error.new('ML signal timeframe is required', code: :timeframe_required) if timeframe.blank?
+
+        normalized_output = output.to_s
+        unless NUMERIC_OUTPUTS.include?(normalized_output)
+          raise Error.new("Unsupported numeric ML signal output: #{normalized_output}", code: :unsupported_output, details: { allowed: NUMERIC_OUTPUTS })
+        end
 
         result = Ml::InferenceService.new(
           model_key: model_key.to_s,
-          symbol: symbol || inferred_symbol,
-          timeframe: timeframe || inferred_timeframe,
+          symbol:,
+          timeframe:,
           exchange:,
+          start_time: resolved_start_time,
+          end_time: resolved_end_time,
           candles:,
-          outputs: [ output.to_s ],
-          cancel_check:
+          outputs: [ normalized_output ],
+          cancel_check:,
+          warmup_candle_cache:
         ).call
-        raise Error.new(result.error.message, code: result.error.code, details: result.error.details || {}) unless result.success?
+        raise Research::Cancelled if result.status == :cancelled || result.error&.code == :cancelled
+        unless result.success?
+          error = result.error
+          raise Error.new(
+            error&.message || 'ML inference failed',
+            code: error&.code || :inference_failed,
+            details: error&.details || {}
+          )
+        end
 
         result.series.map do |point|
           {
             time: point.fetch(:time),
-            result: { value: point.dig(:values, output.to_s) }
+            result: { value: point.dig(:values, normalized_output) }
           }
         end
       end
 
       private
 
-      attr_reader :symbol, :timeframe, :exchange
+      attr_reader :symbol, :timeframe, :exchange, :start_time, :end_time, :warmup_candle_cache
 
-      def inferred_symbol = candles.first&.fetch(:symbol, nil)&.to_s
-      def inferred_timeframe = candles.first&.fetch(:timeframe, nil)&.to_s
+      def resolved_start_time
+        return start_time if start_time
+        return if candles.empty?
+
+        Time.at(candles.first.fetch(:time)).utc
+      end
+
+      def resolved_end_time
+        return end_time if end_time
+        return if candles.empty?
+
+        Time.at(candles.last.fetch(:time)).utc
+      end
     end
   end
 end

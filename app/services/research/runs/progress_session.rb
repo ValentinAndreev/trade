@@ -24,6 +24,10 @@ module Research
 
       def finished(total_runs:) = broadcaster.finished(total_runs:, elapsed_ms: elapsed_ms(started_at))
 
+      def cancelled(total_runs:, completed_runs:)
+        broadcaster.cancelled(total_runs:, completed_runs:, elapsed_ms: elapsed_ms(started_at))
+      end
+
       def failed(message:, total_runs: nil, completed_runs: nil)
         broadcaster.failed(
           message:,

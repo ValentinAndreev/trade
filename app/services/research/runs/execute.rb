@@ -24,6 +24,9 @@ module Research
       rescue TechnicalAnalysis::Validation::ValidationError => e
         progress_session.failed(message: e.message)
         Result.new(payload: { error: e.message }, status: :unprocessable_entity)
+      rescue Research::Modules::MlSignal::Error => e
+        progress_session.failed(message: e.message)
+        Result.new(payload: ml_signal_error_payload(e), status: :unprocessable_entity)
       rescue StandardError => e
         progress_session.failed(message: e.message)
         raise
@@ -49,10 +52,16 @@ module Research
       def single_run(request, backtest)
         progress_session.started(total_runs: 1, mode: :normal)
         run_started_at = progress_session.current_time
-        run = backtest.run(params: request.runtime_params)
+        run = backtest.run(
+          params: request.runtime_params,
+          cancel_check: -> { cancelled?(request.progress_run_id) }
+        )
         progress_session.run_completed(total_runs: 1, completed_runs: 1, run_started_at:)
         progress_session.finished(total_runs: 1)
         [ run ]
+      rescue Research::Backtest::Cancelled
+        progress_session.cancelled(total_runs: 1, completed_runs: 0)
+        []
       end
 
       def log_completion(request, runs)
@@ -62,6 +71,25 @@ module Research
           "optimization=#{request.optimization_enabled?} " \
           "compute_ms=#{progress_session.total_elapsed_ms.round}"
         )
+      end
+
+      def cancelled?(run_id)
+        return false if run_id.blank?
+
+        Research::CancellationRegistry.cancelled?(run_id)
+      end
+
+      def ml_signal_error_payload(error)
+        {
+          error: error.message,
+          diagnostics: [
+            {
+              code: error.code.to_s,
+              message: error.message,
+              details: error.details || {}
+            }
+          ]
+        }
       end
     end
   end

@@ -14,6 +14,15 @@ class IndicatorsConfig
       h['default']  = default unless default.nil?
       h
     end
+
+    def coerce!(value, key:)
+      case type
+      when :integer then Integer(value, exception: false) || raise(ArgumentError, "#{key} must be an integer")
+      when :number then Float(value, exception: false) || raise(ArgumentError, "#{key} must be a number")
+      when :enum then value.to_s
+      else value
+      end
+    end
   end
 
   NATIVE_METADATA_KEYS = %i[
@@ -38,9 +47,28 @@ class IndicatorsConfig
     { kind: :param, param:, default: }
   end
 
+  def self.param_warmup_minus_one(param, default:)
+    { kind: :param_minus_one, param:, default: }
+  end
+
   def self.max_param_warmup(*rules)
     { kind: :max_params, rules: }
   end
+
+  def self.definition_checksum_for(metadata)
+    checksum_input = JSON.generate(
+      metadata.slice(
+        :module_version,
+        :output_fields,
+        :warmup,
+        :lookahead,
+        :formula,
+        :heuristic
+      )
+    )
+    Digest::SHA256.hexdigest(checksum_input)
+  end
+  private_class_method :definition_checksum_for
 
   def self.native_indicator(label:, params:, warmup:, description:, formula:, heuristic:, output_fields: [ 'value' ], lookahead: 0)
     metadata = {
@@ -53,21 +81,21 @@ class IndicatorsConfig
       heuristic:,
       ml_feature_eligible: true
     }
-    checksum_input = JSON.generate(metadata.slice(:module_version, :output_fields, :warmup, :lookahead, :formula))
 
     {
       label:,
       params:,
       **metadata,
-      definition_checksum: Digest::SHA256.hexdigest(checksum_input)
+      definition_checksum: definition_checksum_for(metadata)
     }
   end
 
   def self.metadata_for(key)
     definition = INDICATORS.fetch(key.to_sym)
-    NATIVE_METADATA_KEYS.each_with_object({}) do |metadata_key, result|
+    metadata = NATIVE_METADATA_KEYS.each_with_object({}) do |metadata_key, result|
       result[metadata_key] = definition[metadata_key] if definition.key?(metadata_key)
     end
+    metadata
   end
 
   def self.schema_metadata_for(key)
@@ -105,10 +133,10 @@ class IndicatorsConfig
       case rule[:kind].to_s
       when 'param'
         params.fetch(rule.fetch(:param).to_sym, rule.fetch(:default)).to_i
+      when 'param_minus_one'
+        [ params.fetch(rule.fetch(:param).to_sym, rule.fetch(:default)).to_i - 1, 0 ].max
       when 'max_params'
-        rule.fetch(:rules).map do |param_rule|
-          params.fetch(param_rule.fetch(:param).to_sym, param_rule.fetch(:default)).to_i
-        end.max.to_i
+        rule.fetch(:rules).map { |param_rule| resolve_warmup(param_rule, params) }.max.to_i
       else
         0
       end
@@ -183,7 +211,7 @@ class IndicatorsConfig
     range_position: native_indicator(
       label: 'Range Position',
       params: { period: integer(label: 'Period', min: 2, default: 20) },
-      warmup: param_warmup(:period, default: 20),
+      warmup: param_warmup_minus_one(:period, default: 20),
       description: 'Close location inside the trailing high-low range.',
       formula: '(close[t] - min(low[t - period + 1..t])) / (max(high[t - period + 1..t]) - min(low[t - period + 1..t]))',
       heuristic: 'Normalizes price location to the recent range for regime-aware features.'
@@ -191,7 +219,7 @@ class IndicatorsConfig
     rolling_zscore: native_indicator(
       label: 'Rolling Z-Score',
       params: { period: integer(label: 'Period', min: 2, default: 20) },
-      warmup: param_warmup(:period, default: 20),
+      warmup: param_warmup_minus_one(:period, default: 20),
       description: 'Close price z-score against the trailing close window.',
       formula: '(close[t] - mean(close[t - period + 1..t])) / stddev_pop(close[t - period + 1..t])',
       heuristic: 'Expresses price displacement in local standard-deviation units.'
@@ -199,7 +227,7 @@ class IndicatorsConfig
     percentile_rank: native_indicator(
       label: 'Percentile Rank',
       params: { period: integer(label: 'Period', min: 2, default: 20) },
-      warmup: param_warmup(:period, default: 20),
+      warmup: param_warmup_minus_one(:period, default: 20),
       description: 'Percentile rank of the current close within the trailing close window.',
       formula: 'count(close[i] <= close[t] for i in t - period + 1..t) / period',
       heuristic: 'Compresses local price position to a bounded 0..1 feature.'

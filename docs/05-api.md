@@ -252,6 +252,8 @@
 
 Требуют аутентификации через сессионную cookie. Реестр моделей в MVP глобальный внутри границы аутентифицированного приложения: модели не принадлежат отдельным пользователям, per-user ACL в фиче 017 не реализован.
 
+> **Security warning:** этот контракт рассчитан на trusted/single-tenant deployment. Перед multi-user или shared-tenant использованием нужно добавить ownership/ACL для моделей, запусков обучения и ActionCable stream-ов, либо явно изолировать tenant-ы на уровне deployment/database.
+
 | Method | Path | Назначение | Auth |
 | --- | --- | --- | --- |
 | `GET` | `/api/ml/models` | Список ML-моделей | Да |
@@ -370,22 +372,36 @@
 
 Фича 017 не добавляет HTTP endpoint для чтения prediction rows; data-grid endpoint остается зоной фичи 018. Research-модуль `ml_signal` вызывает backend inference service напрямую.
 
-Успешные prediction rows сохраняются в `ml_predictions`, TimescaleDB hypertable по `ts`, с уникальностью `(ml_model_id, exchange, symbol, timeframe, ts)`. Строка хранит:
+Успешные prediction rows сохраняются в `ml_predictions`, TimescaleDB hypertable по `ts`, с уникальностью `(ml_model_id, exchange, symbol, timeframe, ts, weight_checksum)`. Это позволяет backtest-у, стартовавшему до retrain, читать свой captured snapshot даже если новый snapshot уже записал те же timestamps. Строка хранит все значения direction-classification tuple:
 
 - `ml_training_run_id`
 - `weight_checksum`
 - `source_window_checksum`
-- `output`
 - `probability`
 - `direction`
 - `confidence`
 
-Inference переиспользует строку только если совпадают serving `weight_checksum` и `source_window_checksum` для текущего окна свечей. Missing/stale строки пересчитываются батчами и пишутся через upsert с защитой, чтобы старый serving snapshot не перезаписал prediction rows от более нового успешного обучения.
+Inference переиспользует строку только если совпадают serving `weight_checksum` и `source_window_checksum` для текущего окна свечей. Missing/stale строки пересчитываются батчами и пишутся через guarded upsert:
+
+```sql
+ON CONFLICT (ml_model_id, exchange, symbol, timeframe, ts, weight_checksum)
+DO UPDATE
+SET ...
+WHERE (
+  (SELECT created_at FROM ml_training_runs WHERE id = ml_predictions.ml_training_run_id),
+  ml_predictions.ml_training_run_id
+) <= (
+  (SELECT created_at FROM ml_training_runs WHERE id = EXCLUDED.ml_training_run_id),
+  EXCLUDED.ml_training_run_id
+)
+```
+
+Так старый serving snapshot не перезаписывает prediction rows от более нового успешного обучения для того же `weight_checksum`, а разные `weight_checksum` остаются отдельными rows для reproducible backtests.
 
 MVP-лимит:
 
 ```text
-prediction_cells = candle_count * distinct(model_key, output)
+prediction_cells = candle_count * distinct(model_key)
 max_prediction_cells = 50_000
 ```
 

@@ -1,5 +1,7 @@
 class MlModel < ApplicationRecord
   SERVING_STATUSES: Array[String]
+  ARCHITECTURES: Array[String]
+  PREDICTION_TARGETS: Array[String]
   CANONICAL_METRIC_KEYS: Array[String]
   IMMUTABLE_AFTER_SUCCESSFUL_TRAINING: Array[String]
 

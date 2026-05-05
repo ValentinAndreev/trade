@@ -32,9 +32,12 @@ RSpec.describe Research::Modules::MlSignal do
       symbol: 'BTCUSD',
       timeframe: '1m',
       exchange: 'bitfinex',
+      start_time: Time.at(candles.first.fetch(:time)).utc,
+      end_time: Time.at(candles.last.fetch(:time)).utc,
       candles:,
       outputs: [ 'confidence' ],
-      cancel_check: nil
+      cancel_check: nil,
+      warmup_candle_cache: kind_of(Hash)
     ).and_return(service)
 
     result = described_class.new(candles:, symbol: 'BTCUSD', timeframe: '1m', exchange: 'bitfinex')
@@ -63,6 +66,30 @@ RSpec.describe Research::Modules::MlSignal do
     expect(Ml::InferenceService).to have_received(:new).with(hash_including(cancel_check:))
   end
 
+  it 'reuses one warmup candle cache across calls on the same runner' do
+    inference_result = Ml::InferenceService::Result.new(
+      status: :succeeded,
+      model: nil,
+      snapshot: nil,
+      series: [],
+      diagnostics: {},
+      error: nil
+    )
+    service = instance_double(Ml::InferenceService, call: inference_result)
+    caches = []
+    allow(Ml::InferenceService).to receive(:new) do |kwargs|
+      caches << kwargs.fetch(:warmup_candle_cache)
+      service
+    end
+
+    runner = described_class.new(candles:, symbol: 'BTCUSD', timeframe: '1m')
+    runner.call(model_key: 'btc_direction_v1')
+    runner.call(model_key: 'btc_direction_v1')
+
+    expect(caches.length).to eq(2)
+    expect(caches.first).to equal(caches.second)
+  end
+
   it 'raises a structured module error when inference fails' do
     inference_error = Ml::InferenceService::Error.new(
       code: :adapter_unavailable,
@@ -88,6 +115,41 @@ RSpec.describe Research::Modules::MlSignal do
     end.to raise_error(Research::Modules::MlSignal::Error) do |error|
       expect(error.code).to eq(:adapter_unavailable)
       expect(error.details).to eq(reason: 'maintenance')
+    end
+  end
+
+  it 'propagates cancelled inference as cooperative cancellation' do
+    inference_error = Ml::InferenceService::Error.new(
+      code: :cancelled,
+      message: 'inference was cancelled',
+      details: {}
+    )
+    service = instance_double(
+      Ml::InferenceService,
+      call: Ml::InferenceService::Result.new(
+        status: :cancelled,
+        model: nil,
+        snapshot: nil,
+        series: [],
+        diagnostics: {},
+        error: inference_error
+      )
+    )
+    allow(Ml::InferenceService).to receive(:new).and_return(service)
+
+    expect do
+      described_class.new(candles:, symbol: 'BTCUSD', timeframe: '1m')
+        .call(model_key: 'btc_direction_v1')
+    end.to raise_error(Research::Cancelled)
+  end
+
+  it 'rejects non-numeric direction output for research conditions' do
+    expect do
+      described_class.new(candles:, symbol: 'BTCUSD', timeframe: '1m')
+        .call(model_key: 'btc_direction_v1', output: 'direction')
+    end.to raise_error(Research::Modules::MlSignal::Error) do |error|
+      expect(error.code).to eq(:unsupported_output)
+      expect(error.details).to eq(allowed: %w[probability confidence])
     end
   end
 end

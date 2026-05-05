@@ -10,6 +10,7 @@ module Research
         ?current_value: Numeric | String | nil
       ) -> void
       def finished: (total_runs: Integer) -> void
+      def cancelled: (total_runs: Integer, completed_runs: Integer) -> void
       def failed: (message: String, ?total_runs: Integer?, ?completed_runs: Integer?) -> void
       def progress_broadcaster: () -> Research::ProgressBroadcaster
       def current_time: () -> Float

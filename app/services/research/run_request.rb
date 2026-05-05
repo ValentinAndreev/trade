@@ -2,6 +2,8 @@
 
 module Research
   class RunRequest
+    DEFAULT_EXCHANGE = 'bitfinex'
+
     attr_reader :system
 
     def initialize(raw_params)
@@ -19,7 +21,7 @@ module Research
         timeframe: dataset.fetch(:timeframe),
         start_time: dataset.fetch(:start_time),
         end_time: dataset.fetch(:end_time),
-        exchange: dataset[:exchange].presence || 'bitfinex',
+        exchange: dataset.fetch(:exchange),
         fee_bps: execution.fetch(:fee_bps, 0),
         slippage_bps: execution.fetch(:slippage_bps, 0)
       }
@@ -77,7 +79,7 @@ module Research
         timeframe: raw_params.fetch(:timeframe),
         start_time: raw_params.fetch(:start_time),
         end_time: raw_params.fetch(:end_time),
-        exchange: raw_params[:exchange]
+        exchange: raw_params[:exchange].presence || DEFAULT_EXCHANGE
       }
     end
 

@@ -40,14 +40,41 @@ RSpec.describe 'native state/risk normalization modules' do
     expect(result[2].dig(:result, :value)).to be_within(0.000001).of(Math.log(103.0 / 100.0))
   end
 
+  it 'checks cooperative cancellation while computing native module rows' do
+    expect do
+      Research::Modules::LogReturn.new(candles:).call(period: 2, cancel_check: -> { true })
+    end.to raise_error(Research::Cancelled)
+  end
+
   it 'computes rolling price normalization modules from past and current candles' do
     zscore = Research::Modules::RollingZscore.new(candles:).call(period: 2)
     percentile = Research::Modules::PercentileRank.new(candles:).call(period: 2)
     range = Research::Modules::RangePosition.new(candles:).call(period: 2)
 
+    expect(zscore[0].dig(:result, :value)).to be_nil
+    expect(zscore[1].dig(:result, :value)).to be_within(0.000001).of(1.0)
     expect(zscore[2].dig(:result, :value)).to be_within(0.000001).of(1.0)
+    expect(percentile[1].dig(:result, :value)).to eq(1.0)
     expect(percentile[2].dig(:result, :value)).to eq(1.0)
+    expect(range[1].dig(:result, :value)).to be_between(0.0, 1.0).inclusive
     expect(range[2].dig(:result, :value)).to be_between(0.0, 1.0).inclusive
+  end
+
+  it 'documents percentile rank as inclusive of the current candle' do
+    descending_candles = [ 101.0, 100.0 ].map.with_index do |close, index|
+      {
+        time: (start_time + index.minutes).to_i,
+        open: close,
+        high: close,
+        low: close,
+        close:,
+        volume: 1_000.0
+      }
+    end
+
+    result = Research::Modules::PercentileRank.new(candles: descending_candles).call(period: 2)
+
+    expect(result[1].dig(:result, :value)).to eq(0.5)
   end
 
   it 'computes bounded trend and volatility regime scores' do
@@ -62,6 +89,8 @@ RSpec.describe 'native state/risk normalization modules' do
     result = Research::Modules::VolAdjust.new(candles:).call(period: '2', field: 'volume', epsilon: '0.01')
 
     expect(result[2].dig(:result, :value)).to be_present
+    expect { Research::Modules::VolAdjust.new(candles:).call(period: 2, epsilon: 'abc') }
+      .to raise_error(ArgumentError, /epsilon must be a number/)
     expect { Research::Modules::VolAdjust.new(candles:).call(period: 2, field: 'unknown') }
       .to raise_error(ArgumentError, /field must be one of/)
   end

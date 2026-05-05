@@ -2,17 +2,15 @@
 
 module Research
   module Modules
-    class Base
-      private attr_reader :candles
-
-      def initialize(candles:, **)
-        @candles = candles
-      end
-
-      def call(**params)
+    class Base < CandleAligned
+      def call(cancel_check: nil, **params)
+        check_cancelled!(cancel_check)
         ta_params = ta_class.valid_options.include?(:price_key) ? params.merge(price_key: :close) : params
-        ta_class.calculate(input_data, **ta_params)
+        result = ta_class.calculate(input_data, **ta_params)
           .map { |point| { time: time_for(point.date_time), result: result_from(point) } }
+
+        check_cancelled!(cancel_check)
+        result
       end
 
       private

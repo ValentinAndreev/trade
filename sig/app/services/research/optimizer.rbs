@@ -41,6 +41,8 @@ module Research
     def elapsed_ms: (Float started_at, ?Float finished_at) -> Float
     def cancelled?: (String? run_id, Float _now) -> bool
     def should_publish_progress?: (Float now, Float next_progress_at, Integer index, Integer total_runs) -> bool
+    def run_backtest: (research_runtime_params run_params, run_id: String?) -> research_run
+    def failed_run_params: (research_runtime_params run_params) -> research_runtime_params
     def values_for: (from: Numeric | String, to: Numeric | String, step: Numeric | String) -> Array[Integer | Float]
     def integer_like?: (Numeric | String value) -> bool
   end

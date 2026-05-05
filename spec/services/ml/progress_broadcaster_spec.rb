@@ -56,6 +56,15 @@ RSpec.describe Ml::ProgressBroadcaster do
     expect(collector.messages.map { |_stream, payload| payload.fetch(:progress_percent) }).to eq([ 1.0, 2.0, 2.5 ])
   end
 
+  it 'dedupes progress payloads with differently ordered nested hashes' do
+    broadcaster = described_class.new(training_run:, clock: -> { 0.0 }, broadcast_adapter: collector)
+
+    broadcaster.progress(training_run:, stage: 'training', progress_percent: 10, metrics: { b: 1, a: { z: 2, y: 1 } })
+    broadcaster.progress(training_run:, stage: 'training', progress_percent: 10, metrics: { a: { y: 1, z: 2 }, b: 1 })
+
+    expect(collector.messages.length).to eq(1)
+  end
+
   it 'emits terminal events even when the previous progress event was throttled' do
     ticks = [ 0.0, 0.2 ]
     broadcaster = described_class.new(
@@ -70,5 +79,19 @@ RSpec.describe Ml::ProgressBroadcaster do
     broadcaster.cancelled(training_run:)
 
     expect(collector.messages.map { |_stream, payload| payload.fetch(:event) }).to eq(%w[progress cancelled])
+  end
+
+  it 'broadcasts canonical metric keys' do
+    training_run.update!(metrics: { accuracy: 0.9 })
+    broadcaster = described_class.new(training_run:, broadcast_adapter: collector)
+
+    broadcaster.running(training_run:)
+
+    expect(collector.messages.last.last.fetch(:metrics)).to eq(
+      'accuracy' => 0.9,
+      'log_loss' => nil,
+      'auc' => nil,
+      'baseline_majority' => nil
+    )
   end
 end

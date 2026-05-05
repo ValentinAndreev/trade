@@ -36,7 +36,6 @@ class MlTrainingRun < ApplicationRecord
 
   def normalize_status: () -> void
   def normalize_json_snapshots: () -> void
-  def json_snapshots_are_present: () -> void
   def succeeded_run_has_weight_checksum: () -> void
   def cancelled_run_has_no_weight_checksum: () -> void
 end

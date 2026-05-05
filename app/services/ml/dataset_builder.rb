@@ -2,6 +2,16 @@
 
 module Ml
   class DatasetBuilder
+    class Error < StandardError
+      attr_reader :code, :details
+
+      def initialize(message, code:, details: {})
+        @code = code
+        @details = details
+        super(message)
+      end
+    end
+
     DEFAULT_DATASET_SPEC = {
       'prediction_target' => 'direction_classification',
       'label_horizon' => 1
@@ -26,7 +36,7 @@ module Ml
       @feature_spec = feature_spec
       @hyperparams = DEFAULT_HYPERPARAMS.merge(hyperparams.to_h.deep_stringify_keys)
       @candles = candles
-      @cancel_check = cancel_check
+      @cancel_check = Research::CancellationCheck.wrap(cancel_check)
     end
 
     def build_training
@@ -120,7 +130,8 @@ module Ml
           timeframe:,
           start_time:,
           end_time:,
-          limit: nil
+          limit: nil,
+          preserve_decimals: true
         ).call
         source_candles.sort_by { |candle| candle.fetch(:time) }
       end
@@ -140,7 +151,22 @@ module Ml
       { label:, label_return: }
     end
 
-    def label_horizon = dataset_spec.fetch('label_horizon').to_i
+    def label_horizon
+      @label_horizon ||= begin
+        raw_value = dataset_spec.fetch('label_horizon')
+        value = Integer(raw_value, exception: false)
+        if value.nil? || !value.positive?
+          raise Error.new(
+            'label_horizon must be a positive integer',
+            code: :invalid_label_horizon,
+            details: { value: raw_value }
+          )
+        end
+
+        value
+      end
+    end
+
     def label_deadband_return = hyperparams.fetch('label_deadband_return').to_f
 
     def resolved_dataset_spec
@@ -165,11 +191,7 @@ module Ml
     end
 
     def check_cancelled!
-      if cancel_check.respond_to?(:check_cancelled!)
-        cancel_check.check_cancelled!
-      elsif cancel_check.respond_to?(:call) && cancel_check.call
-        raise Ml::Cancelled
-      end
+      cancel_check.check_cancelled! if cancel_check
     end
   end
 end

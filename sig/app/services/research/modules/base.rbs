@@ -1,18 +1,10 @@
 module Research
   module Modules
-    class Base
-      @candles: Array[ohlcv]
+    class Base < CandleAligned
       @input_data: Array[research_input_point]
       @time_lookup: Hash[String, Integer]
 
-      private
-
-      attr_reader candles: Array[ohlcv]
-
-      public
-
-      def initialize: (candles: Array[ohlcv], **untyped) -> void
-      def call: (**untyped params) -> Array[research_module_point]
+      def call: (?cancel_check: untyped, **untyped params) -> Array[research_module_point]
 
       private
 

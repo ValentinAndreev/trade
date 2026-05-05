@@ -8,7 +8,8 @@ module Api
       private
 
       def requested_limit: () -> Integer
-      def serialize_model: (MlModel model) -> Hash[Symbol, untyped]
+      def active_training_runs_by_model_id: (Array[MlModel] models) -> Hash[Integer, MlTrainingRun]
+      def serialize_model: (MlModel model, active_training_run: MlTrainingRun?) -> Hash[Symbol, untyped]
       def serialize_run_summary: (MlTrainingRun? training_run) -> Hash[Symbol, untyped]?
     end
   end

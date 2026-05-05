@@ -24,11 +24,31 @@ RSpec.describe MlModel, type: :model do
       expect(model.errors[:key]).to be_present
     end
 
+    it 'normalizes model keys to lowercase' do
+      model = create(:ml_model, key: ' BTC_DIRECTION_V1 ')
+
+      expect(model.key).to eq('btc_direction_v1')
+    end
+
     it 'requires known serving status' do
       model = build(:ml_model, serving_status: 'unknown')
 
       expect(model).not_to be_valid
       expect(model.errors[:serving_status]).to be_present
+    end
+
+    it 'requires a supported MVP architecture' do
+      model = build(:ml_model, architecture: 'lnn')
+
+      expect(model).not_to be_valid
+      expect(model.errors[:architecture]).to be_present
+    end
+
+    it 'requires a supported MVP prediction target' do
+      model = build(:ml_model, prediction_target: 'price_regression')
+
+      expect(model).not_to be_valid
+      expect(model.errors[:prediction_target]).to be_present
     end
   end
 

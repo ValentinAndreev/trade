@@ -5,6 +5,11 @@ module Ml
     TERMINAL_STATUSES: Array[String]
 
     def self.stream_name: (Integer | String training_run_id) -> String
+    def self.safely_broadcast_terminal: (
+      Symbol | String event,
+      training_run: MlTrainingRun?,
+      ?broadcaster: ProgressBroadcaster
+    ) -> void
 
     def initialize: (
       ?training_run: MlTrainingRun?,

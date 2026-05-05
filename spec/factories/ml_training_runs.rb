@@ -31,10 +31,10 @@ FactoryBot.define do
     metrics { MlTrainingRun.canonical_metrics }
     error_metadata { {} }
     fitted_metadata { {} }
+    heartbeat_at { Time.current if status.in?(MlTrainingRun::ACTIVE_STATUSES) }
 
     trait :running do
       status { 'running' }
-      heartbeat_at { Time.current }
       started_at { Time.current }
     end
 

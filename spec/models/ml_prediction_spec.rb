@@ -33,79 +33,13 @@ RSpec.describe MlPrediction, type: :model do
     end
   end
 
-  describe 'validations' do
-    it 'is valid with default factory attributes' do
-      expect(build(:ml_prediction)).to be_valid
-    end
+  describe 'write invariants' do
+    it 'keeps repository-managed prediction constraints in the database' do
+      expect(described_class.validators).to be_empty
 
-    it 'requires a supported output field' do
-      prediction = build(:ml_prediction, output: 'score')
-
-      expect(prediction).not_to be_valid
-      expect(prediction.errors[:output]).to be_present
-    end
-
-    it 'requires a supported direction' do
       prediction = build(:ml_prediction, direction: 'flat')
-
-      expect(prediction).not_to be_valid
-      expect(prediction.errors[:direction]).to be_present
+      expect { prediction.save!(validate: false) }.to raise_error(ActiveRecord::StatementInvalid)
     end
-
-    it 'bounds probability and confidence values' do
-      prediction = build(:ml_prediction, probability: 1.1, confidence: -0.1)
-
-      expect(prediction).not_to be_valid
-      expect(prediction.errors[:probability]).to be_present
-      expect(prediction.errors[:confidence]).to be_present
-    end
-  end
-
-  describe '.upsert_predictions' do
-    it 'inserts prediction rows through the identity index' do
-      record = prediction_record(probability: 0.62)
-
-      expect { described_class.upsert_predictions([ record ]) }
-        .to change(described_class, :count).by(1)
-    end
-
-    it 'replaces an existing identity row instead of appending stale copies' do
-      record = prediction_record(probability: 0.62)
-      described_class.upsert_predictions([ record ])
-
-      expect do
-        described_class.upsert_predictions([ record.merge(probability: 0.71, confidence: 0.42) ])
-      end.not_to change(described_class, :count)
-
-      prediction = described_class.find_by!(
-        ml_model_id: record[:ml_model_id],
-        exchange: record[:exchange],
-        symbol: record[:symbol],
-        timeframe: record[:timeframe],
-        ts: record[:ts]
-      )
-      expect(prediction.probability).to eq(0.71)
-      expect(prediction.confidence).to eq(0.42)
-    end
-  end
-
-  def prediction_record(overrides = {})
-    model = create(:ml_model)
-    run = create(:ml_training_run, :succeeded, ml_model: model)
-    {
-      ts: Time.utc(2026, 1, 1, 0, 0, 0),
-      ml_model_id: model.id,
-      ml_training_run_id: run.id,
-      exchange: 'bitfinex',
-      symbol: 'BTCUSD',
-      timeframe: '1h',
-      weight_checksum: run.weight_checksum,
-      source_window_checksum: 'source-window-sha256',
-      output: 'probability',
-      probability: 0.62,
-      direction: 'up',
-      confidence: 0.24
-    }.merge(overrides)
   end
 
   def self.ensure_ml_predictions_hypertable!

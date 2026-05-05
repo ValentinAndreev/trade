@@ -4,24 +4,20 @@ class MlModelWeightBlob < ApplicationRecord
   SUPPORTED_FORMATS: Array[String]
   ADAPTER_SCHEMA_VERSION: String
 
-  attr_accessor ml_training_run_id: Integer
   attr_accessor weights_format: String
   attr_accessor weights_payload: String
   attr_accessor byte_size: Integer
   attr_accessor checksum: String
 
   def self.checksum_for: (training_run: MlTrainingRun, weights_format: String, weights_payload: String) -> String
-  def self.canonical_snapshot_json: (training_run: MlTrainingRun, weights_format: String, weights_payload: String) -> String
-  def self.deep_sort: (untyped value) -> untyped
 
-  def ml_training_run: () -> MlTrainingRun
   def payload_bytes: () -> Integer
+
+  private def self.canonical_snapshot_json: (training_run: MlTrainingRun, weights_format: String, weights_payload: String) -> String
+  private def self.deep_sort: (untyped value) -> untyped
 
   private
 
   def sync_byte_size: () -> void
-  def sync_checksum: () -> void
-  def training_run_succeeded: () -> void
   def byte_size_matches_payload: () -> void
-  def checksum_matches_snapshot: () -> void
 end

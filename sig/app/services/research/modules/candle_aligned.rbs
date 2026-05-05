@@ -1,0 +1,20 @@
+module Research
+  module Modules
+    class CandleAligned
+      @candles: Array[ohlcv]
+
+      private
+
+      attr_reader candles: Array[ohlcv]
+
+      public
+
+      def initialize: (candles: Array[ohlcv], **untyped) -> void
+      def call_from_feature_matrix: (?cancel_check: untyped, **untyped params) -> Array[research_module_point]
+
+      private
+
+      def check_cancelled!: (untyped cancel_check) -> void
+    end
+  end
+end

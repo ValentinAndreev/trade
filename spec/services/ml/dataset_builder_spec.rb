@@ -81,6 +81,20 @@ RSpec.describe Ml::DatasetBuilder do
         expect(error.code).to eq(:missing_metadata)
       end
     end
+
+    it 'rejects non-positive label horizons before reading future labels' do
+      bad_builder = described_class.new(
+        symbol: 'BTCUSD',
+        timeframe: '1m',
+        candles:,
+        feature_spec:,
+        dataset_spec: { label_horizon: -1 }
+      )
+
+      expect { bad_builder.build_training }.to raise_error(Ml::DatasetBuilder::Error) do |error|
+        expect(error.code).to eq(:invalid_label_horizon)
+      end
+    end
   end
 
   describe '#build_inference' do

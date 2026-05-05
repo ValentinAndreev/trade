@@ -20,7 +20,10 @@ module Ml
     end
 
     class ActiveRunConflict < StandardError; end
+    class EnqueueFailed < StandardError; end
 
+    SUPPORTED_ARCHITECTURES = MlModel::ARCHITECTURES
+    SUPPORTED_PREDICTION_TARGETS = MlModel::PREDICTION_TARGETS
     STALE_HEARTBEAT_AFTER = 30.minutes
 
     class_attribute :default_enqueuer, default: ->(training_run) { MlTrainingJob.perform_later(training_run.id) }
@@ -31,10 +34,13 @@ module Ml
 
     def create(raw_params)
       payload = raw_params.to_h.deep_stringify_keys
-      model_key = payload.fetch('model_key', '').to_s.strip
+      model_key = normalize_model_key(payload.fetch('model_key', ''))
       return error_result(:unprocessable_entity, :model_key_required, 'model_key is required') if model_key.blank?
       dataset_error = validate_dataset_spec(payload.fetch('dataset_spec', {}))
       return dataset_error if dataset_error
+      requested_contract = requested_model_contract(payload)
+      contract_error = validate_requested_model_contract(requested_contract)
+      return contract_error if contract_error
 
       resolved = resolved_feature_window(payload)
       dataset_spec = resolved_dataset_spec(payload, resolved)
@@ -45,6 +51,8 @@ module Ml
 
       ActiveRecord::Base.transaction do
         model = find_or_build_model(model_key, payload)
+        contract_error = validate_existing_model_contract(model, requested_contract) if model.persisted?
+        raise ActiveRunConflict if contract_error
         stale_training_run = reconcile_stale_active_run!(model) if model.persisted?
         raise ActiveRunConflict if model.persisted? && model.training_runs.active.exists?
 
@@ -59,9 +67,10 @@ module Ml
           seed: hyperparams.fetch('seed', 0).to_i,
           metrics: MlTrainingRun.canonical_metrics,
           error_metadata: {},
-          fitted_metadata: {}
+          fitted_metadata: {},
+          heartbeat_at: Time.current
         )
-        enqueuer.call(training_run)
+        enqueue_training_run!(training_run)
       end
 
       broadcast_stale_failure(stale_training_run)
@@ -69,18 +78,29 @@ module Ml
       Result.new(status: :created, model:, training_run:, error: nil)
     rescue Ml::FeatureWindow::Error => e
       error_result(:unprocessable_entity, e.code, e.message, details: e.details)
+    rescue Ml::DatasetBuilder::Error => e
+      error_result(:unprocessable_entity, e.code, e.message, details: e.details)
     rescue ActiveRunConflict
-      error_result(:conflict, :active_training_run_exists, 'model already has an active training run')
+      contract_error || error_result(:conflict, :active_training_run_exists, 'model already has an active training run')
     rescue ActiveRecord::RecordNotUnique
       error_result(:conflict, :active_training_run_exists, 'model already has an active training run')
     rescue ActiveRecord::RecordInvalid => e
       error_result(:unprocessable_entity, :validation_failed, e.record.errors.full_messages.to_sentence)
-    rescue StandardError => e
+    rescue EnqueueFailed => e
       error_result(:unprocessable_entity, :enqueue_failed, e.message)
     end
 
     def cancel(training_run_id)
-      training_run = MlTrainingRun.find(training_run_id)
+      training_run = MlTrainingRun.find_by(id: training_run_id)
+      unless training_run
+        return Result.new(
+          status: :not_found,
+          model: nil,
+          training_run: nil,
+          error: Error.new(code: :training_run_not_found, message: 'training run was not found', details: { id: training_run_id.to_s })
+        )
+      end
+
       unless training_run.active?
         return Result.new(
           status: :conflict,
@@ -91,6 +111,11 @@ module Ml
       end
 
       training_run.request_cancellation!
+      if training_run.status == 'cancelled'
+        restore_model_status_after_cancellation!(training_run.ml_model)
+        Ml::ProgressBroadcaster.new(training_run:).cancelled(training_run:)
+      end
+
       Result.new(status: :ok, model: training_run.ml_model, training_run:, error: nil)
     end
 
@@ -98,23 +123,57 @@ module Ml
 
     attr_reader :enqueuer
 
+    def normalize_model_key(value)
+      value.to_s.strip.downcase
+    end
+
+    def enqueue_training_run!(training_run)
+      enqueuer.call(training_run)
+    rescue ActiveJob::EnqueueError => e
+      raise EnqueueFailed, e.message
+    end
+
+    def restore_model_status_after_cancellation!(model)
+      model.update!(serving_status: serving_status_after_cancellation(model))
+    end
+
+    def serving_status_after_cancellation(model)
+      return 'trained' if model.latest_successful_training_run_id.present?
+      return 'failed' if model.latest_failed_training_run_id.present?
+
+      'draft'
+    end
+
     def validate_dataset_spec(raw_dataset_spec)
       dataset_spec = raw_dataset_spec.to_h.deep_stringify_keys
-      missing = %w[symbol timeframe].reject { |key| dataset_spec[key].present? }
-      return if missing.empty?
+      missing = %w[symbol exchange timeframe].reject { |key| dataset_spec[key].present? }
+      return missing_dataset_spec_error(missing) if missing.any?
+
+      validate_label_horizon(dataset_spec)
+    end
+
+    def missing_dataset_spec_error(missing)
+      error_result(:unprocessable_entity, :dataset_spec_invalid, "dataset_spec requires: #{missing.join(', ')}", details: { missing: })
+    end
+
+    def validate_label_horizon(dataset_spec)
+      return unless dataset_spec.key?('label_horizon')
+
+      value = Integer(dataset_spec['label_horizon'], exception: false)
+      return if value&.positive?
 
       error_result(
         :unprocessable_entity,
         :dataset_spec_invalid,
-        "dataset_spec requires: #{missing.join(', ')}",
-        details: { missing: }
+        'dataset_spec.label_horizon must be a positive integer',
+        details: { field: 'label_horizon', value: dataset_spec['label_horizon'] }
       )
     end
 
     def reconcile_stale_active_run!(model, now: Time.current)
       stale_before = now - STALE_HEARTBEAT_AFTER
       stale_run = model.training_runs
-        .where(status: 'running')
+        .where(status: MlTrainingRun::ACTIVE_STATUSES)
         .where('heartbeat_at IS NULL OR heartbeat_at < ?', stale_before)
         .order(:created_at)
         .first
@@ -146,6 +205,69 @@ module Ml
       model.serving_status = 'draft'
       model.metric_summary = MlModel.canonical_metric_summary
       model
+    end
+
+    def requested_model_contract(payload)
+      {
+        architecture: payload['architecture'].presence || DEFAULT_ARCHITECTURE,
+        prediction_target: payload['prediction_target'].presence || DEFAULT_PREDICTION_TARGET
+      }
+    end
+
+    def validate_requested_model_contract(contract)
+      architecture = contract.fetch(:architecture)
+      unless SUPPORTED_ARCHITECTURES.include?(architecture)
+        return error_result(
+          :unprocessable_entity,
+          :unsupported_architecture,
+          "unsupported ML model architecture: #{architecture}",
+          details: {
+            requested_architecture: architecture,
+            supported_architectures: SUPPORTED_ARCHITECTURES
+          }
+        )
+      end
+
+      prediction_target = contract.fetch(:prediction_target)
+      return if SUPPORTED_PREDICTION_TARGETS.include?(prediction_target)
+
+      error_result(
+        :unprocessable_entity,
+        :unsupported_prediction_target,
+        "unsupported ML prediction target: #{prediction_target}",
+        details: {
+          requested_prediction_target: prediction_target,
+          supported_prediction_targets: SUPPORTED_PREDICTION_TARGETS
+        }
+      )
+    end
+
+    def validate_existing_model_contract(model, requested_contract)
+      mismatches = {
+        architecture: [ requested_contract.fetch(:architecture), model.architecture ],
+        prediction_target: [ requested_contract.fetch(:prediction_target), model.prediction_target ]
+      }.filter_map do |field, (requested, existing)|
+        next if requested.to_s == existing.to_s
+
+        { field:, requested:, existing: }
+      end
+      return if mismatches.empty?
+
+      error_result(
+        :conflict,
+        :model_contract_mismatch,
+        "model #{model.key} already exists with a different ML contract",
+        model:,
+        details: {
+          model_key: model.key,
+          requested: requested_contract,
+          existing: {
+            architecture: model.architecture,
+            prediction_target: model.prediction_target
+          },
+          mismatches:
+        }
+      )
     end
 
     def resolved_feature_window(payload)

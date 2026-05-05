@@ -8,6 +8,7 @@ class IndicatorsConfig
     def values: () -> untyped
     def default: () -> untyped
     def to_schema: () -> Hash[String, untyped]
+    def coerce!: (untyped value, key: Symbol) -> untyped
   end
 
   INDICATORS: Hash[Symbol, Hash[Symbol, untyped]]
@@ -16,6 +17,7 @@ class IndicatorsConfig
   def self.number: (label: String, ?min: untyped, ?max: untyped, ?required: bool, ?default: untyped) -> Param
   def self.enum: (label: String, values: untyped, ?required: bool, ?default: untyped) -> Param
   def self.param_warmup: (Symbol param, default: Integer) -> Hash[Symbol, untyped]
+  def self.param_warmup_minus_one: (Symbol param, default: Integer) -> Hash[Symbol, untyped]
   def self.max_param_warmup: (*Hash[Symbol, untyped] rules) -> Hash[Symbol, untyped]
   def self.native_indicator: (
     label: String,

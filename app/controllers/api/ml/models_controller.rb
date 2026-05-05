@@ -9,8 +9,10 @@ module Api
         models = ::MlModel.by_key
           .includes(:latest_successful_training_run, :latest_failed_training_run)
           .limit(requested_limit)
+          .to_a
+        active_runs_by_model_id = active_training_runs_by_model_id(models)
 
-        render json: models.map { |model| serialize_model(model) }
+        render json: models.map { |model| serialize_model(model, active_training_run: active_runs_by_model_id[model.id]) }
       end
 
       private
@@ -21,7 +23,19 @@ module Api
         [ value, MAX_LIMIT ].min
       end
 
-      def serialize_model(model)
+      def active_training_runs_by_model_id(models)
+        model_ids = models.map(&:id)
+        return {} if model_ids.empty?
+
+        ::MlTrainingRun.active
+          .where(ml_model_id: model_ids)
+          .order(created_at: :desc, id: :desc)
+          .each_with_object({}) do |training_run, active_by_model_id|
+            active_by_model_id[training_run.ml_model_id] ||= training_run
+          end
+      end
+
+      def serialize_model(model, active_training_run:)
         {
           id: model.id,
           key: model.key,
@@ -33,7 +47,7 @@ module Api
           serving_weight_checksum: model.serving_weight_checksum,
           latest_successful_training_run: serialize_run_summary(model.latest_successful_training_run),
           latest_failed_training_run: serialize_run_summary(model.latest_failed_training_run),
-          active_training_run: serialize_run_summary(model.training_runs.active.order(created_at: :desc).first)
+          active_training_run: serialize_run_summary(active_training_run)
         }
       end
 

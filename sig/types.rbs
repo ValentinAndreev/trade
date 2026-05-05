@@ -1,10 +1,10 @@
 type ohlcv = {
   time: Integer,
-  open: Float,
-  high: Float,
-  low: Float,
-  close: Float,
-  volume: Float
+  open: Numeric,
+  high: Numeric,
+  low: Numeric,
+  close: Numeric,
+  volume: Numeric
 }
 
 type candle_record = {
