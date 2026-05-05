@@ -26,14 +26,39 @@ module Research
 
       def module_types_from_config
         macro_keys = MacroConfig.indicator_keys
-        IndicatorsConfig.all.each_with_object({}) do |(key, defn), result|
+        module_types = IndicatorsConfig.all.each_with_object({}) do |(key, defn), result|
           params = defn[:params].each_with_object({}) do |(param_key, param), acc|
             schema = param.to_schema
             schema['values'] = macro_keys if param.values == :macro_keys
             acc[param_key.to_s] = schema
           end
           result[key.to_s] = { 'label' => defn[:label], 'params' => params }
+            .merge(IndicatorsConfig.schema_metadata_for(key))
         end
+        module_types['ml_signal'] = ml_signal_module_type
+        module_types
+      end
+
+      def ml_signal_module_type
+        {
+          'label' => 'ML Signal',
+          'params' => {
+            'model_key' => {
+              'type' => 'string',
+              'label' => 'Model key',
+              'required' => true
+            },
+            'output' => {
+              'type' => 'enum',
+              'label' => 'Output',
+              'values' => MlPrediction::OUTPUTS,
+              'default' => 'probability'
+            }
+          },
+          'output_fields' => [ 'value' ],
+          'lookahead' => 0,
+          'description' => 'Candle-aligned ML prediction series from the trained model registry.'
+        }
       end
 
       def macro_indicators_from_config
@@ -42,7 +67,7 @@ module Research
         end
       end
 
-      private :module_types_from_config, :macro_indicators_from_config
+      private :module_types_from_config, :ml_signal_module_type, :macro_indicators_from_config
     end
   end
 end

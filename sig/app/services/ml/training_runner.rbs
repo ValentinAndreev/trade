@@ -1,0 +1,39 @@
+module Ml
+  class TrainingRunner
+    class Result
+      attr_reader status: Symbol
+      attr_reader training_run: MlTrainingRun
+      attr_reader adapter_result: Ml::Adapters::Result::TrainingResult?
+      attr_reader error: Ml::Adapters::Result::Error?
+
+      def success?: () -> bool
+    end
+
+    DEFAULT_HYPERPARAMS: Hash[String, untyped]
+
+    def initialize: (
+      training_run: MlTrainingRun,
+      ?adapter: Ml::Adapters::BaselineDirectionClassifier,
+      ?callbacks: untyped,
+      ?candles: Array[ohlcv]?,
+      ?clock: ^() -> Float,
+      ?progress_broadcaster: Ml::ProgressBroadcaster
+    ) -> void
+
+    def call: () -> Result
+
+    class CallbackContext
+      RELOAD_INTERVAL_SECONDS: Float
+
+      def initialize: (
+        training_run: MlTrainingRun,
+        delegate: untyped,
+        clock: ^() -> Float,
+        progress_broadcaster: Ml::ProgressBroadcaster
+      ) -> void
+
+      def check_cancelled!: () -> void
+      def report_progress: (**untyped payload) -> void
+    end
+  end
+end

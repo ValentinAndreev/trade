@@ -1,0 +1,28 @@
+class MlPrediction < ApplicationRecord
+  IDENTITY_FIELDS: Array[Symbol]
+  OUTPUTS: Array[String]
+  DIRECTIONS: Array[String]
+  UPSERT_UPDATE_FIELDS: Array[Symbol]
+
+  attr_accessor ts: Time
+  attr_accessor ml_model_id: Integer
+  attr_accessor ml_training_run_id: Integer
+  attr_accessor exchange: String
+  attr_accessor symbol: String
+  attr_accessor timeframe: String
+  attr_accessor weight_checksum: String
+  attr_accessor source_window_checksum: String
+  attr_accessor output: String
+  attr_accessor probability: BigDecimal
+  attr_accessor direction: String
+  attr_accessor confidence: BigDecimal
+
+  def self.for_identity: (ml_model_id: Integer, exchange: String, symbol: String, timeframe: String) -> untyped
+  def self.in_range: (Time from, Time to) -> untyped
+  def self.ordered: () -> untyped
+  def self.upsert_predictions: (Array[Hash[Symbol, untyped]] records) -> ActiveRecord::Result
+
+  private
+
+  def self.with_timestamps: (Array[Hash[Symbol, untyped]] records) -> Array[Hash[Symbol, untyped]]
+end

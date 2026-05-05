@@ -1,0 +1,25 @@
+module Ml
+  class ProgressBroadcaster
+    NON_TERMINAL_INTERVAL_SECONDS: Float
+    PROGRESS_PERCENT_DELTA: Float
+    TERMINAL_STATUSES: Array[String]
+
+    def self.stream_name: (Integer | String training_run_id) -> String
+
+    def initialize: (
+      ?training_run: MlTrainingRun?,
+      ?training_run_id: Integer | String?,
+      ?clock: ^() -> untyped,
+      ?broadcast_adapter: untyped
+    ) -> void
+
+    def active?: () -> bool
+    def queued: (?training_run: MlTrainingRun?) -> void
+    def running: (?training_run: MlTrainingRun?, **untyped payload) -> void
+    def progress: (?training_run: MlTrainingRun?, **untyped payload) -> void
+    def succeeded: (?training_run: MlTrainingRun?) -> void
+    def failed: (?training_run: MlTrainingRun?) -> void
+    def cancelled: (?training_run: MlTrainingRun?) -> void
+    def terminal: (?training_run: MlTrainingRun?) -> void
+  end
+end

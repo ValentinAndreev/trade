@@ -1,0 +1,24 @@
+module Ml
+  class SourceWindowChecksum
+    ROW_PREFIX: String
+    NODE_PREFIX: String
+    WINDOW_PREFIX: String
+    CANONICAL_PREFIX: String
+    DECIMAL_SCALE: Integer
+    DECIMAL_FIELDS: Array[String]
+    CANONICAL_FIELDS: Array[String]
+
+    def self.canonical_row: (untyped candle) -> String
+    def self.canonical_decimal: (untyped value) -> String
+    def self.canonical_timestamp: (untyped value) -> String
+    def self.leaf_hash: (untyped candle) -> String
+    def self.leaf_hexdigest: (untyped candle) -> String
+    def self.node_hash: (String left_hash, String right_hash) -> String
+    def self.node_hexdigest: (String left_hash, String right_hash) -> String
+
+    def initialize: (Array[untyped] candles) -> void
+    def window_checksum: (start_index: Integer, end_index: Integer) -> String
+    def ordered_covering_hashes: (start_index: Integer, end_index: Integer, ?binary: bool) -> Array[String]
+    def root_hexdigest: () -> String?
+  end
+end

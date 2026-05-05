@@ -13,6 +13,8 @@ class Candle
 
     private
 
+    def calculate_native: (singleton(Research::Modules::Native) klass, Hash[Symbol, untyped] params) -> Array[Hash[Symbol, untyped]]
+    def native_indicator?: (untyped klass) -> bool
     def input_data: () -> Array[Hash[Symbol, untyped]]
     def build_params: (untyped klass, Hash[Symbol, untyped] params) -> Hash[Symbol, untyped]
   end

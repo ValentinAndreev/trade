@@ -8,18 +8,17 @@
 
 **Фича:** 017_ml_signal_modules
 **Started:** 2026-05-02
-**Текущий этап:** plan
+**Текущий этап:** impl
 **Review notes:** —
-**Следующий шаг:** `impl: 017`
+**Следующий шаг:** `review: 017`
 
 ## Контекст последней сессии
 
-- Сделано: повторные reviews для 017 и 018 пройдены без блокеров; review notes обновлены.
-- Осталось: перейти к `impl: 017`.
+- Сделано: storage slices 1a-1c и Steps 2a-8 реализованы; добавлены native modules, dataset builder/checksums, baseline adapter, runner/predictor, ML API lifecycle, constrained training job, cancellation, stale heartbeat reconciliation, ActionCable progress, prediction reuse, Research `ml_signal`, RBS audit и русская документация API/Research/LLM/workflow.
+- Осталось: перейти к `review: 017`.
 
 ## Следующие в очереди
 
-- `impl: 017`
 - `review: 017`
 
 ## Открытые вопросы

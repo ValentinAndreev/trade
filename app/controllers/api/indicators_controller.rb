@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class Api::IndicatorsController < Api::ApplicationController
-  ALLOWED_PARAMS = %i[period short_period long_period signal_period price_key].freeze
+  ALLOWED_PARAMS = IndicatorsConfig.all.values.flat_map { |definition| definition.fetch(:params).keys }.uniq.freeze
 
   def index
     technical = Candle::IndicatorCalculator.available.map { |i| i.merge(category: 'technical') }

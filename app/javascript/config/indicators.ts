@@ -413,4 +413,52 @@ export const INDICATOR_META: Record<string, IndicatorMeta> = {
     defaults: { period: 14 },
     paramLabels: { period: "Period" },
   },
+  log_return: {
+    label: "Log Return", requires: "values",
+    fields: [{ key: "value", label: "Log Return" }],
+    defaults: { period: 1 },
+    paramLabels: { period: "Period" },
+  },
+  rolling_volatility: {
+    label: "Rolling Volatility", requires: "values",
+    fields: [{ key: "value", label: "Volatility" }],
+    defaults: { period: 20 },
+    paramLabels: { period: "Period" },
+  },
+  range_position: {
+    label: "Range Position", requires: "ohlc",
+    fields: [{ key: "value", label: "Range Position" }],
+    defaults: { period: 20 },
+    paramLabels: { period: "Period" },
+  },
+  rolling_zscore: {
+    label: "Rolling Z-Score", requires: "values",
+    fields: [{ key: "value", label: "Z-Score" }],
+    defaults: { period: 20 },
+    paramLabels: { period: "Period" },
+  },
+  percentile_rank: {
+    label: "Percentile Rank", requires: "values",
+    fields: [{ key: "value", label: "Percentile" }],
+    defaults: { period: 20 },
+    paramLabels: { period: "Period" },
+  },
+  trend_regime_score: {
+    label: "Trend Regime Score", requires: "values",
+    fields: [{ key: "value", label: "Trend Regime" }],
+    defaults: { period: 20 },
+    paramLabels: { period: "Period" },
+  },
+  vol_regime_score: {
+    label: "Volatility Regime Score", requires: "values",
+    fields: [{ key: "value", label: "Vol Regime" }],
+    defaults: { short_period: 20, long_period: 100 },
+    paramLabels: { short_period: "Short", long_period: "Long" },
+  },
+  vol_adjust: {
+    label: "Volatility Adjust", requires: "values",
+    fields: [{ key: "value", label: "Vol Adjust" }],
+    defaults: { period: 20, epsilon: 0.00000001 },
+    paramLabels: { period: "Period", epsilon: "Epsilon" },
+  },
 }

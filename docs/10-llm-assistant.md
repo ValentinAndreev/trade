@@ -145,6 +145,10 @@ LLM-ассистент — это встроенный чат-бот, котор
 ### `Llm::SystemEditor::KnowledgeBase`
 Загружает статические YAML-файлы DSL-справочника: `dsl.yml`, `examples.yml`. Справочник `modules` строится динамически: структура (типы, enum-значения) берётся из `Research::Systems::Schema.data` (dictionary.yml), LLM-описания — из `modules_meta.yml`. Используется в `ContextBuilder` и `LoadDslReferenceTool`.
 
+Справочник получает не только TechnicalAnalysis-backed индикаторы, но и shared-типы из `Schema.data`: native state/risk/normalization модули фичи 017 и статическую схему `ml_signal`. Для native-модулей в DSL reference доступны метаданные, нужные ассистенту при сборке ML feature specs: `module_version`, `definition_checksum`, `output_fields`, `warmup`, `lookahead`, описание и формула/эвристика.
+
+Конкретные `model_key` обученных моделей не перечисляются в LLM-справочнике. Ассистент может вставить ссылку на `ml_signal`, но существование модели, serving-состояние, поддерживаемый `output` и совместимость `exchange`/`symbol`/`timeframe` проверяются серверным `Research::Systems::Validation::Validator`.
+
 ### `Llm::SystemEditor::DraftExtractor`
 Извлекает черновик торговой системы из новых сообщений чата после завершения запроса к LLM.
 

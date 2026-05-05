@@ -1,6 +1,7 @@
 module Research
   class RunRequest
     @raw_params: research_request_payload
+    @yaml: String
     @system: Research::Systems::Definition
     @runtime_params: research_runtime_params
     @dataset: {
@@ -32,10 +33,12 @@ module Research
     def optimization_range: () -> { from: untyped, to: untyped, step: untyped }
     def response_payload: (runs: Array[research_run]) -> research_result_payload
     def progress_run_id: () -> String?
+    def revalidate!: () -> void
 
     private
 
     attr_reader raw_params: research_request_payload
+    attr_reader yaml: String
 
     def requested_yaml: () -> String?
     def dataset: () -> {

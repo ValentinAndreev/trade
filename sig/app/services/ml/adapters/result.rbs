@@ -1,0 +1,33 @@
+module Ml
+  module Adapters
+    module Result
+      class Error
+        attr_reader code: Symbol
+        attr_reader message: String
+        attr_reader details: Hash[Symbol, untyped]?
+
+        def to_h: () -> Hash[Symbol, untyped]
+      end
+
+      class TrainingResult
+        attr_reader status: Symbol
+        attr_reader weights_format: String
+        attr_reader weights_payload: String?
+        attr_reader metrics: Hash[String, untyped]
+        attr_reader fitted_metadata: Hash[String, untyped]
+        attr_reader diagnostics: Hash[Symbol, untyped] | Hash[String, untyped]
+        attr_reader error: Error?
+
+        def success?: () -> bool
+      end
+
+      class PredictionBatch
+        attr_reader status: Symbol
+        attr_reader predictions: Array[Hash[Symbol | String, untyped]]
+        attr_reader error: Error?
+
+        def success?: () -> bool
+      end
+    end
+  end
+end

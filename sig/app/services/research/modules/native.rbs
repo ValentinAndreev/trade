@@ -1,0 +1,50 @@
+module Research
+  module Modules
+    class Native < Base
+      def self.module_key: () -> Symbol
+      def self.indicator_name: () -> String
+      def self.valid_options: () -> Array[Symbol]
+      def self.min_data_size: () -> Integer
+      def self.coerce_params: (Hash[untyped, untyped] raw_params) -> Hash[Symbol, untyped]
+
+      def call: (**untyped params) -> Array[research_module_point]
+
+      private
+
+      def value_at: (Integer index, **untyped) -> Float?
+      def close_at: (Integer index) -> Float?
+      def numeric_field: (Integer index, String | Symbol field) -> Float?
+      def window_values: (Integer index, Integer period, ?field: String | Symbol) -> Array[Float]?
+      def rolling_log_returns: (Integer index, Integer period) -> Array[Float]?
+      def volatility_at: (Integer index, Integer period) -> Float?
+      def population_stddev: (Array[Float] values) -> Float?
+      def mean: (Array[Float] values) -> Float
+      def clamp: (Float value, Float min, Float max) -> Float
+      def finite_or_nil: (Float? value) -> Float?
+    end
+
+    class LogReturn < Native
+    end
+
+    class RollingVolatility < Native
+    end
+
+    class RangePosition < Native
+    end
+
+    class RollingZscore < Native
+    end
+
+    class PercentileRank < Native
+    end
+
+    class TrendRegimeScore < Native
+    end
+
+    class VolRegimeScore < Native
+    end
+
+    class VolAdjust < Native
+    end
+  end
+end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_dependency 'research/modules/native'
+
 class Candle::IndicatorCalculator
   INDICATORS = {
     sma: TechnicalAnalysis::Sma,
@@ -14,6 +16,14 @@ class Candle::IndicatorCalculator
     mfi: TechnicalAnalysis::Mfi,
     obv: TechnicalAnalysis::Obv,
     obv_mean: TechnicalAnalysis::ObvMean,
+    log_return: Research::Modules::LogReturn,
+    rolling_volatility: Research::Modules::RollingVolatility,
+    range_position: Research::Modules::RangePosition,
+    rolling_zscore: Research::Modules::RollingZscore,
+    percentile_rank: Research::Modules::PercentileRank,
+    trend_regime_score: Research::Modules::TrendRegimeScore,
+    vol_regime_score: Research::Modules::VolRegimeScore,
+    vol_adjust: Research::Modules::VolAdjust,
     vwap: TechnicalAnalysis::Vwap,
     sr: TechnicalAnalysis::Sr,
     ichimoku: TechnicalAnalysis::Ichimoku,
@@ -51,6 +61,8 @@ class Candle::IndicatorCalculator
       raise UnknownIndicatorError, "Unknown indicator: #{indicator}. Available: #{INDICATORS.keys.join(', ')}"
     end
 
+    return calculate_native(klass, params) if native_indicator?(klass)
+
     results = klass.calculate(input_data, **build_params(klass, params))
     results.map(&:to_hash)
   end
@@ -67,6 +79,14 @@ class Candle::IndicatorCalculator
   end
 
   private
+
+  def calculate_native(klass, params)
+    klass.new(candles:).call(**params).map do |point|
+      { date_time: Time.at(point.fetch(:time)).utc.iso8601 }.merge(point.fetch(:result))
+    end
+  end
+
+  def native_indicator?(klass) = klass <= Research::Modules::Native
 
   def input_data
     @input_data ||= candles.map do |c|

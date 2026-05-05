@@ -27,7 +27,7 @@ Feature package хранит forward-артефакты `brief.md`, `spec.md`, `
 
 | ID | Feature | Stage | PRD Area | Main sources |
 |---|---|---|---|---|
-| 017 | [ML signal modules](017_ml_signal_modules/) | plan | cross-cutting | `memory_bank/features/009_research_yaml_dsl/summary.md`, `memory_bank/features/005_data_grid_mvp/summary.md`, `memory_bank/features/010_research_backtest_and_optimization/summary.md` |
+| 017 | [ML signal modules](017_ml_signal_modules/) | impl | cross-cutting | `memory_bank/features/009_research_yaml_dsl/summary.md`, `memory_bank/features/005_data_grid_mvp/summary.md`, `memory_bank/features/010_research_backtest_and_optimization/summary.md` |
 | 018 | [ML signal workspace and catalogue](018_ml_signal_workspace_and_catalog/) | plan | cross-cutting | `memory_bank/features/017_ml_signal_modules/spec.md`, `memory_bank/features/005_data_grid_mvp/summary.md`, `memory_bank/features/011_system_editor/summary.md`, `memory_bank/features/013_llm_assistant_core/summary.md` |
 
 Active task cursor lives in `memory_bank/process/current-focus.md`.

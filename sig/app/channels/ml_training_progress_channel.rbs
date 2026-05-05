@@ -1,0 +1,3 @@
+class MlTrainingProgressChannel < ApplicationCable::Channel
+  def subscribed: () -> void
+end

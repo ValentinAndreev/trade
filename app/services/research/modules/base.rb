@@ -5,7 +5,7 @@ module Research
     class Base
       private attr_reader :candles
 
-      def initialize(candles:)
+      def initialize(candles:, **)
         @candles = candles
       end
 

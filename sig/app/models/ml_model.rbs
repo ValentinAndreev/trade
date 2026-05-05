@@ -1,0 +1,29 @@
+class MlModel < ApplicationRecord
+  SERVING_STATUSES: Array[String]
+  CANONICAL_METRIC_KEYS: Array[String]
+  IMMUTABLE_AFTER_SUCCESSFUL_TRAINING: Array[String]
+
+  attr_accessor key: String
+  attr_accessor display_name: String
+  attr_accessor architecture: String
+  attr_accessor prediction_target: String
+  attr_accessor serving_status: String
+  attr_accessor metric_summary: Hash[String, untyped]
+  attr_accessor serving_weight_checksum: String?
+  attr_accessor latest_successful_training_run_id: Integer?
+  attr_accessor latest_failed_training_run_id: Integer?
+
+  def self.canonical_metric_summary: (?Hash[untyped, untyped] metrics) -> Hash[String, untyped]
+  def self.by_key: () -> untyped
+
+  def training_runs: () -> untyped
+  def latest_successful_training_run: () -> MlTrainingRun?
+  def latest_failed_training_run: () -> MlTrainingRun?
+  def trained?: () -> bool
+
+  private
+
+  def normalize_key: () -> void
+  def normalize_metric_summary: () -> void
+  def identity_fields_immutable_after_successful_training: () -> void
+end

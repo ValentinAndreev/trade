@@ -1,0 +1,21 @@
+module Research
+  module Systems
+    module Validation
+      module Checks
+        module MlModels
+          ML_FEATURE_METADATA_KEYS: Array[String]
+
+          private
+
+          def validate_ml_models: () -> void
+          def validate_ml_model: (Hash[String, untyped] module_payload, Array[String] path) -> void
+          def validate_ml_model_serving_state: (MlModel model, String model_key, Array[String] path) -> void
+          def validate_ml_model_dataset_compatibility: (MlModel model, String model_key, Array[String] path) -> void
+          def validate_ml_feature_spec: (MlModel model, String model_key, Array[String] path) -> void
+          def ml_modules: () -> Array[[String, Hash[String, untyped]]]
+          def ml_models_by_key: () -> Hash[String, MlModel]
+        end
+      end
+    end
+  end
+end

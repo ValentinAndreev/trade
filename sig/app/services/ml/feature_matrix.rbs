@@ -1,0 +1,19 @@
+module Ml
+  class FeatureMatrix
+    class Result
+      attr_reader rows: Array[Hash[Symbol, untyped]]
+      attr_reader feature_names: Array[String]
+      attr_reader resolved_feature_spec: Array[Hash[String, untyped]]
+      attr_reader effective_window: Integer
+      attr_reader fitted_metadata: Hash[String, untyped]
+    end
+
+    def initialize: (
+      candles: Array[ohlcv],
+      resolved_feature_spec: Array[Hash[String, untyped]],
+      ?cancel_check: untyped
+    ) -> void
+
+    def call: () -> Result
+  end
+end

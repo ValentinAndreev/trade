@@ -1,0 +1,22 @@
+module Ml
+  class Cancelled < StandardError
+  end
+
+  class FeatureWindow
+    class Error < StandardError
+      attr_reader code: Symbol
+      attr_reader details: Hash[Symbol, untyped]
+
+      def initialize: (String message, code: Symbol, ?details: Hash[Symbol, untyped]) -> void
+    end
+
+    DEFAULT_FEATURE_SPEC: Array[Hash[String, untyped]]
+
+    def self.default_feature_spec: () -> Array[Hash[String, untyped]]
+
+    def initialize: (?feature_spec: untyped) -> void
+    def resolved_feature_spec: () -> Array[Hash[String, untyped]]
+    def effective_window: () -> Integer
+    def feature_names: () -> Array[String]
+  end
+end

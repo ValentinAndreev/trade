@@ -1,0 +1,15 @@
+module Api
+  module Ml
+    class ModelsController < Api::ApplicationController
+      MAX_LIMIT: Integer
+
+      def index: () -> void
+
+      private
+
+      def requested_limit: () -> Integer
+      def serialize_model: (MlModel model) -> Hash[Symbol, untyped]
+      def serialize_run_summary: (MlTrainingRun? training_run) -> Hash[Symbol, untyped]?
+    end
+  end
+end

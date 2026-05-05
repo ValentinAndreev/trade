@@ -1,0 +1,35 @@
+module Research
+  module Modules
+    class MlSignal < Base
+      class Error < StandardError
+        attr_reader code: Symbol
+        attr_reader details: Hash[Symbol, untyped]
+
+        def initialize: (String message, code: Symbol, ?details: Hash[Symbol, untyped]) -> void
+      end
+
+      def initialize: (
+        candles: Array[ohlcv],
+        ?symbol: String?,
+        ?timeframe: String?,
+        ?exchange: String
+      ) -> void
+
+      def call: (
+        model_key: String,
+        ?output: String,
+        ?cancel_check: untyped,
+        **untyped
+      ) -> Array[research_module_point]
+
+      private
+
+      attr_reader symbol: String?
+      attr_reader timeframe: String?
+      attr_reader exchange: String
+
+      def inferred_symbol: () -> String?
+      def inferred_timeframe: () -> String?
+    end
+  end
+end

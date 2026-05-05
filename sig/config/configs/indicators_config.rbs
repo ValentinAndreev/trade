@@ -1,0 +1,36 @@
+class IndicatorsConfig
+  class Param
+    def type: () -> Symbol
+    def label: () -> String
+    def min: () -> untyped
+    def max: () -> untyped
+    def required: () -> bool
+    def values: () -> untyped
+    def default: () -> untyped
+    def to_schema: () -> Hash[String, untyped]
+  end
+
+  INDICATORS: Hash[Symbol, Hash[Symbol, untyped]]
+
+  def self.integer: (label: String, ?min: untyped, ?max: untyped, ?required: bool, ?default: untyped) -> Param
+  def self.number: (label: String, ?min: untyped, ?max: untyped, ?required: bool, ?default: untyped) -> Param
+  def self.enum: (label: String, values: untyped, ?required: bool, ?default: untyped) -> Param
+  def self.param_warmup: (Symbol param, default: Integer) -> Hash[Symbol, untyped]
+  def self.max_param_warmup: (*Hash[Symbol, untyped] rules) -> Hash[Symbol, untyped]
+  def self.native_indicator: (
+    label: String,
+    params: Hash[Symbol, Param],
+    warmup: Hash[Symbol, untyped],
+    description: String,
+    formula: String,
+    heuristic: String,
+    ?output_fields: Array[String],
+    ?lookahead: Integer
+  ) -> Hash[Symbol, untyped]
+  def self.metadata_for: (String | Symbol key) -> Hash[Symbol, untyped]
+  def self.schema_metadata_for: (String | Symbol key) -> Hash[String, untyped]
+  def self.ml_feature_eligible?: (String | Symbol key) -> bool
+  def self.warmup_for: (String | Symbol key, ?Hash[untyped, untyped] params) -> Integer
+  def self.all: () -> Hash[Symbol, Hash[Symbol, untyped]]
+  def self.indicator_keys: () -> Array[String]
+end

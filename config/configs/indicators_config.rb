@@ -1,28 +1,124 @@
 # frozen_string_literal: true
 
+require 'digest'
+require 'json'
+
 class IndicatorsConfig
-  Param = Data.define(:type, :label, :min, :max, :required, :values) do
+  Param = Data.define(:type, :label, :min, :max, :required, :values, :default) do
     def to_schema
       h = { 'type' => type.to_s, 'label' => label }
       h['min']      = min    if min
       h['max']      = max    if max
       h['required'] = true   if required
       h['values']   = values if values && !values.is_a?(Symbol)
+      h['default']  = default unless default.nil?
       h
     end
   end
 
-  def self.integer(label:, min: nil, max: nil, required: false)
-    Param.new(type: :integer, label:, min:, max:, required:, values: nil)
+  NATIVE_METADATA_KEYS = %i[
+    module_version definition_checksum output_fields warmup lookahead
+    description formula heuristic ml_feature_eligible
+  ].freeze
+  private_constant :NATIVE_METADATA_KEYS
+
+  def self.integer(label:, min: nil, max: nil, required: false, default: nil)
+    Param.new(type: :integer, label:, min:, max:, required:, values: nil, default:)
   end
 
-  def self.number(label:, min: nil, max: nil, required: false)
-    Param.new(type: :number, label:, min:, max:, required:, values: nil)
+  def self.number(label:, min: nil, max: nil, required: false, default: nil)
+    Param.new(type: :number, label:, min:, max:, required:, values: nil, default:)
   end
 
-  def self.enum(label:, values:, required: false)
-    Param.new(type: :enum, label:, min: nil, max: nil, required:, values:)
+  def self.enum(label:, values:, required: false, default: nil)
+    Param.new(type: :enum, label:, min: nil, max: nil, required:, values:, default:)
   end
+
+  def self.param_warmup(param, default:)
+    { kind: :param, param:, default: }
+  end
+
+  def self.max_param_warmup(*rules)
+    { kind: :max_params, rules: }
+  end
+
+  def self.native_indicator(label:, params:, warmup:, description:, formula:, heuristic:, output_fields: [ 'value' ], lookahead: 0)
+    metadata = {
+      module_version: '1',
+      output_fields:,
+      warmup:,
+      lookahead:,
+      description:,
+      formula:,
+      heuristic:,
+      ml_feature_eligible: true
+    }
+    checksum_input = JSON.generate(metadata.slice(:module_version, :output_fields, :warmup, :lookahead, :formula))
+
+    {
+      label:,
+      params:,
+      **metadata,
+      definition_checksum: Digest::SHA256.hexdigest(checksum_input)
+    }
+  end
+
+  def self.metadata_for(key)
+    definition = INDICATORS.fetch(key.to_sym)
+    NATIVE_METADATA_KEYS.each_with_object({}) do |metadata_key, result|
+      result[metadata_key] = definition[metadata_key] if definition.key?(metadata_key)
+    end
+  end
+
+  def self.schema_metadata_for(key)
+    metadata_for(key).each_with_object({}) do |(metadata_key, value), result|
+      result[metadata_key.to_s] = serialize_metadata(value)
+    end
+  end
+
+  def self.ml_feature_eligible?(key)
+    INDICATORS.fetch(key.to_sym).fetch(:ml_feature_eligible, false) == true
+  end
+
+  def self.warmup_for(key, params = {})
+    definition = INDICATORS.fetch(key.to_sym)
+    resolve_warmup(definition[:warmup], params.to_h.transform_keys(&:to_sym))
+  end
+
+  def self.serialize_metadata(value)
+    case value
+    when Hash
+      value.each_with_object({}) { |(key, val), result| result[key.to_s] = serialize_metadata(val) }
+    when Array
+      value.map { |item| serialize_metadata(item) }
+    when Symbol
+      value.to_s
+    else
+      value
+    end
+  end
+  private_class_method :serialize_metadata
+
+  def self.resolve_warmup(rule, params)
+    case rule
+    when Hash
+      case rule[:kind].to_s
+      when 'param'
+        params.fetch(rule.fetch(:param).to_sym, rule.fetch(:default)).to_i
+      when 'max_params'
+        rule.fetch(:rules).map do |param_rule|
+          params.fetch(param_rule.fetch(:param).to_sym, param_rule.fetch(:default)).to_i
+        end.max.to_i
+      else
+        0
+      end
+    when Integer
+      rule
+    else
+      0
+    end
+  end
+  private_class_method :resolve_warmup
 
   INDICATORS = {
     adi:    { label: 'Accumulation/Distribution Index', params: {} },
@@ -68,6 +164,77 @@ class IndicatorsConfig
     obv:      { label: 'On-balance Volume',             params: {} },
     obv_mean: { label: 'On-balance Volume Mean',        params: { period: integer(label: 'Period', min: 1) } },
     rsi:    { label: 'Relative Strength Index',         params: { period: integer(label: 'Period', min: 1) } },
+    log_return: native_indicator(
+      label: 'Log Return',
+      params: { period: integer(label: 'Period', min: 1, default: 1) },
+      warmup: param_warmup(:period, default: 1),
+      description: 'Natural-log return between the current close and the close N candles back.',
+      formula: 'ln(close[t] / close[t - period])',
+      heuristic: 'Stationarizes price movement for ML features without using future candles.'
+    ),
+    rolling_volatility: native_indicator(
+      label: 'Rolling Volatility',
+      params: { period: integer(label: 'Period', min: 2, default: 20) },
+      warmup: param_warmup(:period, default: 20),
+      description: 'Population standard deviation of trailing one-candle log returns.',
+      formula: 'stddev_pop(ln(close[i] / close[i - 1]) for i in t - period + 1..t)',
+      heuristic: 'Measures recent realized volatility on a candle-aligned return scale.'
+    ),
+    range_position: native_indicator(
+      label: 'Range Position',
+      params: { period: integer(label: 'Period', min: 2, default: 20) },
+      warmup: param_warmup(:period, default: 20),
+      description: 'Close location inside the trailing high-low range.',
+      formula: '(close[t] - min(low[t - period + 1..t])) / (max(high[t - period + 1..t]) - min(low[t - period + 1..t]))',
+      heuristic: 'Normalizes price location to the recent range for regime-aware features.'
+    ),
+    rolling_zscore: native_indicator(
+      label: 'Rolling Z-Score',
+      params: { period: integer(label: 'Period', min: 2, default: 20) },
+      warmup: param_warmup(:period, default: 20),
+      description: 'Close price z-score against the trailing close window.',
+      formula: '(close[t] - mean(close[t - period + 1..t])) / stddev_pop(close[t - period + 1..t])',
+      heuristic: 'Expresses price displacement in local standard-deviation units.'
+    ),
+    percentile_rank: native_indicator(
+      label: 'Percentile Rank',
+      params: { period: integer(label: 'Period', min: 2, default: 20) },
+      warmup: param_warmup(:period, default: 20),
+      description: 'Percentile rank of the current close within the trailing close window.',
+      formula: 'count(close[i] <= close[t] for i in t - period + 1..t) / period',
+      heuristic: 'Compresses local price position to a bounded 0..1 feature.'
+    ),
+    trend_regime_score: native_indicator(
+      label: 'Trend Regime Score',
+      params: { period: integer(label: 'Period', min: 2, default: 20) },
+      warmup: param_warmup(:period, default: 20),
+      description: 'Volatility-adjusted period log return squashed to -1..1.',
+      formula: 'tanh(ln(close[t] / close[t - period]) / (rolling_volatility(period)[t] * sqrt(period)))',
+      heuristic: 'Captures directional trend strength while reducing volatility-scale bias.'
+    ),
+    vol_regime_score: native_indicator(
+      label: 'Volatility Regime Score',
+      params: {
+        short_period: integer(label: 'Short Period', min: 2, default: 20),
+        long_period: integer(label: 'Long Period', min: 2, default: 100)
+      },
+      warmup: max_param_warmup(param_warmup(:short_period, default: 20), param_warmup(:long_period, default: 100)),
+      description: 'Short-window realized volatility divided by long-window volatility and bounded to 0..1.',
+      formula: '(vol(short_period)[t] / vol(long_period)[t]) / (1 + vol(short_period)[t] / vol(long_period)[t])',
+      heuristic: 'Identifies whether current volatility is compressed or elevated versus baseline.'
+    ),
+    vol_adjust: native_indicator(
+      label: 'Volatility Adjust',
+      params: {
+        period: integer(label: 'Period', min: 2, default: 20),
+        field: enum(label: 'Field', values: %w[open high low close volume], default: 'close'),
+        epsilon: number(label: 'Epsilon', min: 0, default: 0.00000001)
+      },
+      warmup: param_warmup(:period, default: 20),
+      description: 'Selected candle field divided by trailing realized volatility with an epsilon floor.',
+      formula: 'field[t] / max(rolling_volatility(period)[t], epsilon)',
+      heuristic: 'Normalizes magnitude-like inputs by current realized volatility.'
+    ),
     sma:    { label: 'Simple Moving Average',           params: { period: integer(label: 'Period', min: 1) } },
     sr:     { label: 'Stochastic Oscillator',           params: { period:        integer(label: 'Period',        min: 1),
                                                                   signal_period: integer(label: 'Signal Period', min: 1) } },

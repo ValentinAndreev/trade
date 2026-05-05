@@ -30,15 +30,15 @@ Forward work для крупных изменений идет по циклу:
 Brief -> Spec -> Plan -> Implement -> Review -> Done
 ```
 
-Canonical stage values live only in `memory_bank/workflow.md` -> `Stage Values`.
+Канонические значения stage живут только в `memory_bank/workflow.md` -> `Stage Values`.
 
-`Stage` описывает lifecycle package. Package type выводится из структуры:
+`Stage` описывает lifecycle package. Тип package выводится из структуры:
 
-- `summary.md` без forward artifacts = shipped feature documented retrospectively.
-- `brief.md`, `spec.md` or `plan.md` = forward work; `Stage: done` requires non-blocking `reviews/impl.md`.
-- Review state is metadata: active `Review notes` plus `Статус: advisory | blocking` inside the note.
-- Fix review is a command/cursor state, not a lifecycle stage; stage stays on the reviewed artifact until repeat review passes.
-- Canonical command path for large forward work is `brief: <идея>` -> `review brief: <id>` -> `spec: <id>` -> `review spec: <id>` -> `plan: <id>` -> `review plan: <id>` -> `impl: <id>` -> `review: <id>`.
+- `summary.md` без forward artifacts = shipped feature, описанная ретроспективно.
+- `brief.md`, `spec.md` или `plan.md` = forward work; `Stage: done` требует non-blocking `reviews/impl.md`.
+- Состояние review — это metadata: активный `Review notes` плюс `Статус: advisory | blocking` внутри note.
+- Fix review — command/cursor state, а не lifecycle stage; stage остается на проверяемом artifact до прохождения повторного review.
+- Канонический путь команд для крупной forward work: `brief: <идея>` -> `review brief: <id>` -> `spec: <id>` -> `review spec: <id>` -> `plan: <id>` -> `review plan: <id>` -> `impl: <id>` -> `review: <id>`.
 
 ## Когда нужен feature package
 
@@ -77,13 +77,13 @@ memory_bank/features/<id>_<slug>/
     impl.md
 ```
 
-Retrospective package can later receive `reviews/impl.md` if an explicit semantic implementation review is requested, but backfill creation does not create this note and it is not required for retrospective `Stage: done` while no forward artifacts exist.
+Ретроспективный package позже может получить `reviews/impl.md`, если явно запрошена смысловая проверка реализации. Создание backfill-сводки не создает эту review note, и она не требуется для ретроспективного `Stage: done`, пока нет forward artifacts.
 
 ## Как начинать работу
 
 1. Прочитать `memory_bank/index.md`.
 2. Если нужно продолжить прошлую задачу, прочитать `memory_bank/process/current-focus.md`.
-3. Если известен touched path, определить связанную feature через `rg` по summaries/tests/code and `memory_bank/features/index.md`.
+3. Если известен touched path, определить связанную feature через `rg` по summaries/tests/code и `memory_bank/features/index.md`.
 4. Для retrospective feature прочитать `summary.md`; для future change поверх shipped behavior начать forward `brief.md`, где `summary.md` является входным контекстом. Для active forward work читать artifacts по stage.
 5. Прочитать `memory_bank/engineering/conventions.md`, если предстоит код или review.
 6. Читать релевантные `docs/*`, код, RBS и тесты после определения feature boundary.
@@ -96,7 +96,7 @@ Spec переводит brief в проверяемый контракт. Accept
 
 Plan описывает реализацию через атомарные slices. Каждый slice называет files, behavior, checks и связанные `ac-*`.
 
-Implementation идет по approved plan. Во время implementation обновляются затронутые docs, memory-bank contracts и current focus.
+Реализация идет по утвержденному plan. Во время реализации обновляются затронутые docs, memory-bank contracts и current focus.
 
 Review только читает artifact/code и пишет note по inline format из `.prompts/review-code.md`. Fix review исправляет только замечания из active note; после fix нужен повторный review той же стадии.
 
@@ -131,11 +131,11 @@ Retrospective summaries do not use `ac-*`. Future work on top of a retrospective
 - структуру `current-focus.md`, including `Review notes` path when present.
 
 Validator не доказывает, что package boundary концептуально верен, и не заменяет code review.
-Validator intentionally does not check stale code paths in summaries or review notes; file renames should not fail CI.
+Validator намеренно не проверяет stale code paths в summaries или review notes: переименование файлов не должно ломать CI.
 
 ## CI и проверки
 
-Для changes в memory bank или процессе минимально запускать:
+Для изменений в memory bank или процессе минимально запускать:
 
 ```bash
 bin/memory-bank-check
@@ -144,4 +144,24 @@ ruby -c bin/memory-bank-check
 git diff --check
 ```
 
-Для runtime changes проверки выбираются по blast radius из `memory_bank/engineering/conventions.md`.
+Для runtime-изменений проверки выбираются по blast radius из `memory_bank/engineering/conventions.md`.
+
+## ML Signal Modules
+
+Фича 017 добавляет ML-слой без внешнего Python/Torch сервиса. Обучение и inference выполняются in-process Ruby baseline adapter-ом, поэтому разработка и CI не требуют отдельного model-serving процесса.
+
+Очередь обучения изолирована в `config/queue.yml`: очередь `ml` настроена с `threads: 1` и `processes: 1`. Это часть контракта MVP: для одной модели допускается только один активный запуск в состоянии `queued` или `running`, а stale `running`-запуск с устаревшим `heartbeat_at` перед replacement-запуском переводится в `failed` с метаданными `stale_worker`.
+
+`ml_predictions` — Timescale hypertable по `ts` без отдельного `id`. Уникальность задается через `(ml_model_id, exchange, symbol, timeframe, ts)`. Prediction rows являются пересчитываемым кэшем: повторное использование разрешено только при совпадении serving `weight_checksum` и `source_window_checksum`; upsert с защитой не дает старому training snapshot перезаписать rows от более нового успешного обучения.
+
+Практические проверки для ML-срезов:
+
+```bash
+bundle exec rspec spec/services/ml spec/models/ml_model_spec.rb spec/models/ml_training_run_spec.rb spec/jobs/ml_training_job_spec.rb
+bundle exec rspec spec/services/research/systems/validation/checks/ml_models_spec.rb spec/services/research/modules/ml_signal_spec.rb spec/services/research/backtest_ml_signal_spec.rb
+bundle exec steep check
+bin/memory-bank-check
+git diff --check
+```
+
+Для документационных изменений достаточно `bin/memory-bank-check` и `git diff --check`, если runtime-контракты не менялись.

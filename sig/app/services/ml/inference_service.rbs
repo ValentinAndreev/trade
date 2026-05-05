@@ -1,0 +1,49 @@
+module Ml
+  class InferenceService
+    class Error
+      attr_reader code: Symbol
+      attr_reader message: String
+      attr_reader details: Hash[Symbol, untyped]?
+
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class Result
+      attr_reader status: Symbol
+      attr_reader model: MlModel?
+      attr_reader snapshot: Snapshot?
+      attr_reader series: Array[Hash[Symbol, untyped]]
+      attr_reader diagnostics: Hash[String, untyped]
+      attr_reader error: Error?
+
+      def success?: () -> bool
+    end
+
+    class Snapshot
+      attr_reader model: MlModel
+      attr_reader training_run: MlTrainingRun
+      attr_reader training_run_id: Integer
+      attr_reader weight_checksum: String
+      attr_reader weights_format: String
+      attr_reader weights_payload: String
+      attr_reader resolved_feature_spec: Array[Hash[String, untyped]]
+      attr_reader fitted_metadata: Hash[String, untyped]
+    end
+
+    def initialize: (
+      model_key: String,
+      symbol: String,
+      timeframe: String,
+      ?exchange: String,
+      ?start_time: String | Time?,
+      ?end_time: String | Time?,
+      ?outputs: Array[String | Symbol],
+      ?candles: Array[ohlcv]?,
+      ?batch_size: Integer,
+      ?adapter: Ml::Adapters::BaselineDirectionClassifier,
+      ?cancel_check: untyped
+    ) -> void
+
+    def call: () -> Result
+  end
+end

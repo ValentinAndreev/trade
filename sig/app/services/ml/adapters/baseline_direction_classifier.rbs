@@ -1,0 +1,21 @@
+module Ml
+  module Adapters
+    class BaselineDirectionClassifier
+      WEIGHTS_FORMAT: String
+      WEIGHTS_SCHEMA_VERSION: String
+      DEFAULT_HYPERPARAMS: Hash[Symbol, untyped]
+      EPSILON: Float
+
+      def train: (
+        examples: Array[Hash[untyped, untyped]],
+        ?hyperparams: Hash[untyped, untyped],
+        ?callbacks: untyped
+      ) -> Result::TrainingResult
+
+      def predict: (
+        features: Array[Hash[untyped, untyped]],
+        weights: String | Hash[untyped, untyped]
+      ) -> Result::PredictionBatch
+    end
+  end
+end

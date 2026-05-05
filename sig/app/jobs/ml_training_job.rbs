@@ -1,0 +1,8 @@
+class MlTrainingJob < ApplicationJob
+  def perform: (Integer training_run_id) -> void
+
+  private
+
+  def mark_cancelled_before_start!: (MlTrainingRun training_run) -> void
+  def mark_failed!: (Integer training_run_id, StandardError error) -> void
+end

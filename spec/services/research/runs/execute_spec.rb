@@ -39,6 +39,7 @@ RSpec.describe Research::Runs::Execute do
         },
         optimization_enabled?: false,
         runtime_params: { ema_period: 5 },
+        revalidate!: nil,
         response_payload: { 'runs' => [ { 'params' => { 'ema_period' => 5 } } ] }
       )
       backtest = instance_double(Research::Backtest)
@@ -81,6 +82,7 @@ RSpec.describe Research::Runs::Execute do
         optimization_target: 'ema.period',
         progress_run_id: 'run-123',
         optimization_range: { from: 3, to: 7, step: 2 },
+        revalidate!: nil,
         response_payload: { 'runs' => [ { 'params' => { 'ema_period' => 3 } } ] }
       )
       backtest = instance_double(Research::Backtest)

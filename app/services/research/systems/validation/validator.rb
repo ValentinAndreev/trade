@@ -7,9 +7,11 @@ module Research
         include Checks::Structure
         include Checks::Conditions
         include Checks::Optimization
+        include Checks::MlModels
 
-        def initialize(yaml_text)
+        def initialize(yaml_text, dataset: nil)
           @yaml_text = yaml_text.to_s
+          @validation_dataset = dataset
           @diagnostics = []
         end
 
@@ -20,6 +22,7 @@ module Research
           @schema = Research::Systems::Schema.data
 
           validate_structure
+          validate_ml_models
           validate_conditions
           validate_optimization
 
@@ -74,6 +77,8 @@ module Research
         def source_map
           @source_map ||= SourceMap.build(@document)
         end
+
+        attr_reader :validation_dataset
 
         def add_error(message:, path:, code:, key_path: nil)
           location = if key_path

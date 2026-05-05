@@ -162,6 +162,57 @@ rsi:
   output: value
   params:
     period: Lookback period. Must be >= 1.
+log_return:
+  label: Log Return
+  description: Natural-log return between the current close and the close N candles back.
+  output: value
+  params:
+    period: Lookback period.
+rolling_volatility:
+  label: Rolling Volatility
+  description: Population standard deviation of trailing one-candle log returns.
+  output: value
+  params:
+    period: Lookback period.
+range_position:
+  label: Range Position
+  description: Close location inside the trailing high-low range, bounded to 0..1.
+  output: value
+  params:
+    period: Lookback period.
+rolling_zscore:
+  label: Rolling Z-Score
+  description: Close price z-score against the trailing close window.
+  output: value
+  params:
+    period: Lookback period.
+percentile_rank:
+  label: Percentile Rank
+  description: Percentile rank of the current close within the trailing close window.
+  output: value
+  params:
+    period: Lookback period.
+trend_regime_score:
+  label: Trend Regime Score
+  description: Volatility-adjusted period log return squashed to -1..1.
+  output: value
+  params:
+    period: Lookback period.
+vol_regime_score:
+  label: Volatility Regime Score
+  description: Short-window realized volatility compared with long-window realized volatility, bounded to 0..1.
+  output: value
+  params:
+    short_period: Short volatility lookback.
+    long_period: Long baseline volatility lookback.
+vol_adjust:
+  label: Volatility Adjust
+  description: Selected candle field divided by trailing realized volatility with an epsilon floor.
+  output: value
+  params:
+    period: Volatility lookback period.
+    field: Candle field to normalize.
+    epsilon: Minimum volatility denominator.
 sma:
   label: SMA
   description: Simple Moving Average over close prices.

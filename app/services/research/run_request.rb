@@ -6,12 +6,10 @@ module Research
 
     def initialize(raw_params)
       @raw_params = raw_params.deep_symbolize_keys
-      yaml = requested_yaml
+      @yaml = requested_yaml
       raise Research::Systems::Validation::Error.new([ Research::Systems::Validation::Diagnostic.yaml_missing ]) if yaml.blank?
 
-      validation = Research::Systems::Validation::Validator.new(yaml).call
-      validation.raise_if_invalid!
-      @system = validation.compiled
+      revalidate!
     end
 
     def backtest_config
@@ -59,9 +57,15 @@ module Research
 
     def progress_run_id = raw_params[:run_id]
 
+    def revalidate!
+      validation = Research::Systems::Validation::Validator.new(yaml, dataset:).call
+      validation.raise_if_invalid!
+      @system = validation.compiled
+    end
+
     private
 
-    attr_reader :raw_params
+    attr_reader :raw_params, :yaml
 
     def requested_yaml
       raw_params[:system_yaml].presence || Research::Systems::Catalog.load_yaml(raw_params[:system_id], relative_path: raw_params[:system_path])

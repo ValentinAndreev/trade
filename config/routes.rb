@@ -43,6 +43,14 @@ Rails.application.routes.draw do
     post 'research/directories/delete', to: 'research/systems#destroy_directory'
     post 'research/run', to: 'research/runs#create'
     post 'research/cancel', to: 'research/runs#cancel'
+    namespace :ml do
+      resources :models, only: :index
+      resources :training_runs, only: %i[index create] do
+        member do
+          post :cancel
+        end
+      end
+    end
     resource :llm_settings, only: %i[show create] do
       post :check
       post :launch

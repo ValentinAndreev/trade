@@ -1,0 +1,42 @@
+class MlTrainingRun < ApplicationRecord
+  STATUSES: Array[String]
+  ACTIVE_STATUSES: Array[String]
+  TERMINAL_STATUSES: Array[String]
+  CANONICAL_METRIC_KEYS: Array[String]
+
+  attr_accessor status: String
+  attr_accessor dataset_spec: Hash[String, untyped]
+  attr_accessor resolved_feature_spec: Array[Hash[String, untyped]]
+  attr_accessor hyperparams: Hash[String, untyped]
+  attr_accessor seed: Integer
+  attr_accessor metrics: Hash[String, untyped]
+  attr_accessor error_metadata: Hash[String, untyped]
+  attr_accessor heartbeat_at: Time?
+  attr_accessor cancellation_requested_at: Time?
+  attr_accessor weight_checksum: String?
+  attr_accessor fitted_metadata: Hash[String, untyped]
+  attr_accessor started_at: Time?
+  attr_accessor finished_at: Time?
+  attr_accessor duration_ms: Integer?
+  attr_accessor ml_model_id: Integer
+
+  def self.canonical_metrics: (?Hash[untyped, untyped] metrics) -> Hash[String, untyped]
+  def self.active: () -> untyped
+  def self.terminal: () -> untyped
+  def self.recent: () -> untyped
+
+  def ml_model: () -> MlModel
+  def weight_blob: () -> MlModelWeightBlob?
+  def active?: () -> bool
+  def terminal?: () -> bool
+  def cancellation_requested?: () -> bool
+  def request_cancellation!: () -> bool
+
+  private
+
+  def normalize_status: () -> void
+  def normalize_json_snapshots: () -> void
+  def json_snapshots_are_present: () -> void
+  def succeeded_run_has_weight_checksum: () -> void
+  def cancelled_run_has_no_weight_checksum: () -> void
+end

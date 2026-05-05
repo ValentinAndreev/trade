@@ -8,12 +8,14 @@ module Research
         @document: Psych::Nodes::Document
         @payload: research_yaml_payload
         @source_map: SourceMap
+        @validation_dataset: Hash[Symbol | String, untyped]?
 
         include Checks::Structure
         include Checks::Conditions
         include Checks::Optimization
+        include Checks::MlModels
 
-        def initialize: (String? yaml_text) -> void
+        def initialize: (String? yaml_text, ?dataset: Hash[Symbol | String, untyped]?) -> void
         def call: () -> Result
 
         private
@@ -23,6 +25,7 @@ module Research
         def source_map: () -> SourceMap
         def add_error: (message: String, path: Array[String], code: String, ?key_path: Array[String]?) -> void
         def add_expression_error: (message: String, path: Array[String], offset: Integer, length: Integer, code: String) -> void
+        attr_reader validation_dataset: Hash[Symbol | String, untyped]?
         def numeric_like?: (untyped value) -> bool
         def integer_like?: (untyped value) -> bool
         def validate_unknown_keys: (Array[String] path, Array[String | Symbol] actual_keys, Array[String | Symbol] allowed_keys) -> void

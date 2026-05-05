@@ -206,6 +206,72 @@ RSpec.describe Research::Backtest do
       expect(trades.none? { |t| t[:entryTime] >= (start_time + 8.minutes).to_i }).to be true
     end
 
+    it 'uses ml_signal module values in backtest conditions' do
+      create_trained_ml_model(key: 'btc_direction_backtest')
+      system = Research::Systems::Validation::Validator.new(<<~YAML, dataset: ml_dataset).call.raise_if_invalid!.compiled
+        id: ml_signal_backtest
+        name: ML Signal Backtest
+        modules:
+          signal:
+            type: ml_signal
+            model_key: btc_direction_backtest
+        params:
+          position_mode: long_only
+        conditions:
+          long_entry: "signal.value > 0.6"
+          long_exit: "signal.value < 0.5"
+      YAML
+      runner = instance_double(Research::Modules::MlSignal)
+      signal_values = close_values.each_index.map { |index| index < 3 ? 0.7 : 0.4 }
+      allow(Research::Modules::MlSignal).to receive(:new).with(
+        candles: kind_of(Array),
+        symbol: 'BTCUSD',
+        timeframe: '1m',
+        exchange: 'bitfinex'
+      ).and_return(runner)
+      allow(runner).to receive(:call) do |model_key:, output: 'probability', cancel_check: nil|
+        expect(model_key).to eq('btc_direction_backtest')
+        expect(output).to eq('probability')
+        expect(cancel_check).to be_nil
+        close_values.each_index.map do |index|
+          { time: (start_time + index.minutes).to_i, result: { value: signal_values[index] } }
+        end
+      end
+
+      result = described_class.new(
+        system:, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      ).run(params: { position_mode: 'long_only' })
+
+      expect(result[:trades].length).to eq(1)
+      expect(result[:trades].first[:direction]).to eq('long')
+    end
+
+    it 'passes cancellation context to ml_signal modules' do
+      create_trained_ml_model(key: 'btc_direction_cancel')
+      system = Research::Systems::Validation::Validator.new(<<~YAML, dataset: ml_dataset).call.raise_if_invalid!.compiled
+        id: ml_signal_cancel
+        name: ML Signal Cancel
+        modules:
+          signal:
+            type: ml_signal
+            model_key: btc_direction_cancel
+        conditions:
+          long_entry: "signal.value > 0.6"
+      YAML
+      runner = instance_double(Research::Modules::MlSignal)
+      cancel_check = -> { false }
+      allow(Research::Modules::MlSignal).to receive(:new).and_return(runner)
+      allow(runner).to receive(:call).and_return([])
+
+      described_class.new(
+        system:, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      ).run(params: {}, cancel_check:)
+
+      expect(runner).to have_received(:call).with(hash_including(cancel_check:))
+    end
+
     it 'reuses unchanged module results across runs' do
       ema_runner = instance_double(Research::Modules::Ema)
       rsi_runner = instance_double(Research::Modules::Rsi)
@@ -277,5 +343,35 @@ RSpec.describe Research::Backtest do
         )
       end.to raise_error(Research::Backtest::Cancelled)
     end
+  end
+
+  def ml_dataset
+    {
+      symbol: 'BTCUSD',
+      exchange: 'bitfinex',
+      timeframe: '1m'
+    }
+  end
+
+  def create_trained_ml_model(key:)
+    model = create(:ml_model, key:, serving_status: 'draft')
+    run = create(
+      :ml_training_run,
+      :succeeded,
+      ml_model: model,
+      dataset_spec: {
+        symbol: 'BTCUSD',
+        exchange: 'bitfinex',
+        timeframe: '1m',
+        label_horizon: 1
+      },
+      resolved_feature_spec: Ml::FeatureWindow.new(feature_spec: [ { type: 'log_return', params: { period: 1 } } ]).resolved_feature_spec
+    )
+    model.update!(
+      serving_status: 'trained',
+      latest_successful_training_run: run,
+      serving_weight_checksum: run.weight_checksum
+    )
+    model
   end
 end

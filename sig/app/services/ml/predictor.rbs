@@ -1,0 +1,13 @@
+module Ml
+  class Predictor
+    def initialize: (
+      ?weight_blob: MlModelWeightBlob?,
+      ?training_run: MlTrainingRun?,
+      ?weights_format: String?,
+      ?weights_payload: String?,
+      ?adapter: Ml::Adapters::BaselineDirectionClassifier
+    ) -> void
+
+    def predict: (features: Array[Hash[untyped, untyped]]) -> Ml::Adapters::Result::PredictionBatch
+  end
+end

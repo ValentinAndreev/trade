@@ -63,6 +63,7 @@ module Research
     def build_module_results: (String | Symbol module_type, Hash[Symbol | String, untyped] params, ?cancel_check: ^() -> bool) -> research_module_result_series
     def normalized_module_params: (Hash[Symbol | String, untyped] params) -> Array[[String | Symbol, untyped]]
     def candle_index_by_time: () -> Hash[Integer, Integer]
+    def module_call: (String | Symbol module_type, Hash[Symbol | String, untyped] params, ?cancel_check: ^() -> bool) -> Array[research_module_point]
     def module_runner: (String | Symbol module_type) -> Research::Modules::Base
     def candles: () -> Array[ohlcv]
     def simulate: (Array[ohlcv] candles, research_module_series module_series, research_runtime_params params, ?cancel_check: ^() -> bool) -> Array[research_trade]

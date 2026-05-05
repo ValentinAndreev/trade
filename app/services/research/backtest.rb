@@ -53,7 +53,7 @@ module Research
 
     def build_module_results(module_type, params, cancel_check: nil)
       results = Array.new(candles.length)
-      module_runner(module_type).call(**params.symbolize_keys).each_with_index do |point, point_index|
+      module_call(module_type, params, cancel_check:).each_with_index do |point, point_index|
         cancelled!(cancel_check) if (point_index % 128).zero?
         candle_index = candle_index_by_time[point[:time]]
         results[candle_index] = point[:result] if candle_index
@@ -67,7 +67,15 @@ module Research
       @candle_index_by_time ||= candles.each_with_index.to_h { |candle, index| [ candle[:time], index ] }
     end
 
-    def module_runner(module_type) = @module_runners[module_type.to_s] ||= Research::Modules.for(module_type).new(candles:)
+    def module_call(module_type, params, cancel_check: nil)
+      call_params = params.symbolize_keys
+      call_params[:cancel_check] = cancel_check if module_type.to_s == 'ml_signal'
+      module_runner(module_type).call(**call_params)
+    end
+
+    def module_runner(module_type)
+      @module_runners[module_type.to_s] ||= Research::Modules.for(module_type).new(candles:, symbol:, timeframe:, exchange:)
+    end
 
     def candles
       @candles ||= Candle::FindQuery.new(

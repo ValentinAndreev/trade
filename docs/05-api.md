@@ -248,6 +248,149 @@
 
 Если данные за запрошенный период не загружены, соответствующий ключ будет содержать пустой массив.
 
+## ML-модели и обучение
+
+Требуют аутентификации через сессионную cookie. Реестр моделей в MVP глобальный внутри границы аутентифицированного приложения: модели не принадлежат отдельным пользователям, per-user ACL в фиче 017 не реализован.
+
+| Method | Path | Назначение | Auth |
+| --- | --- | --- | --- |
+| `GET` | `/api/ml/models` | Список ML-моделей | Да |
+| `GET` | `/api/ml/training_runs` | Список запусков обучения | Да |
+| `POST` | `/api/ml/training_runs` | Создать и поставить запуск обучения в очередь | Да |
+| `POST` | `/api/ml/training_runs/:id/cancel` | Запросить cooperative cancellation | Да |
+
+### `GET /api/ml/models`
+
+Параметры:
+
+- `limit` — максимум `50`; значения `<= 0` трактуются как `50`.
+
+Ответ содержит метаданные модели, последний успешный запуск, последний неуспешный запуск и активный запуск. `weights_payload` и blob с весами не сериализуются.
+
+Ключевые поля модели:
+
+- `key`
+- `display_name`
+- `architecture`
+- `prediction_target`
+- `serving_status`
+- `metric_summary`
+- `serving_weight_checksum`
+- `latest_successful_training_run`
+- `latest_failed_training_run`
+- `active_training_run`
+
+`serving_status`: `draft`, `training`, `trained`, `failed`, `disabled`.
+
+### `GET /api/ml/training_runs`
+
+Параметры:
+
+- `limit` — максимум `50`;
+- `model_key` — опциональный фильтр по модели.
+
+Ответ содержит неизменяемые snapshot-данные запуска: `dataset_spec`, `resolved_feature_spec`, `hyperparams`, `seed`, `metrics`, `fitted_metadata`, `weight_checksum`, временные метки и структурированное `error_metadata`.
+
+Статусы запуска:
+
+- `queued`
+- `running`
+- `succeeded`
+- `failed`
+- `cancelled`
+
+### `POST /api/ml/training_runs`
+
+Пример тела:
+
+```json
+{
+  "model_key": "btc_direction_v1",
+  "display_name": "BTC Direction V1",
+  "dataset_spec": {
+    "exchange": "bitfinex",
+    "symbol": "BTCUSD",
+    "timeframe": "1m",
+    "label_horizon": 1,
+    "start_time": "2026-01-01T00:00:00Z",
+    "end_time": "2026-02-01T00:00:00Z"
+  },
+  "feature_spec": [
+    { "type": "log_return", "params": { "period": 1 } }
+  ],
+  "hyperparams": {
+    "seed": 0,
+    "max_iterations": 200,
+    "label_deadband_return": 0.0
+  }
+}
+```
+
+Поведение:
+
+- неизвестный `model_key` атомарно создает draft-модель и queued-запуск;
+- существующий `model_key` переиспользует модель;
+- ошибка постановки в очередь откатывает новую model/run-пару;
+- второй queued/running-запуск для той же модели возвращает структурированную conflict-ошибку;
+- stale `running`-запуск с устаревшим `heartbeat_at` помечается `failed` с метаданными `stale_worker` перед созданием replacement-запуска;
+- неуспешный повторный запуск обучения обновляет `latest_failed_training_run`, но не заменяет последние serving-веса.
+
+Ошибки возвращаются в структурированной форме:
+
+```json
+{
+  "error": {
+    "code": "active_training_run_exists",
+    "message": "model already has an active training run",
+    "details": {}
+  }
+}
+```
+
+### Отмена обучения
+
+`POST /api/ml/training_runs/:id/cancel` записывает `cancellation_requested_at`. Отмена кооперативная: worker, dataset builder, adapter callbacks и inference batching проверяют сохраненный флаг в deterministic yield points. Отмененный запуск не пишет финальные веса и не переводит модель в `trained`.
+
+### Прогресс через ActionCable
+
+Прогресс обучения идет через `MlTrainingProgressChannel`, stream `ml_training:<training_run_id>`.
+
+События:
+
+- `queued`
+- `running`
+- `progress`
+- `succeeded`
+- `failed`
+- `cancelled`
+
+Нетерминальные события `progress` дедуплицируются и ограничиваются по частоте. Терминальные события отправляются всегда. Сохраненное состояние API остается резервным источником при reconnect/reload.
+
+### Хранение и повторное использование предсказаний
+
+Фича 017 не добавляет HTTP endpoint для чтения prediction rows; data-grid endpoint остается зоной фичи 018. Research-модуль `ml_signal` вызывает backend inference service напрямую.
+
+Успешные prediction rows сохраняются в `ml_predictions`, TimescaleDB hypertable по `ts`, с уникальностью `(ml_model_id, exchange, symbol, timeframe, ts)`. Строка хранит:
+
+- `ml_training_run_id`
+- `weight_checksum`
+- `source_window_checksum`
+- `output`
+- `probability`
+- `direction`
+- `confidence`
+
+Inference переиспользует строку только если совпадают serving `weight_checksum` и `source_window_checksum` для текущего окна свечей. Missing/stale строки пересчитываются батчами и пишутся через upsert с защитой, чтобы старый serving snapshot не перезаписал prediction rows от более нового успешного обучения.
+
+MVP-лимит:
+
+```text
+prediction_cells = candle_count * distinct(model_key, output)
+max_prediction_cells = 50_000
+```
+
+Формула относится к одному `(exchange, symbol, timeframe)`. Если будущий endpoint примет несколько market tuples за один запрос, его контракт должен расширить формулу до реализации.
+
 ## LLM Assistant
 
 Требуют аутентификации.

@@ -1,0 +1,33 @@
+module Ml
+  class DatasetBuilder
+    DEFAULT_DATASET_SPEC: Hash[String, untyped]
+    DEFAULT_HYPERPARAMS: Hash[String, untyped]
+
+    class Result
+      attr_reader examples: Array[Hash[Symbol, untyped]]
+      attr_reader rows: Array[Hash[Symbol, untyped]]
+      attr_reader diagnostics: Hash[String, untyped]
+      attr_reader dataset_spec: Hash[String, untyped]
+      attr_reader resolved_feature_spec: Array[Hash[String, untyped]]
+      attr_reader effective_window: Integer
+      attr_reader fitted_metadata: Hash[String, untyped]
+      attr_reader feature_names: Array[String]
+    end
+
+    def initialize: (
+      symbol: String,
+      timeframe: String,
+      ?exchange: String,
+      ?start_time: untyped,
+      ?end_time: untyped,
+      ?dataset_spec: Hash[untyped, untyped],
+      ?feature_spec: untyped,
+      ?hyperparams: Hash[untyped, untyped],
+      ?candles: Array[ohlcv]?,
+      ?cancel_check: untyped
+    ) -> void
+
+    def build_training: () -> Result
+    def build_inference: () -> Result
+  end
+end

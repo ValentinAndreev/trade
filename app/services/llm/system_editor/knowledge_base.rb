@@ -39,14 +39,23 @@ module Llm
             param_doc['min'] = rule['min'] if rule['min']
             param_doc['max'] = rule['max'] if rule['max']
             param_doc['required'] = true if rule['required']
+            param_doc['default'] = rule['default'] if rule.key?('default')
             param_doc['description'] = meta.dig('params', key) if meta.dig('params', key)
             acc[key] = param_doc
           end
           {
             'label'       => meta['label'] || schema_def['label'],
-            'description' => meta['description'],
+            'description' => meta['description'] || schema_def['description'],
             'output'      => meta['output'],
-            'params'      => params
+            'output_fields' => schema_def['output_fields'],
+            'params'      => params,
+            'module_version' => schema_def['module_version'],
+            'definition_checksum' => schema_def['definition_checksum'],
+            'warmup' => schema_def['warmup'],
+            'lookahead' => schema_def['lookahead'],
+            'formula' => schema_def['formula'],
+            'heuristic' => schema_def['heuristic'],
+            'ml_feature_eligible' => schema_def['ml_feature_eligible']
           }.compact
         end
 

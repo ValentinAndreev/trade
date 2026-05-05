@@ -11,7 +11,7 @@ module Research
 
       public
 
-      def initialize: (candles: Array[ohlcv]) -> void
+      def initialize: (candles: Array[ohlcv], **untyped) -> void
       def call: (**untyped params) -> Array[research_module_point]
 
       private

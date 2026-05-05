@@ -1,0 +1,22 @@
+module Ml
+  class PredictionRepository
+    MAX_CELLS: Integer
+    DEFAULT_BATCH_SIZE: Integer
+    INSERT_COLUMNS: Array[Symbol]
+    GUARDED_UPDATE_COLUMNS: Array[Symbol]
+
+    def initialize: (model: MlModel, exchange: String, symbol: String, timeframe: String) -> void
+    def fetch_current: (rows: Array[Hash[Symbol, untyped]], weight_checksum: String) -> Hash[Integer, MlPrediction]
+    def missing_complete_rows: (
+      rows: Array[Hash[Symbol, untyped]],
+      current_by_time: Hash[Integer, MlPrediction]
+    ) -> Array[Hash[Symbol, untyped]]
+    def upsert_predictions: (
+      training_run: MlTrainingRun,
+      rows: Array[Hash[Symbol, untyped]],
+      predictions: Array[Hash[Symbol | String, untyped]],
+      weight_checksum: String
+    ) -> ActiveRecord::Result
+    def value_for: (MlPrediction? prediction, String | Symbol output) -> untyped
+  end
+end

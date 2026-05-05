@@ -152,6 +152,28 @@ modules:
 | `wma` | Weighted Moving Average | `period` |
 | `wr` | Williams %R | `period` |
 
+Дополнительные shared-типы модулей:
+
+| Тип | Описание | Ключевые параметры |
+| --- | --- | --- |
+| `external_series` | Macro/on-chain series из `macro_series` | `key` |
+| `ml_signal` | Предсказание обученной ML-модели | `model_key`, `output` |
+
+Фича 017 также добавляет минимальный набор native-модулей состояния, риска и нормализации. Они доступны через тот же каталог Research-модулей и не проходят через `TechnicalAnalysis` gem:
+
+| Тип | Назначение | Ключевые параметры |
+| --- | --- | --- |
+| `log_return` | Лог-доходность close к close `N` баров назад | `period` |
+| `rolling_volatility` | Rolling volatility по прошлым и текущим барам | `period` |
+| `range_position` | Позиция close внутри rolling high/low range, `[0, 1]` | `period` |
+| `rolling_zscore` | Rolling z-score | `period` |
+| `percentile_rank` | Percentile rank в rolling окне | `period` |
+| `trend_regime_score` | Нормализованная эвристика силы тренда `[-1, 1]` | `period` |
+| `vol_regime_score` | Эвристика режима волатильности `[0, 1]` | `short_period`, `long_period` |
+| `vol_adjust` | Значение, деленное на rolling volatility с epsilon guard | `field`, `period`, `epsilon` |
+
+Для ML feature specs эти модули публикуют метаданные: `module_version`, `definition_checksum`, `output_fields`, `warmup`, `lookahead`, описание и формулу/эвристику. Модули без полных метаданных `warmup`/`lookahead` не допускаются в ML feature specs.
+
 Результат модуля в условиях доступен как `<alias>.value`.
 
 Примеры:
@@ -332,6 +354,85 @@ On-chain метрики (`mvrv_ratio`, `mvrv_z_score`, `nupl`, `realized_price`)
 | `nupl` | Coin Metrics `CapMVRVCur` | `1 - 1 / CapMVRVCur` |
 | `realized_price` | Coin Metrics `CapMrktCurUSD`, `CapMVRVCur`, `SplyCur` | `(CapMrktCurUSD / CapMVRVCur) / SplyCur` |
 
+## ML-сигналы как модули
+
+`ml_signal` подключает обученную ML-модель как series, выровненную по свечам. Значение доступно в условиях как `<alias>.value`, как и у обычных индикаторов.
+
+Пример:
+
+```yaml
+id: ml_direction_filter
+name: ML Direction Filter
+
+modules:
+  direction:
+    type: ml_signal
+    model_key: btc_direction_v1
+    output: probability
+
+params:
+  position_mode: long_only
+  upper_threshold: 0.65
+
+conditions:
+  long_entry: "direction.value > params.upper_threshold"
+  long_exit: "direction.value < 0.5"
+```
+
+Параметры:
+
+| Параметр | Обязателен | Значения |
+| --- | --- | --- |
+| `model_key` | Да | key существующей обученной ML-модели |
+| `output` | Нет | `probability`, `direction`, `confidence`; по умолчанию `probability` |
+
+Валидация YAML отклоняет:
+
+- неизвестный `model_key`;
+- модель без serving-состояния `trained`;
+- неподдерживаемый `output`;
+- модель, обученную для другого `symbol`, `exchange` или `timeframe`, если эти данные известны в запросе запуска;
+- feature spec модели с положительным `lookahead`;
+- feature spec модели без обязательных ML-метаданных (`module_version`, `definition_checksum`, `output_fields`, `warmup`, `lookahead`).
+
+Backtest/optimization дополнительно повторно валидируют YAML после постановки в очередь и перед исполнением, чтобы изменение состояния модели между валидацией в редакторе и запуском не использовало устаревший validation state.
+
+### Инференс и повторное использование
+
+`ml_signal` вызывает `Ml::InferenceService`. Сервис в начале операции фиксирует неизменяемый serving snapshot:
+
+- `training_run_id`
+- `weight_checksum`
+- `weights_payload`
+- `resolved_feature_spec`
+- `fitted_metadata`
+
+Этот snapshot используется для всех batch-вызовов внутри операции, даже если параллельно завершилось новое обучение.
+
+Предсказания сохраняются в `ml_predictions` и переиспользуются только при совпадении:
+
+- serving `weight_checksum`;
+- `source_window_checksum`, посчитанного по стабильному содержимому свечей в effective warmup window.
+
+Если строки отсутствуют или stale, inference вычисляет их батчами, сохраняет успешный batch и только после commit возвращает значения вызывающей стороне Research. Ошибки adapter/persistence не пишутся как rows в `ml_predictions`; backtest/optimization получают структурированную ошибку, и запуск завершается ошибкой, а не продолжается с полностью `nil` ML-серией.
+
+### No-lookahead и labels
+
+Inference features для временной метки `t` используют только свечи `<= t`. Training labels могут смотреть вперед только внутри dataset builder. Direction-classification label строится по close-to-close simple return через `label_horizon`: `up`, если будущая доходность выше `label_deadband_return`, `down`, если ниже отрицательного deadband, и без label внутри deadband.
+
+Строки без достаточной history для feature warmup возвращают `nil` prediction values; значения не фабрикуются.
+
+### Лимит range inference
+
+MVP-лимит для inference:
+
+```text
+prediction_cells = candle_count * distinct(model_key, output)
+max_prediction_cells = 50_000
+```
+
+Фича 017 принимает один `(exchange, symbol, timeframe)` tuple. Multi-tuple inference должен получить отдельный контракт.
+
 ## Как это исполняется
 
 Поток выполнения:
@@ -341,6 +442,7 @@ POST /api/research/run
   -> Research::RunRequest
   -> Research::Systems::Validation::Validator
   -> Research::Systems::Definition (compiled)
+  -> повторная проверка модели для ml_signal, если YAML ссылается на ML
   -> Research::Backtest
   -> Research::Optimizer
   -> Research::ProgressBroadcaster
@@ -360,11 +462,13 @@ POST /api/research/run
 `Backtest`:
 
 - загружает свечи через `Candle::FindQuery`;
-- строит series для каждого alias модуля через `Research::Modules.for(type)` (включая `external_series` для macro/on-chain данных);
+- строит series для каждого alias модуля через `Research::Modules.for(type)` (включая `external_series` для macro/on-chain данных и `ml_signal` для ML inference);
 - кэширует результаты модулей по паре `module_type + params` внутри одного экземпляра `Backtest`;
 - симулирует сделки по `conditions` через `Research::Runtime::RowCursor`.
 
 Несколько alias одного типа работают независимо на уровне сигналов, но переиспользуют вычисления если параметры совпадают.
+
+Research cancellation передается в ML inference: при отмене run ожидающие ML-batches останавливаются на ближайшем deterministic checkpoint.
 
 ## API
 
@@ -411,7 +515,10 @@ app/services/research/
 ├── progress_broadcaster.rb
 ├── modules.rb                    # Research::Modules.for(type)
 ├── modules/
-│   └── base.rb                   # Base class (делегирует в TechnicalAnalysis gem)
+│   ├── base.rb                   # Base class для TechnicalAnalysis-backed модулей
+│   ├── native.rb                 # Base class для pure-Ruby native модулей
+│   ├── external_series.rb        # Macro/on-chain series
+│   └── ml_signal.rb              # ML prediction series
 ├── systems/
 │   ├── catalog.rb
 │   ├── definition.rb             # Compiled system — разрешение ссылок, run_params
@@ -420,7 +527,7 @@ app/services/research/
 │   ├── repository.rb
 │   ├── schema.rb
 │   ├── condition_expression/     # Parser и AST для условий
-│   └── validation/               # Validator и sub-validators
+│   └── validation/               # Validator и sub-validators, включая ML model checks
 └── runtime/
     ├── row_cursor.rb             # Курсор по свечам с доступом к модулям и макро
     └── signal_evaluator.rb       # Вычисление условий по AST
@@ -477,3 +584,5 @@ modules:
 conditions:
   long_entry: "sig.value > 0"
 ```
+
+Если модуль должен быть доступен для ML feature specs, добавьте метаданные в `IndicatorsConfig`: `module_version`, `definition_checksum`, `output_fields`, `warmup`, `lookahead`, описание и формулу/эвристику. Pure-Ruby modules должны идти через native path или явно реализованный `call`; они не должны случайно попадать в `Research::Modules::Base#ta_class`.

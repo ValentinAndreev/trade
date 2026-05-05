@@ -1,0 +1,34 @@
+module Ml
+  class TrainingRunLifecycle
+    DEFAULT_ARCHITECTURE: String
+    DEFAULT_PREDICTION_TARGET: String
+    STALE_HEARTBEAT_AFTER: ActiveSupport::Duration
+
+    class Error
+      attr_reader code: Symbol
+      attr_reader message: String
+      attr_reader details: Hash[Symbol, untyped]?
+
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class Result
+      attr_reader status: Symbol
+      attr_reader model: MlModel?
+      attr_reader training_run: MlTrainingRun?
+      attr_reader error: Error?
+
+      def success?: () -> bool
+    end
+
+    class ActiveRunConflict < StandardError
+    end
+
+    def self.default_enqueuer: () -> Proc
+    def self.default_enqueuer=: (Proc enqueuer) -> Proc
+
+    def initialize: (?enqueuer: Proc) -> void
+    def create: (Hash[untyped, untyped] raw_params) -> Result
+    def cancel: (String | Integer training_run_id) -> Result
+  end
+end

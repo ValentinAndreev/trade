@@ -1,0 +1,20 @@
+module Api
+  module Ml
+    class TrainingRunsController < Api::ApplicationController
+      MAX_LIMIT: Integer
+
+      def index: () -> void
+      def create: () -> void
+      def cancel: () -> void
+
+      private
+
+      def lifecycle: () -> ::Ml::TrainingRunLifecycle
+      def requested_limit: () -> Integer
+      def training_run_payload: () -> Hash[Symbol, untyped]
+      def render_lifecycle_result: (::Ml::TrainingRunLifecycle::Result result) -> void
+      def serialize_training_run: (MlTrainingRun training_run) -> Hash[Symbol, untyped]
+      def serialize_model_summary: (MlModel model) -> Hash[Symbol, untyped]
+    end
+  end
+end

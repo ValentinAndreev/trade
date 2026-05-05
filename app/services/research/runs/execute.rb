@@ -12,6 +12,7 @@ module Research
 
       def call
         request = Research::RunRequest.new(raw_params)
+        request.revalidate!
         backtest = Research::Backtest.new(**request.backtest_config)
         runs = request.optimization_enabled? ? optimized_runs(request, backtest) : single_run(request, backtest)
 

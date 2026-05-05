@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require_dependency 'research/modules/base'
+require_dependency 'research/modules/native'
+require_dependency 'research/modules/ml_signal'
+
 module Research
   module Modules
     def self.for(type)
