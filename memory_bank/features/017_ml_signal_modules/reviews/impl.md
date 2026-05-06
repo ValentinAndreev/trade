@@ -21,13 +21,17 @@
 - `bin/memory-bank-check` — passed.
 - `git diff --check` — passed.
 - `bin/rails runner "r = Ml::InferenceService.new(model_key: 'missing', symbol: 'BTCUSD', timeframe: '0m', start_time: Time.utc(2026,1,1), end_time: Time.utc(2026,1,1,0,1)).call; raise r.error.inspect unless r.error&.code == :invalid_timeframe; puts [r.status, r.error.code].inspect"` — `[:failed, :invalid_timeframe]`.
-- Full `bundle exec rspec`, Brakeman, bundler-audit and npm checks were not run in this review pass.
+- `bundle exec rspec` — 551 examples, 0 failures.
+- `CI=1 bin/brakeman --no-pager` — 0 security warnings, 1 ignored warning.
+- `bin/bundler-audit` — no vulnerabilities found.
+- `npm test` — 37 files, 484 tests, 0 failures.
+- `npm run typecheck` — passed.
+- `npm audit --audit-level=high` — initially found high advisories in `vite`/`picomatch`; after `npm audit fix`, passed with 0 vulnerabilities.
 
 ## Deferred Checks
 
-- Full `bundle exec rspec` — owner: maintainer; deadline: before marking `done: 017` or 2026-05-07, whichever comes first.
-- `bin/brakeman`, `bundle exec bundler-audit` and npm checks — owner: maintainer; deadline: before marking `done: 017` or 2026-05-07, whichever comes first.
+—
 
 ## Следующий шаг
 
-Run deferred checks, then mark `done: 017`.
+Mark `done: 017`, then start `impl: 018`.

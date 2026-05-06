@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'json'
+
 class Macro::FindQuery
   DEFAULT_LOOKBACK = 5.years
 
@@ -39,8 +41,8 @@ class Macro::FindQuery
         time_bucket_gapfill('1 day', ts) AS bucket,
         locf(last(value, ts)) AS value
       FROM macro_series
-      WHERE indicator IN (#{indicators_sql})
-        #{source_sql}
+      WHERE indicator IN (SELECT jsonb_array_elements_text($3::jsonb))
+        AND ($4::text IS NULL OR source = $4::text)
         AND ts >= $1
         AND ts <= $2
       GROUP BY indicator, bucket
@@ -52,8 +54,8 @@ class Macro::FindQuery
     connection.exec_query(<<-SQL.squish, 'MacroFindQuery', raw_bind_params).to_a
       SELECT indicator, ts AS bucket, value
       FROM macro_series
-      WHERE indicator IN (#{indicators_sql})
-        #{source_sql}
+      WHERE indicator IN (SELECT jsonb_array_elements_text($3::jsonb))
+        AND ($4::text IS NULL OR source = $4::text)
         AND ts >= $1
         AND ts <= $2
       ORDER BY indicator, ts
@@ -66,8 +68,8 @@ class Macro::FindQuery
       FROM (
         SELECT indicator, ts AS bucket, value
         FROM macro_series
-        WHERE indicator IN (#{indicators_sql})
-          #{source_sql}
+        WHERE indicator IN (SELECT jsonb_array_elements_text($3::jsonb))
+          AND ($4::text IS NULL OR source = $4::text)
           AND ts >= $1
           AND ts <= $2
         UNION ALL
@@ -75,8 +77,8 @@ class Macro::FindQuery
         FROM (
           SELECT DISTINCT ON (indicator) indicator, ts, value
           FROM macro_series
-          WHERE indicator IN (#{indicators_sql})
-            #{source_sql}
+          WHERE indicator IN (SELECT jsonb_array_elements_text($3::jsonb))
+            AND ($4::text IS NULL OR source = $4::text)
             AND ts < $1
           ORDER BY indicator, ts DESC
         ) previous_rows
@@ -86,33 +88,29 @@ class Macro::FindQuery
   end
 
   def gapfill_bind_params
-    [
-      attr(@from.iso8601),
-      attr(@to.iso8601)
-    ]
+    filter_bind_params(@from, @to)
   end
 
   def raw_bind_params
     from = DEFAULT_LOOKBACK.ago
-    [ attr(from.iso8601), attr(@to.iso8601) ]
+    filter_bind_params(from, @to)
   end
 
   def range_bind_params
-    [ attr(@from.iso8601), attr(@to.iso8601) ]
+    filter_bind_params(@from, @to)
   end
 
   def attr(value)
     ActiveRecord::Relation::QueryAttribute.new(nil, value, ActiveRecord::Type::String.new)
   end
 
-  def indicators_sql
-    @indicators.map { |i| connection.quote(i) }.join(', ')
-  end
-
-  def source_sql
-    return '' unless @source
-
-    "AND source = #{connection.quote(@source)}"
+  def filter_bind_params(from, to)
+    [
+      attr(from.iso8601),
+      attr(to.iso8601),
+      attr(JSON.generate(@indicators)),
+      attr(@source)
+    ]
   end
 
   def connection

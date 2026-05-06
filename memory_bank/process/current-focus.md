@@ -6,20 +6,20 @@
 
 ## Активная задача
 
-**Фича:** 017_ml_signal_modules
-**Started:** 2026-05-02
-**Текущий этап:** impl
-**Review notes:** `memory_bank/features/017_ml_signal_modules/reviews/impl.md`
-**Следующий шаг:** выполнить deferred verification checks для 017
+**Фича:** 018_ml_signal_workspace_and_catalog
+**Started:** 2026-05-06
+**Текущий этап:** plan
+**Review notes:** `memory_bank/features/018_ml_signal_workspace_and_catalog/reviews/plan.md`
+**Следующий шаг:** `impl: 018`
 
 ## Контекст последней сессии
 
-- Сделано: повторный `review: 017` пройден без blocking замечаний; текущий fix-pass закрыл актуальные замечания и обновил `reviews/impl.md`.
-- Осталось: выполнить deferred checks из `reviews/impl.md`, затем отметить `done: 017`.
+- Сделано: deferred checks для 017 прошли; 017 отмечена `done`, npm audit advisories закрыты обновлением `package-lock.json`.
+- Осталось: начать `impl: 018` по согласованному плану.
 
 ## Следующие в очереди
 
-- deferred checks для 017
+- `impl: 018` после `done: 017`
 
 ## Открытые вопросы
 

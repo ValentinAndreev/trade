@@ -776,7 +776,7 @@ export default class extends Controller {
     if (!statsWrapper) return null
     const ctrl = this.application.getControllerForElementAndIdentifier(statsWrapper, "system-stats")
     if (!ctrl || typeof (ctrl as { setStats?: unknown }).setStats !== "function") return null
-    return ctrl as SystemStatsControllerLookup
+    return ctrl as unknown as SystemStatsControllerLookup
   }
 
   private _updateMainPanelVisibility(): void {
