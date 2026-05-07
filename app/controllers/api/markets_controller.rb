@@ -43,7 +43,7 @@ class Api::MarketsController < Api::ApplicationController
   private
 
   def format_quote(sym, meta)
-    return nil unless meta
+    return unless meta
 
     prev = meta['chartPreviousClose'] || meta['previousClose']
     price = meta['regularMarketPrice']

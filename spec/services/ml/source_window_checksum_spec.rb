@@ -19,7 +19,7 @@ RSpec.describe Ml::SourceWindowChecksum do
   describe '.canonical_row' do
     it 'canonicalizes UTC timestamps and fixed-scale decimal fields' do
       candle = {
-        ts: Time.new(2026, 1, 1, 3, 0, 0, '+03:00'),
+        time: Time.new(2026, 1, 1, 3, 0, 0, '+03:00'),
         open: '1.23456789014',
         high: '2',
         low: '0.00001',
@@ -50,6 +50,12 @@ RSpec.describe Ml::SourceWindowChecksum do
 
     it 'rejects missing decimal fields explicitly' do
       expect { described_class.canonical_decimal(nil) }.to raise_error(ArgumentError, /candle decimal value is missing/)
+    end
+
+    it 'rejects malformed candle times instead of coercing them to epoch' do
+      candle = fixture_candles.first.merge(time: 'bad')
+
+      expect { described_class.canonical_row(candle) }.to raise_error(TypeError)
     end
 
     it 'keeps candle_time private' do

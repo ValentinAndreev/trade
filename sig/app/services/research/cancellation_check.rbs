@@ -5,6 +5,6 @@ module Research
       def check_cancelled!: () -> void
     end
 
-    def self.wrap: (untyped cancel_check) -> untyped
+    def self.from_proc: (Proc callable) -> Callable
   end
 end

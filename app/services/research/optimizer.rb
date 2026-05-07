@@ -87,7 +87,7 @@ module Research
         params: run_params,
         mode:,
         stage:,
-        cancel_check: -> { cancelled?(run_id, monotonic_now) }
+        cancel_check: Research::CancellationCheck.from_proc(-> { cancelled?(run_id, monotonic_now) })
       )
     rescue Research::Modules::MlSignal::Error => e
       {

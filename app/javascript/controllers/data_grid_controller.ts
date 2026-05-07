@@ -3,13 +3,14 @@ import { createGrid, type GridApi } from "ag-grid-community"
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community"
 import { buildGridOptions, buildColDefs, buildRowClassRules, buildSystemColDef, computeSelectionStats, getInitialColumnState, type SelectionStats } from "../data_grid/grid_config"
 import { loadDataTable, getRowsFromCache, type DataTableRow } from "../data_grid/data_loader"
+import type { MlPredictionColumnStatus } from "../data_grid/ml_predictions"
 import { evaluateConditions, evaluateFormulaExpression, getHighlightStyles, type ConditionMatch } from "../data_grid/condition_engine"
 import { generateTrades, getSystemSignals, computeSystemStats, type SystemSignal } from "../data_grid/engines"
 import type { TradingSystem, SystemStats } from "../types/store"
 import { injectConditionStyles } from "../utils/dom"
 import candleCache from "../data/candle_cache"
 import type { Candle } from "../types/candle"
-import type { DataConfig } from "../types/store"
+import type { DataConfig, DataColumn } from "../types/store"
 import { columnFieldKey } from "../types/store"
 import { agGridDarkTheme } from "../config/ag_grid_theme"
 
@@ -18,6 +19,7 @@ ModuleRegistry.registerModules([AllCommunityModule])
 const darkTheme = agGridDarkTheme.withParams({ headerFontSize: 12 })
 
 const NUMERIC_FIELDS = ["open", "high", "low", "close", "volume"]
+type InstrumentColumn = Extract<DataColumn, { type: "instrument" }>
 
 export default class extends Controller {
   static values = {
@@ -38,6 +40,9 @@ export default class extends Controller {
   private cacheUnsub: (() => void) | null = null
   private selectionStatsEl: HTMLElement | null = null
   private isLoadingData = false
+  private loadAbortController: AbortController | null = null
+  private loadGeneration = 0
+  private mlPredictionColumnStatuses: Record<string, MlPredictionColumnStatus> = {}
 
   connect() {
     this.parseConfig()
@@ -50,7 +55,7 @@ export default class extends Controller {
   private fillInstrumentColFromCache(instSymbol: string) {
     if (!this.currentConfig || !this.gridApi || this.isLoadingData || !this.rows.length) return
     const cols = this.currentConfig.columns.filter(
-      c => c.type === "instrument" && c.instrumentSymbol === instSymbol
+      (c): c is InstrumentColumn => c.type === "instrument" && c.instrumentSymbol === instSymbol
     )
     if (!cols.length) return
     const candles = candleCache.get(instSymbol, this.currentConfig.timeframe)
@@ -82,6 +87,9 @@ export default class extends Controller {
 
   disconnect() {
     this.teardownCacheSubscriptions()
+    this.loadGeneration++
+    this.loadAbortController?.abort()
+    this.loadAbortController = null
     this.selectionStatsEl?.remove()
     this.selectionStatsEl = null
     this.gridApi?.destroy()
@@ -135,15 +143,12 @@ export default class extends Controller {
 
   private serverColsKey(config: DataConfig): string {
     return config.columns
-      .filter(c =>
-        (c.type === "indicator" && c.indicatorType) ||
-        (c.type === "change" && c.changePeriod) ||
-        (c.type === "instrument" && c.instrumentSymbol)
-      )
-      .map(c => {
-        if (c.type === "indicator") return `${c.indicatorType}:${JSON.stringify(c.indicatorParams || {})}`
-        if (c.type === "instrument") return `inst:${c.instrumentSymbol}:${c.instrumentField}`
-        return `change:${c.changePeriod}`
+      .flatMap(c => {
+        if ((c.type === "indicator" || c.type === "macro") && c.indicatorType) return [`${c.indicatorType}:${JSON.stringify(c.indicatorParams || {})}`]
+        if (c.type === "change" && c.changePeriod) return [`change:${c.changePeriod}`]
+        if (c.type === "instrument" && c.instrumentSymbol) return [`inst:${c.instrumentSymbol}:${c.instrumentField}`]
+        if (c.type === "ml_prediction") return [`ml:${c.id}:${c.modelKey}:${c.modelOutput}`]
+        return []
       })
       .sort()
       .join("|")
@@ -264,6 +269,8 @@ export default class extends Controller {
           allFields.push(columnFieldKey(col))
         } else if (col.type === "instrument") {
           allFields.push(col.label)
+        } else if (col.type === "ml_prediction" && col.modelOutput !== "direction") {
+          allFields.push(columnFieldKey(col))
         } else if (col.type === "formula" && col.expression) {
           allFields.push(col.label)
           formulaCols.push({ label: col.label, expression: col.expression })
@@ -318,7 +325,9 @@ export default class extends Controller {
     if (!symbols[0]) return
 
     const instSymbols = [...new Set(
-      this.currentConfig.columns.filter(c => c.type === "instrument" && c.instrumentSymbol).map(c => c.instrumentSymbol!)
+      this.currentConfig.columns
+        .filter((c): c is InstrumentColumn => c.type === "instrument" && !!c.instrumentSymbol)
+        .map(c => c.instrumentSymbol!)
     )]
     this.instrumentUnsubs = instSymbols.map(sym =>
       candleCache.subscribe(sym, timeframe, () => this.fillInstrumentColFromCache(sym))
@@ -346,7 +355,8 @@ export default class extends Controller {
     const hasServerCalcs = config.columns.some(c =>
       (c.type === "indicator" && c.indicatorType) ||
       (c.type === "change" && c.changePeriod) ||
-      (c.type === "instrument" && c.instrumentSymbol)
+      (c.type === "instrument" && c.instrumentSymbol) ||
+      c.type === "ml_prediction"
     )
     const freshRows = await getRowsFromCache({ ...config, startTime: candles.at(-2)?.time, endTime: undefined })
     if (!freshRows?.length) return
@@ -378,13 +388,20 @@ export default class extends Controller {
   }
 
   async loadData() {
-    if (!this.currentConfig || !this.gridApi || this.isLoadingData) return
+    if (!this.currentConfig || !this.gridApi) return
 
+    this.loadAbortController?.abort()
+    const loadGeneration = ++this.loadGeneration
+    const abortController = new AbortController()
+    this.loadAbortController = abortController
     this.isLoadingData = true
     try {
       // Snapshot config so we apply the exact column defs that match this data load.
       const config = this.currentConfig
-      this.rows = await loadDataTable(config)
+      const result = await loadDataTable(config, abortController.signal, this.dataTabScope())
+      if (loadGeneration !== this.loadGeneration) return
+      this.rows = result.rows
+      this.mlPredictionColumnStatuses = result.mlPredictionColumnStatuses
       this.refreshConditionMatches()
       this.refreshSystemSignals()
       // Atomic update: columnDefs + rowClassRules + rowData in one call so AG Grid
@@ -397,12 +414,16 @@ export default class extends Controller {
       this.dispatchTimeRange()
       this.element.dispatchEvent(new CustomEvent("datagrid:loaded", { bubbles: true }))
     } catch (err) {
+      if (loadGeneration !== this.loadGeneration) return
       console.error("[DataGrid] loadData error:", err)
       if (!this.rows.length) {
         this.gridApi?.updateGridOptions({ rowData: [] })
       }
     } finally {
-      this.isLoadingData = false
+      if (loadGeneration === this.loadGeneration) {
+        this.isLoadingData = false
+        this.loadAbortController = null
+      }
     }
   }
 
@@ -483,7 +504,7 @@ export default class extends Controller {
   }
 
   private buildAllColDefs(config: DataConfig) {
-    const base = buildColDefs(config.columns)
+    const base = buildColDefs(config.columns, this.mlPredictionColumnStatuses)
     const sysCols = (config.systems ?? [])
       .filter(s => s.enabled)
       .map(s => buildSystemColDef(s, this.systemSignalMaps.get(s.id) ?? new Map()))
@@ -529,5 +550,12 @@ export default class extends Controller {
 
   getData(): DataTableRow[] {
     return this.rows
+  }
+
+  private dataTabScope(): string {
+    const wrapper = this.element.closest("[data-tab-wrapper]")
+    const scope = wrapper?.getAttribute("data-tab-wrapper")
+    if (!scope) throw new Error("Data grid controller requires data-tab-wrapper scope")
+    return scope
   }
 }

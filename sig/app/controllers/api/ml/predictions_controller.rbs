@@ -1,0 +1,94 @@
+module Api
+  module Ml
+    class PredictionsController < Api::ApplicationController
+      MODEL_KEY_FORMAT: Regexp
+      REQUEST_GUARD_MUTEX: Mutex
+      ACTIVE_REQUEST_KEYS: Set[String]
+
+      class ColumnSpec
+        attr_reader column_id: String
+        attr_reader model_key: String
+        attr_reader model_output: String
+      end
+
+      class RequestError < StandardError
+        attr_reader code: Symbol
+        attr_reader status: Symbol
+        attr_reader details: Hash[Symbol, untyped]
+
+        def initialize: (Symbol code, String message, status: Symbol, ?details: Hash[Symbol, untyped]) -> void
+      end
+
+      def self.reserve_request_guard!: (String key) -> bool
+      def self.release_request_guard!: (String key) -> void
+
+      def limits: () -> void
+      def create: () -> void
+
+      private
+
+      def render_grid_predictions: () -> void
+      def required_identity!: (Symbol key) -> String
+      def optional_identity: (Symbol key, default: String) -> String
+      def parse_time_boundary!: (Symbol key) -> Time
+      def timeframe_duration!: (String timeframe) -> Integer
+      def column_specs: () -> [Array[ColumnSpec], Hash[String, Hash[Symbol, untyped]]]
+      def column_payload!: (untyped raw_column, index: Integer) -> Hash[String, untyped]
+      def canonical_column_id!: (Hash[String, untyped] payload) -> String
+      def column_error: (ColumnSpec column) -> Hash[Symbol, untyped]?
+      def candle_count: (start_time: Time, end_time: Time, timeframe_duration: Integer) -> Integer
+      def prediction_cap_error: (
+        preflight_candle_count: Integer,
+        grouped_outputs: Hash[String, Array[String]]
+      ) -> RequestError?
+      def inference_results: (
+        symbol: String,
+        exchange: String,
+        timeframe: String,
+        start_time: Time,
+        end_time: Time,
+        candles: Array[ohlcv],
+        grouped_outputs: Hash[String, Array[String]]
+      ) -> Hash[String, ::Ml::InferenceService::Result]
+      def response_payload: (
+        exchange: String,
+        symbol: String,
+        timeframe: String,
+        start_time: Time,
+        end_time: Time,
+        candles: Array[ohlcv],
+        columns: Array[ColumnSpec],
+        column_errors: Hash[String, Hash[Symbol, untyped]],
+        grouped_outputs: Hash[String, Array[String]],
+        preflight_candle_count: Integer,
+        results_by_model: Hash[String, ::Ml::InferenceService::Result]
+      ) -> Hash[Symbol, untyped]
+      def values_by_column: (
+        candles: Array[ohlcv],
+        columns: Array[ColumnSpec],
+        column_errors: Hash[String, Hash[Symbol, untyped]],
+        results_by_model: Hash[String, ::Ml::InferenceService::Result]
+      ) -> Hash[String, Hash[String, untyped]]
+      def projected_values: (::Ml::InferenceService::Result result, String model_output) -> Hash[String, untyped]
+      def errors_by_column: (
+        columns: Array[ColumnSpec],
+        column_errors: Hash[String, Hash[Symbol, untyped]],
+        results_by_model: Hash[String, ::Ml::InferenceService::Result]
+      ) -> Hash[String, Hash[Symbol, untyped]]
+      def diagnostics: (
+        candles: Array[ohlcv],
+        columns: Array[ColumnSpec],
+        grouped_outputs: Hash[String, Array[String]],
+        preflight_candle_count: Integer,
+        results_by_model: Hash[String, ::Ml::InferenceService::Result]
+      ) -> Hash[Symbol, untyped]
+      def source_window_mismatches_by_column: (
+        columns: Array[ColumnSpec],
+        results_by_model: Hash[String, ::Ml::InferenceService::Result]
+      ) -> Hash[String, Hash[String, untyped]]
+      def render_error: (Symbol code, String message, status: Symbol, ?details: Hash[Symbol, untyped]) -> void
+      def error_payload: (Symbol code, String message, **untyped details) -> Hash[Symbol, untyped]
+      def request_guard_key: () -> String
+    end
+  end
+end

@@ -1,0 +1,4 @@
+module Ml
+  class Cancelled < Research::Cancelled
+  end
+end

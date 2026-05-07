@@ -19,6 +19,10 @@ Style/StringLiterals:
     - test/**/*
     - Gemfile
 
+Style/ReturnNil:
+  Enabled: true
+  EnforcedStyle: return
+
 Performance/Count:
   Enabled: true
 

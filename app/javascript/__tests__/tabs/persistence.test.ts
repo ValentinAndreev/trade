@@ -66,6 +66,32 @@ describe("persistence", () => {
       expect(result[0].dataConfig?.symbols).toEqual(["BTCUSD"])
     })
 
+    it("preserves persisted ML prediction data columns", () => {
+      const tabs: Tab[] = [{
+        id: "tab-1",
+        name: "Data: BTCUSD",
+        type: "data",
+        panels: [],
+        dataConfig: {
+          symbols: ["BTCUSD"],
+          timeframe: "1h",
+          columns: [{
+            id: "col-ml",
+            type: "ml_prediction",
+            label: "ML probability",
+            modelKey: "btc_direction_v1",
+            modelOutput: "probability",
+          }],
+          conditions: [],
+          systems: [],
+          chartLinks: [],
+        },
+      }]
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+
+      expect(loadTabs()).toEqual(tabs)
+    })
+
     it("hydrates missing research config for persisted research tabs", () => {
       const tabs = [{
         id: "tab-1",
@@ -127,6 +153,34 @@ describe("persistence", () => {
       expect(result[0].systemEditorConfig?.systemId).toBe("custom_system")
       expect(result[0].systemEditorConfig?.sourceSystemId).toBeNull()
       expect(result[0].systemEditorConfig?.systemYaml).toBe("")
+    })
+
+    it("hydrates missing ML models config for persisted ML tabs", () => {
+      const tabs = [{
+        id: "tab-1",
+        name: "ML models",
+        type: "ml_models",
+        panels: [],
+      }]
+
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+      const result = loadTabs()
+
+      expect(result[0].type).toBe("ml_models")
+      expect(result[0].mlModelsConfig).toEqual({ selectedModelKey: null })
+    })
+
+    it("deduplicates persisted ML models tabs", () => {
+      const tabs = [
+        { id: "tab-1", name: "ML models", type: "ml_models", panels: [], mlModelsConfig: { selectedModelKey: "a" } },
+        { id: "tab-2", name: "ML models 2", type: "ml_models", panels: [], mlModelsConfig: { selectedModelKey: "b" } },
+      ]
+
+      localStorage.setItem("chart-tabs", JSON.stringify(tabs))
+      const result = loadTabs()
+
+      expect(result.filter(tab => tab.type === "ml_models")).toHaveLength(1)
+      expect(result[0].mlModelsConfig).toEqual({ selectedModelKey: "a" })
     })
   })
 

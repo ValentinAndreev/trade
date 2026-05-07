@@ -27,7 +27,7 @@ module Ml
       :fitted_metadata
     )
 
-    def initialize(model_key:, symbol:, timeframe:, exchange: 'bitfinex', start_time: nil, end_time: nil,
+    def initialize(model_key:, symbol:, timeframe:, exchange: Candle::FindQuery::DEFAULT_EXCHANGE, start_time: nil, end_time: nil,
       outputs: [ 'probability' ], candles: nil, batch_size: PredictionRepository::DEFAULT_BATCH_SIZE,
       adapter: Ml::Adapters::BaselineDirectionClassifier.new, cancel_check: nil, warmup_candle_cache: nil)
       @model_key = model_key.to_s
@@ -40,7 +40,7 @@ module Ml
       @candles = candles
       @batch_size = batch_size.to_i
       @adapter = adapter
-      @cancel_check = Research::CancellationCheck.wrap(cancel_check)
+      @cancel_check = cancel_check
       @warmup_candle_cache = warmup_candle_cache
       @started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
@@ -91,7 +91,8 @@ module Ml
           requested_rows:,
           outputs: normalized_outputs,
           reused_rows:,
-          computed_rows:
+          computed_rows:,
+          source_window_mismatches: repository.source_window_mismatches(rows: requested_rows, weight_checksum: snapshot.weight_checksum)
         )
       )
     rescue Research::Cancelled
@@ -338,7 +339,7 @@ module Ml
       end
     end
 
-    def diagnostics_for(dataset:, requested_rows:, outputs:, reused_rows:, computed_rows:)
+    def diagnostics_for(dataset:, requested_rows:, outputs:, reused_rows:, computed_rows:, source_window_mismatches:)
       dataset.diagnostics.merge(
         'loaded_candle_count' => dataset.rows.length,
         'candle_count' => requested_rows.length,
@@ -348,6 +349,7 @@ module Ml
         'max_prediction_rows' => PredictionRepository::MAX_CELLS,
         'reused_prediction_rows' => reused_rows,
         'computed_prediction_rows' => computed_rows,
+        'source_window_mismatches' => source_window_mismatches,
         'duration_ms' => duration_ms
       )
     end
@@ -389,7 +391,7 @@ module Ml
     end
 
     def effective_window_for(snapshot)
-      Array(snapshot.resolved_feature_spec).map { |entry| [ entry.fetch('warmup', 0).to_i, entry.fetch('lookback', 0).to_i ].max }.max.to_i
+      FeatureWindow.effective_window_for(Array(snapshot.resolved_feature_spec))
     end
 
     def timeframe_duration_seconds
@@ -428,8 +430,6 @@ module Ml
       return 0 if range_seconds.negative?
 
       (range_seconds / duration).floor + 1
-    rescue ArgumentError
-      nil
     end
 
     def requested_time?(timestamp)
@@ -542,8 +542,7 @@ module Ml
     end
 
     def prediction_value(prediction, key)
-      return prediction.fetch(key) if prediction.key?(key)
-      prediction.fetch(key.to_s) if prediction.key?(key.to_s)
+      prediction.fetch(key)
     end
 
     def numeric_prediction_value(value)

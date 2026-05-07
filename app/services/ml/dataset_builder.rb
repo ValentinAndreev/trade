@@ -25,7 +25,7 @@ module Ml
       :effective_window, :fitted_metadata, :feature_names
     )
 
-    def initialize(symbol:, timeframe:, exchange: 'bitfinex', start_time: nil, end_time: nil,
+    def initialize(symbol:, timeframe:, exchange: Candle::FindQuery::DEFAULT_EXCHANGE, start_time: nil, end_time: nil,
       dataset_spec: {}, feature_spec: nil, hyperparams: {}, candles: nil, cancel_check: nil)
       @symbol = symbol
       @timeframe = timeframe
@@ -36,7 +36,7 @@ module Ml
       @feature_spec = feature_spec
       @hyperparams = DEFAULT_HYPERPARAMS.merge(hyperparams.to_h.deep_stringify_keys)
       @candles = candles
-      @cancel_check = Research::CancellationCheck.wrap(cancel_check)
+      @cancel_check = cancel_check
     end
 
     def build_training

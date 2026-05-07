@@ -1,7 +1,7 @@
 import { OVERLAY_COLORS } from "../config/theme"
 import { normalizeColorScheme, normalizeOpacity } from "../utils/color"
 import { loadTabs, saveTabs, calcNextId, loadActiveTabId, saveActiveTabId } from "./persistence"
-import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, Condition, ChartLink, TradingSystem, ResearchConfig, ResearchResult, SystemEditorConfig } from "../types/store"
+import type { Tab, Panel, Overlay, DrawingKind, DrawingItem, DataConfig, DataColumn, DataColumnInput, Condition, ChartLink, TradingSystem, ResearchConfig, ResearchResult, SystemEditorConfig, MlModelsConfig } from "../types/store"
 import { buildDefaultResearchState } from "../research/state"
 import { buildDefaultSystemEditorState } from "../system_editor/state"
 
@@ -82,7 +82,7 @@ export default class TabStore {
     } else if (this.activeTabId === tabId) {
       const newTab = this.tabs[Math.min(idx, this.tabs.length - 1)]
       this.activeTabId = newTab.id
-      if (newTab.type === "data" || newTab.type === "research" || newTab.type === "system_stats" || newTab.type === "system_editor" || newTab.type === "assistant") {
+      if (newTab.type === "data" || newTab.type === "research" || newTab.type === "system_stats" || newTab.type === "system_editor" || newTab.type === "assistant" || newTab.type === "ml_models") {
         this.selectedPanelId = null
         this.selectedOverlayId = null
       } else {
@@ -99,7 +99,7 @@ export default class TabStore {
     this.activeTabId = tabId
     const tab = this.activeTab
     if (tab) {
-      if (tab.type === "data" || tab.type === "research" || tab.type === "system_stats" || tab.type === "system_editor" || tab.type === "assistant") {
+      if (tab.type === "data" || tab.type === "research" || tab.type === "system_stats" || tab.type === "system_editor" || tab.type === "assistant" || tab.type === "ml_models") {
         this.selectedPanelId = null
         this.selectedOverlayId = null
       } else if (!tab.panels.find(p => p.id === this.selectedPanelId)) {
@@ -131,6 +131,9 @@ export default class TabStore {
     }
     if (tab.type === "assistant") {
       return tab.name || "Assistant"
+    }
+    if (tab.type === "ml_models") {
+      return tab.name || "ML models"
     }
     if (tab.type === "data") {
       const base = tab.name || this._autoDataName(tab)
@@ -730,6 +733,35 @@ export default class TabStore {
     return tab
   }
 
+  addMlModelsTab(updates: Partial<MlModelsConfig> = {}): Tab {
+    const existing = this.tabs.find(tab => tab.type === "ml_models")
+    if (existing) {
+      existing.mlModelsConfig = { selectedModelKey: null, ...(existing.mlModelsConfig || {}), ...updates }
+      this.activeTabId = existing.id
+      this.selectedPanelId = null
+      this.selectedOverlayId = null
+      this._save()
+      return existing
+    }
+
+    const tab: Tab = {
+      id: `tab-${this._nextTabId++}`,
+      name: "ML models",
+      type: "ml_models",
+      panels: [],
+      mlModelsConfig: {
+        selectedModelKey: null,
+        ...updates,
+      },
+    }
+    this.tabs.push(tab)
+    this.activeTabId = tab.id
+    this.selectedPanelId = null
+    this.selectedOverlayId = null
+    this._save()
+    return tab
+  }
+
   moveTabNextToChart(dataTabId: string, chartTabId: string): void {
     const dataIdx = this.tabs.findIndex(t => t.id === dataTabId)
     const chartIdx = this.tabs.findIndex(t => t.id === chartTabId)
@@ -896,10 +928,10 @@ export default class TabStore {
     return true
   }
 
-  addDataColumn(tabId: string, column: Omit<DataColumn, "id">): DataColumn | null {
+  addDataColumn(tabId: string, column: DataColumnInput): DataColumn | null {
     const tab = this.tabs.find(t => t.id === tabId && t.type === "data")
     if (!tab?.dataConfig) return null
-    const col: DataColumn = { id: `col-${this._nextColumnId++}`, ...column }
+    const col = { id: `col-${this._nextColumnId++}`, ...column } as DataColumn
     tab.dataConfig.columns.push(col)
     this._save()
     return col

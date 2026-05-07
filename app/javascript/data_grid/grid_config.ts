@@ -5,6 +5,7 @@ import { evaluateFormulaExpression, type ConditionMatch } from "./condition_engi
 import type { SystemSignal } from "./engines"
 import { UP_COLOR, DOWN_COLOR } from "../config/theme"
 import { PRICE_PRECISION, CHANGE_PRECISION, VOLUME_PRECISION } from "../config/constants"
+import type { MlPredictionColumnStatus } from "./ml_predictions"
 
 function formatPrice(params: ValueFormatterParams): string {
   const v = params.value
@@ -24,6 +25,16 @@ function formatChange(params: ValueFormatterParams): string {
   const n = Number(v)
   const sign = n > 0 ? "+" : ""
   return `${sign}${n.toFixed(CHANGE_PRECISION)}%`
+}
+
+type SortableCellValue = number | string | null | undefined
+
+export function compareNullLast(valueA: SortableCellValue, valueB: SortableCellValue, isDescending = false): number {
+  if (valueA == null && valueB == null) return 0
+  const missingOrder = Number(valueA == null) - Number(valueB == null)
+  if (missingOrder !== 0) return isDescending ? -missingOrder : missingOrder
+  if (valueA === valueB) return 0
+  return valueA! < valueB! ? -1 : 1
 }
 
 function formatDateTime(params: ValueFormatterParams): string {
@@ -51,6 +62,7 @@ function defaultWidth(col: DataColumn): number {
     indicator: 100,
     formula: 110,
     instrument: 100,
+    ml_prediction: 120,
   }
   const contentWidth = widthByContent[col.type] ?? 100
   return Math.max(80, Math.min(400, Math.max(widthByTitle, contentWidth)))
@@ -105,7 +117,7 @@ function formatSystemSignal(sig: SystemSignal): string {
   return ""
 }
 
-export function buildColDefs(columns: DataColumn[]): ColDef[] {
+export function buildColDefs(columns: DataColumn[], mlPredictionColumnStatuses: Record<string, MlPredictionColumnStatus> = {}): ColDef[] {
   return columns.map(col => {
     const w = col.width ?? defaultWidth(col)
     const base: ColDef = {
@@ -166,6 +178,21 @@ export function buildColDefs(columns: DataColumn[]): ColDef[] {
           field: columnFieldKey(col),
           valueFormatter: formatPrice,
           type: "numericColumn",
+        }
+      }
+      case "ml_prediction": {
+        const numericOutput = col.modelOutput !== "direction"
+        const status = mlPredictionColumnStatuses[col.id]
+        const statusHeader = status ? { headerName: `${col.label} !`, headerTooltip: status.message } : {}
+        return {
+          ...base,
+          ...statusHeader,
+          field: columnFieldKey(col),
+          type: numericOutput ? "numericColumn" : undefined,
+          filter: numericOutput ? "agNumberColumnFilter" : "agTextColumnFilter",
+          comparator: (valueA, valueB, _nodeA, _nodeB, isDescending) => compareNullLast(valueA, valueB, isDescending),
+          cellStyle: status ? { color: DOWN_COLOR } : undefined,
+          valueFormatter: numericOutput ? formatPrice : undefined,
         }
       }
       default:

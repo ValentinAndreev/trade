@@ -134,6 +134,17 @@ describe("TabStore", () => {
       expect(store.tabLabel(first)).toBe("Assistant")
     })
 
+    it("addMlModelsTab creates a single ML models tab", () => {
+      const first = store.addMlModelsTab()
+      const second = store.addMlModelsTab({ selectedModelKey: "btc_direction_v1" })
+
+      expect(first.type).toBe("ml_models")
+      expect(second.id).toBe(first.id)
+      expect(store.tabs.filter(tab => tab.type === "ml_models")).toHaveLength(1)
+      expect(store.tabLabel(first)).toBe("ML models")
+      expect(first.mlModelsConfig).toEqual({ selectedModelKey: "btc_direction_v1" })
+    })
+
     it("allows removing the assistant tab", () => {
       const assistant = store.addAssistantTab()
       store.addTab()
@@ -447,7 +458,25 @@ describe("TabStore", () => {
       const tab = store.addDataTab({ symbols: ["BTCUSD"] })
       const col = store.addDataColumn(tab.id, { type: "change", label: "Change 5m", changePeriod: "5m" })
       expect(col).not.toBeNull()
-      expect(col!.id).toMatch(/^col-/)
+      if (!col) throw new Error("Expected data column")
+      expect(col.id).toMatch(/^col-/)
+      expect(tab.dataConfig!.columns).toContain(col)
+    })
+
+    it("addDataColumn adds ML prediction column", () => {
+      const tab = store.addDataTab({ symbols: ["BTCUSD"] })
+      const col = store.addDataColumn(tab.id, {
+        type: "ml_prediction",
+        label: "ML probability",
+        modelKey: "btc_direction_v1",
+        modelOutput: "probability",
+      })
+      expect(col).not.toBeNull()
+      if (!col || col.type !== "ml_prediction") throw new Error("Expected ML prediction column")
+      expect(col.type).toBe("ml_prediction")
+      expect(col.modelKey).toBe("btc_direction_v1")
+      expect(col.modelOutput).toBe("probability")
+      expect(col.id).toMatch(/^col-/)
       expect(tab.dataConfig!.columns).toContain(col)
     })
 
@@ -513,6 +542,15 @@ describe("TabStore", () => {
       expect(store.selectedPanelId).toBeNull()
       expect(store.selectedOverlayId).toBeNull()
       expect(store.tabLabel(research)).toBe("Test/Optimization")
+    })
+
+    it("addMlModelsTab clears selected panel", () => {
+      store.addTab()
+      const tab = store.addMlModelsTab()
+
+      expect(store.activeTabId).toBe(tab.id)
+      expect(store.selectedPanelId).toBeNull()
+      expect(store.selectedOverlayId).toBeNull()
     })
   })
 

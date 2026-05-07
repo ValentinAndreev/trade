@@ -29,13 +29,25 @@ export function loadTabs(): Tab[] {
           if (tab.type === "system_editor") {
             tab.systemEditorConfig = hydrateSystemEditorState(tab.systemEditorConfig || {})
           }
+          if (tab.type === "ml_models") {
+            tab.mlModelsConfig = {
+              selectedModelKey: null,
+              ...(tab.mlModelsConfig || {}),
+            }
+          }
           return tab
         })
         let assistantTabSeen = false
+        let mlModelsTabSeen = false
         const deduped = normalized.filter(tab => {
-          if (tab.type !== "assistant") return true
-          if (assistantTabSeen) return false
-          assistantTabSeen = true
+          if (tab.type === "assistant") {
+            if (assistantTabSeen) return false
+            assistantTabSeen = true
+          }
+          if (tab.type === "ml_models") {
+            if (mlModelsTabSeen) return false
+            mlModelsTabSeen = true
+          }
           return true
         })
         // Build set of all valid system IDs across all data tabs

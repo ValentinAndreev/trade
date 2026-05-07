@@ -7,13 +7,14 @@ module Research
       def self.min_data_size: () -> Integer
       def self.coerce_params: (Hash[untyped, untyped] raw_params) -> Hash[Symbol, untyped]
 
-      def call: (?cancel_check: untyped, **untyped params) -> Array[research_module_point]
-      def call_resolved: (?cancel_check: untyped, **untyped params) -> Array[research_module_point]
-      def call_from_feature_matrix: (?cancel_check: untyped, **untyped params) -> Array[research_module_point]
+      def call: (?cancel_check: untyped, ?module_series: untyped, **untyped params) -> Array[research_module_point]
+      def call_resolved: (?cancel_check: untyped, ?module_series: untyped, **untyped params) -> Array[research_module_point]
+      def call_from_feature_matrix: (?cancel_check: untyped, ?module_series: untyped, **untyped params) -> Array[research_module_point]
 
       private
 
-      def points_for: (Hash[Symbol, untyped] options, ?cancel_check: untyped) -> Array[research_module_point]
+      def points_for: (Hash[Symbol, untyped] options, ?cancel_check: untyped, ?module_series: research_module_series) -> Array[research_module_point]
+      def prepare_options: (Hash[Symbol, untyped] options, ?cancel_check: untyped, ?module_series: research_module_series) -> Hash[Symbol, untyped]
       def value_at: (Integer index, **untyped) -> Float?
       def close_at: (Integer index) -> Float?
       def numeric_field: (Integer index, String | Symbol field) -> Float?
@@ -21,9 +22,13 @@ module Research
       def rolling_log_returns: (Integer index, Integer period) -> Array[Float]?
       def volatility_at: (Integer index, Integer period) -> Float?
       def population_stddev: (Array[Float] values) -> Float?
+      def population_variance: (Array[Float] values) -> Float?
       def mean: (Array[Float] values) -> Float
+      def median: (Array[Float] values) -> Float?
+      def quantile: (Array[Float] values, Numeric probability) -> Float?
+      def input_values: (untyped reference, ?cancel_check: untyped, module_series: research_module_series) -> Array[Float?]
+      def input_window: (Array[Float?] values, Integer index, Integer period) -> Array[Float]?
       def clamp: (Float value, Float min, Float max) -> Float
-      def finite_or_nil: (Float? value) -> Float?
     end
 
     class LogReturn < Native
@@ -48,6 +53,57 @@ module Research
     end
 
     class VolAdjust < Native
+    end
+
+    class InputTransform < Native
+    end
+
+    class Lag < InputTransform
+    end
+
+    class Delta < InputTransform
+    end
+
+    class RollingMean < InputTransform
+    end
+
+    class RollingStd < InputTransform
+    end
+
+    class EmaSmoother < InputTransform
+    end
+
+    class Clip < InputTransform
+    end
+
+    class Winsorize < InputTransform
+    end
+
+    class Zscore < InputTransform
+    end
+
+    class RobustZscore < InputTransform
+    end
+
+    class MinmaxPosition < InputTransform
+    end
+
+    class PairTransform < Native
+    end
+
+    class Spread < PairTransform
+    end
+
+    class Ratio < PairTransform
+    end
+
+    class RollingCorr < PairTransform
+    end
+
+    class StationarityProxy < InputTransform
+    end
+
+    class HeteroskedasticityProxy < InputTransform
     end
   end
 end

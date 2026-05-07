@@ -153,7 +153,57 @@ RSpec.describe Ml::TrainingRunner do
       expect(training_run.weight_checksum).to be_nil
       expect(training_run.weight_blob).to be_nil
       expect(model.reload.serving_status).to eq('draft')
+      expect(progress_broadcaster).not_to have_received(:running)
       expect(progress_broadcaster).to have_received(:cancelled).with(training_run:)
+    end
+
+    it 'falls back to terminal status when persisted error metadata has nil fields' do
+      training_run.update!(status: 'failed', error_metadata: { code: nil, message: nil })
+      progress_broadcaster = instance_double(Ml::ProgressBroadcaster, cancelled: nil)
+
+      result = described_class.new(training_run:, candles:, progress_broadcaster:).call
+
+      expect(result.status).to eq(:failed)
+      expect(result.error.code).to eq(:failed)
+      expect(result.error.message).to eq('training run is already failed')
+    end
+
+    it 'does not let a stale successful worker overwrite a terminal failed run' do
+      adapter = Class.new do
+        def initialize(training_run)
+          @training_run = training_run
+        end
+
+        def train(examples:, hyperparams:, callbacks:, feature_names: nil)
+          @training_run.update!(
+            status: 'failed',
+            cancellation_requested_at: Time.current,
+            error_metadata: { code: 'stale_worker', message: 'training run heartbeat is stale' }
+          )
+          Ml::Adapters::Result::TrainingResult.new(
+            status: :succeeded,
+            weights_format: MlModelWeightBlob::BASELINE_FORMAT,
+            weights_payload: '{"weights":[]}',
+            metrics: MlTrainingRun.canonical_metrics,
+            fitted_metadata: {},
+            diagnostics: {},
+            error: nil
+          )
+        end
+      end.new(training_run)
+      progress_broadcaster = instance_double(Ml::ProgressBroadcaster, running: nil, failed: nil, succeeded: nil, cancelled: nil)
+
+      result = described_class.new(training_run:, adapter:, candles:, progress_broadcaster:).call
+
+      expect(result.status).to eq(:failed)
+      expect(result.error.code).to eq(:stale_worker)
+      expect(training_run.reload.status).to eq('failed')
+      expect(training_run.weight_checksum).to be_nil
+      expect(training_run.weight_blob).to be_nil
+      expect(model.reload.latest_successful_training_run).to be_nil
+      expect(model.serving_status).not_to eq('trained')
+      expect(progress_broadcaster).not_to have_received(:succeeded)
+      expect(progress_broadcaster).not_to have_received(:cancelled)
     end
 
     it 'observes cancellation after adapter success before writing weights' do

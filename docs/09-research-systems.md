@@ -159,7 +159,7 @@ modules:
 | `external_series` | Macro/on-chain series из `macro_series` | `key` |
 | `ml_signal` | Предсказание обученной ML-модели | `model_key`, `output` |
 
-Фича 017 также добавляет минимальный набор native-модулей состояния, риска и нормализации. Они доступны через тот же каталог Research-модулей и не проходят через `TechnicalAnalysis` gem:
+Pure-Ruby native-модули состояния, риска и нормализации доступны через тот же каталог Research-модулей и не проходят через `TechnicalAnalysis` gem:
 
 | Тип | Назначение | Ключевые параметры |
 | --- | --- | --- |
@@ -171,8 +171,68 @@ modules:
 | `trend_regime_score` | Нормализованная эвристика силы тренда `[-1, 1]` | `period` |
 | `vol_regime_score` | Эвристика режима волатильности `[0, 1]` | `short_period`, `long_period` |
 | `vol_adjust` | Значение, деленное на rolling volatility с epsilon guard | `field`, `period`, `epsilon` |
+| `lag` | Значение входной series N баров назад | `input`, `period` |
+| `delta` | Разница текущего input и lagged input | `input`, `period` |
+| `rolling_mean` | Среднее trailing window по input | `input`, `period` |
+| `rolling_std` | Population stddev trailing window по input | `input`, `period` |
+| `ema_smoother` | EMA trailing window по input | `input`, `period` |
+| `clip` | Clamp input к фиксированным bounds | `input`, `min_value`, `max_value` |
+| `winsorize` | Clamp input к trailing quantile bounds | `input`, `period`, `lower_quantile`, `upper_quantile` |
+| `zscore` | Z-score input относительно trailing window | `input`, `period` |
+| `robust_zscore` | Median/MAD z-score input относительно trailing window | `input`, `period`, `epsilon` |
+| `minmax_position` | Позиция input внутри trailing min/max range | `input`, `period` |
+| `spread` | Разница двух aligned inputs | `left`, `right` |
+| `ratio` | Отношение двух aligned inputs | `left`, `right`, `epsilon` |
+| `rolling_corr` | Pearson correlation двух aligned inputs | `left`, `right`, `period` |
+| `stationarity_proxy` | Bounded drift heuristic между соседними rolling means | `input`, `period`, `epsilon` |
+| `heteroskedasticity_proxy` | Bounded variance-change heuristic между соседними windows | `input`, `period`, `epsilon` |
 
 Для ML feature specs эти модули публикуют метаданные: `module_version`, `definition_checksum`, `output_fields`, `warmup`, `lookahead`, описание и формулу/эвристику. Модули без полных метаданных `warmup`/`lookahead` не допускаются в ML feature specs.
+
+`stationarity_proxy` и `heteroskedasticity_proxy` — lightweight heuristics, не статистические ADF/KPSS/Levene/Breusch-Pagan tests:
+
+```text
+stationarity_proxy =
+  1 - clamp(abs(mean(current_window) - mean(previous_window)) /
+            (stddev_pop(combined_window) + epsilon), 0, 1)
+
+heteroskedasticity_proxy =
+  clamp(abs(var_pop(current_window) - var_pop(previous_window)) /
+        (var_pop(combined_window) + epsilon), 0, 1)
+```
+
+### Input references
+
+Transform-like native modules используют canonical input-ref schema:
+
+```yaml
+modules:
+  basis:
+    type: rolling_mean
+    input:
+      kind: ohlcv
+      field: close
+    period: 20
+  spread_to_basis:
+    type: spread
+    left:
+      kind: ohlcv
+      field: close
+    right:
+      kind: module
+      module_ref: basis
+      output: value
+```
+
+Поддерживаемые refs:
+
+| Kind | Shape | Описание |
+| --- | --- | --- |
+| `ohlcv` | `{ kind: "ohlcv", field: "close" }` | Поле текущей candle series |
+| `module` | `{ kind: "module", module_ref: "basis", output: "value" }` | Output ранее объявленного module key |
+| `external_series` | `{ kind: "external_series", key: "vix", output: "value" }` | Macro/on-chain series с last-known-at-or-before alignment |
+
+Refs scoped к текущему `(exchange, symbol, timeframe)`. YAML validation отклоняет `exchange`, `symbol` или `timeframe` внутри input refs; cross-symbol/cross-timeframe feature engineering требует отдельного будущего контракта. `external_series` использует timestamp строки как availability timestamp, без future fill и interpolation; до первой известной точки значение `nil`.
 
 Результат модуля в условиях доступен как `<alias>.value`.
 
@@ -431,7 +491,7 @@ prediction_cells = candle_count * distinct(model_key)
 max_prediction_cells = 50_000
 ```
 
-Фича 017 принимает один `(exchange, symbol, timeframe)` tuple. Multi-tuple inference должен получить отдельный контракт.
+Текущий inference contract принимает один `(exchange, symbol, timeframe)` tuple. Multi-tuple inference должен получить отдельный контракт.
 
 ## Как это исполняется
 
@@ -517,6 +577,7 @@ app/services/research/
 ├── modules/
 │   ├── base.rb                   # Base class для TechnicalAnalysis-backed модулей
 │   ├── native.rb                 # Base class для pure-Ruby native модулей
+│   ├── input_resolver.rb          # Canonical input refs для transform-like native модулей
 │   ├── external_series.rb        # Macro/on-chain series
 │   └── ml_signal.rb              # ML prediction series
 ├── systems/

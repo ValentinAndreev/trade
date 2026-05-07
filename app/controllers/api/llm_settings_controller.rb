@@ -110,7 +110,7 @@ class Api::LlmSettingsController < Api::ApplicationController
   end
 
   def launch_status_json(setting)
-    return nil unless Llm::ProviderCatalog.launchable?(setting.provider)
+    return unless Llm::ProviderCatalog.launchable?(setting.provider)
 
     Llm::LlamaServerManager.new(setting).status
   end

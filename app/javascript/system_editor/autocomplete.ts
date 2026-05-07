@@ -1,4 +1,5 @@
 import { BG_SURFACE, BG_HOVER, BORDER_COLOR } from "../config/theme"
+import { fetchMlModelAutocomplete } from "../ml/api"
 import type { HighlightConfig } from "./yaml_highlighter"
 
 // Matches the current word being typed (letters, digits, underscores, dots)
@@ -12,7 +13,9 @@ export class YamlAutocomplete {
   private textarea: HTMLTextAreaElement | null = null
   private config: HighlightConfig = { keywords: new Set(), values: new Set() }
   private matches: string[] = []
+  private notice: string | null = null
   private selectedIndex = 0
+  private modelAutocompleteAbort: AbortController | null = null
 
   private readonly onKeydown      = (e: KeyboardEvent) => this.handleKeydown(e)
   private readonly onDocMousedown = (e: MouseEvent) => {
@@ -69,6 +72,10 @@ export class YamlAutocomplete {
     if (this.textarea) {
       this.textarea.removeEventListener("keydown", this.onKeydown)
     }
+    if (this.textarea !== textarea) {
+      this.modelAutocompleteAbort?.abort()
+      this.modelAutocompleteAbort = null
+    }
     this.textarea = textarea
     if (textarea) {
       textarea.addEventListener("keydown", this.onKeydown)
@@ -81,13 +88,11 @@ export class YamlAutocomplete {
     if (!word) { this.hide(); return }
 
     const candidates = matchCandidates(word, this.config)
-    if (!candidates.length) { this.hide(); return }
-
     this.matches = candidates
+    this.notice = null
     this.selectedIndex = 0
-    this.render()
-    this.position(textarea)
-    this.dropdown.style.display = "block"
+    this.showMatches(textarea)
+    if (modelKeyAutocompleteContext(textarea)) void this.loadModelMatches(textarea, word, candidates)
   }
 
   private handleKeydown(e: KeyboardEvent): void {
@@ -147,7 +152,7 @@ export class YamlAutocomplete {
           "
         >${m}</div>`
       })
-      .join("")
+      .join("") + (this.notice ? `<div style="padding:4px 12px;color:#d19a66;border-top:1px solid ${BORDER_COLOR}">${this.notice}</div>` : "")
 
     this.dropdown.querySelectorAll("[data-idx]").forEach(el => {
       el.addEventListener("mousedown", (e) => {
@@ -178,13 +183,51 @@ export class YamlAutocomplete {
   hide(): void {
     this.dropdown.style.display = "none"
     this.matches = []
+    this.notice = null
   }
 
   destroy(): void {
     this.hide()
     this.sync(null)
     document.removeEventListener("mousedown", this.onDocMousedown)
+    this.modelAutocompleteAbort?.abort()
+    this.modelAutocompleteAbort = null
     this.dropdown.remove()
+  }
+
+  private showMatches(textarea: HTMLTextAreaElement): void {
+    if (!this.matches.length && !this.notice) {
+      this.hide()
+      return
+    }
+    this.render()
+    this.position(textarea)
+    this.dropdown.style.display = "block"
+  }
+
+  private async loadModelMatches(textarea: HTMLTextAreaElement, word: string, candidates: string[]): Promise<void> {
+    this.modelAutocompleteAbort?.abort()
+    const abortController = new AbortController()
+    this.modelAutocompleteAbort = abortController
+    try {
+      const response = await fetchMlModelAutocomplete(word, 50, abortController.signal)
+      if (abortController.signal.aborted || this.textarea !== textarea) return
+
+      const remote = response.models.map(model => model.key)
+      this.matches = [...new Set([...candidates, ...remote])]
+        .filter(candidate => candidate.toLowerCase().startsWith(word.toLowerCase()) && candidate.toLowerCase() !== word.toLowerCase())
+        .sort()
+      this.notice = response.meta.has_more ? "Refine query for more ML models" : null
+      this.selectedIndex = 0
+      this.showMatches(textarea)
+    } catch {
+      if (abortController.signal.aborted) return
+      if (this.textarea !== textarea) return
+
+      this.matches = candidates
+      this.notice = "ML model autocomplete unavailable"
+      this.showMatches(textarea)
+    }
   }
 }
 
@@ -192,6 +235,12 @@ export class YamlAutocomplete {
 
 function currentWord(textarea: HTMLTextAreaElement): string {
   return textarea.value.slice(0, textarea.selectionStart).match(WORD_RE)?.[0] ?? ""
+}
+
+export function modelKeyAutocompleteContext(textarea: HTMLTextAreaElement): boolean {
+  const beforeCaret = textarea.value.slice(0, textarea.selectionStart)
+  const line = beforeCaret.slice(beforeCaret.lastIndexOf("\n") + 1)
+  return /\bmodel_key:\s*[a-z0-9_-]*$/i.test(line)
 }
 
 function matchCandidates(word: string, config: HighlightConfig): string[] {

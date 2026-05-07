@@ -55,12 +55,18 @@ module Ml
     attr_reader :training_run, :adapter, :callbacks, :candles, :progress_broadcaster
 
     def mark_running!
-      training_run.update!(
-        status: 'running',
-        started_at: Time.current,
-        heartbeat_at: Time.current,
-        error_metadata: {}
-      )
+      now = Time.current
+      training_run.with_lock do
+        training_run.reload
+        raise Research::Cancelled if training_run.terminal? || training_run.cancellation_requested?
+
+        training_run.update!(
+          status: 'running',
+          started_at: now,
+          heartbeat_at: now,
+          error_metadata: {}
+        )
+      end
       progress_broadcaster.running(training_run:)
     end
 
@@ -89,27 +95,36 @@ module Ml
       weights_payload = adapter_result.weights_payload.to_s
       weights_format = adapter_result.weights_format.to_s
       now = Time.current
-      training_run.assign_attributes(
-        status: 'succeeded',
-        dataset_spec: dataset.dataset_spec,
-        resolved_feature_spec: dataset.resolved_feature_spec,
-        hyperparams: effective_hyperparams,
-        seed: effective_hyperparams.fetch('seed').to_i,
-        metrics: adapter_result.metrics,
-        fitted_metadata: dataset.fitted_metadata.merge(adapter_result.fitted_metadata.to_h),
-        error_metadata: {},
-        finished_at: now,
-        duration_ms: duration_ms,
-        heartbeat_at: now
-      )
-      checksum = MlModelWeightBlob.checksum_for(
-        training_run:,
-        weights_format:,
-        weights_payload:
-      )
-      training_run.weight_checksum = checksum
+      terminal_result = nil
 
       ActiveRecord::Base.transaction do
+        training_run.lock!
+        raise Research::Cancelled if training_run.cancellation_requested?
+
+        unless training_run.status == 'running'
+          terminal_result = result_from_current_state
+          next
+        end
+
+        training_run.assign_attributes(
+          status: 'succeeded',
+          dataset_spec: dataset.dataset_spec,
+          resolved_feature_spec: dataset.resolved_feature_spec,
+          hyperparams: effective_hyperparams,
+          seed: effective_hyperparams.fetch('seed').to_i,
+          metrics: adapter_result.metrics,
+          fitted_metadata: dataset.fitted_metadata.merge(adapter_result.fitted_metadata.to_h),
+          error_metadata: {},
+          finished_at: now,
+          duration_ms: duration_ms,
+          heartbeat_at: now
+        )
+        checksum = MlModelWeightBlob.checksum_for(
+          training_run:,
+          weights_format:,
+          weights_payload:
+        )
+        training_run.weight_checksum = checksum
         training_run.save!
         MlModelWeightBlob.create_or_find_by!(checksum:) do |blob|
           blob.weights_format = weights_format
@@ -123,35 +138,68 @@ module Ml
         )
       end
 
+      return terminal_result if terminal_result
+
       broadcast_terminal(:succeeded)
       Result.new(status: :succeeded, training_run:, adapter_result:, error: nil)
     end
 
     def fail_run!(error, adapter_result: nil)
-      training_run.update!(
-        status: 'failed',
-        error_metadata: error.to_h,
-        finished_at: Time.current,
-        duration_ms: duration_ms,
-        weight_checksum: nil
-      )
-      training_run.ml_model.update!(
-        serving_status: training_run.ml_model.trained? ? training_run.ml_model.serving_status : 'failed',
-        latest_failed_training_run: training_run
-      )
+      terminal_result = nil
+
+      ActiveRecord::Base.transaction do
+        training_run.lock!
+        if training_run.terminal?
+          terminal_result = result_from_current_state
+          restore_model_status_after_cancellation! if training_run.status == 'cancelled'
+          next
+        end
+
+        training_run.update!(
+          status: 'failed',
+          error_metadata: error.to_h,
+          finished_at: Time.current,
+          duration_ms: duration_ms,
+          weight_checksum: nil
+        )
+        training_run.ml_model.update!(
+          serving_status: training_run.ml_model.trained? ? training_run.ml_model.serving_status : 'failed',
+          latest_failed_training_run: training_run
+        )
+      end
+
+      return terminal_result if terminal_result
+
       broadcast_terminal(:failed)
       Result.new(status: :failed, training_run:, adapter_result:, error:)
     end
 
     def cancel_run!
-      training_run.update!(
-        status: 'cancelled',
-        finished_at: Time.current,
-        duration_ms: duration_ms,
-        weight_checksum: nil,
-        error_metadata: { code: 'cancelled', message: 'training was cancelled' }
-      )
-      restore_model_status_after_cancellation!
+      terminal_result = nil
+
+      ActiveRecord::Base.transaction do
+        training_run.lock!
+        if training_run.terminal?
+          terminal_result = result_from_current_state
+          restore_model_status_after_cancellation! if training_run.status == 'cancelled'
+          next
+        end
+
+        training_run.update!(
+          status: 'cancelled',
+          finished_at: Time.current,
+          duration_ms: duration_ms,
+          weight_checksum: nil,
+          error_metadata: { code: 'cancelled', message: 'training was cancelled' }
+        )
+        restore_model_status_after_cancellation!
+      end
+
+      if terminal_result
+        broadcast_terminal(:cancelled) if terminal_result.status == :cancelled
+        return terminal_result
+      end
+
       broadcast_terminal(:cancelled)
       Result.new(status: :cancelled, training_run:, adapter_result: nil, error: adapter_error(:cancelled, 'training was cancelled'))
     end
@@ -189,6 +237,22 @@ module Ml
 
     def adapter_error(code, message, details = {})
       Ml::Adapters::Result::Error.new(code:, message:, details:)
+    end
+
+    def result_from_current_state
+      status = training_run.status.to_s
+      Result.new(status: status.to_sym, training_run:, adapter_result: nil, error: terminal_error(status))
+    end
+
+    def terminal_error(status)
+      return if status == 'succeeded'
+
+      metadata = training_run.error_metadata.to_h
+      adapter_error(
+        (metadata['code'] || status).to_sym,
+        metadata['message'] || "training run is already #{status}",
+        metadata.except('code', 'message')
+      )
     end
 
     def stale_feature_definition_error
@@ -241,8 +305,10 @@ module Ml
       def check_cancelled!(force_reload: false)
         delegate&.check_cancelled!
         reload_if_due(force: force_reload)
-        persist_heartbeat_if_due
         raise Research::Cancelled if training_run.cancellation_requested?
+        raise Research::Cancelled if training_run.terminal?
+
+        persist_heartbeat_if_due
       end
 
       def report_progress(**payload)

@@ -145,9 +145,13 @@ LLM-ассистент — это встроенный чат-бот, котор
 ### `Llm::SystemEditor::KnowledgeBase`
 Загружает статические YAML-файлы DSL-справочника: `dsl.yml`, `examples.yml`. Справочник `modules` строится динамически: структура (типы, enum-значения) берётся из `Research::Systems::Schema.data` (dictionary.yml), LLM-описания — из `modules_meta.yml`. Используется в `ContextBuilder` и `LoadDslReferenceTool`.
 
-Справочник получает не только TechnicalAnalysis-backed индикаторы, но и shared-типы из `Schema.data`: native state/risk/normalization модули фичи 017 и статическую схему `ml_signal`. Для native-модулей в DSL reference доступны метаданные, нужные ассистенту при сборке ML feature specs: `module_version`, `definition_checksum`, `output_fields`, `warmup`, `lookahead`, описание и формула/эвристика.
+Справочник получает не только TechnicalAnalysis-backed индикаторы, но и shared-типы из `Schema.data`: native state/risk/normalization modules, input-ref based transforms и статическую схему `ml_signal`. Для native-модулей в DSL reference доступны метаданные, нужные ассистенту при сборке ML feature specs: `module_version`, `definition_checksum`, `output_fields`, `warmup`, `lookahead`, описание и формула/эвристика.
+
+Расширенный module catalogue включает `log_return`, `rolling_volatility`, `range_position`, `rolling_zscore`, `percentile_rank`, `trend_regime_score`, `vol_regime_score`, `vol_adjust`, `lag`, `delta`, `rolling_mean`, `rolling_std`, `ema_smoother`, `clip`, `winsorize`, `zscore`, `robust_zscore`, `minmax_position`, `spread`, `ratio`, `rolling_corr`, `stationarity_proxy` и `heteroskedasticity_proxy`. Для `input`/`left`/`right` refs ассистент должен использовать canonical schema: `ohlcv`, earlier `module` output или `external_series`; cross-symbol/cross-timeframe refs не генерируются.
 
 Конкретные `model_key` обученных моделей не перечисляются в LLM-справочнике. Ассистент может вставить ссылку на `ml_signal`, но существование модели, serving-состояние, поддерживаемый `output` и совместимость `exchange`/`symbol`/`timeframe` проверяются серверным `Research::Systems::Validation::Validator`.
+
+В frontend system editor autocomplete для `model_key:` загружает реальные model keys через `/api/ml/models/autocomplete?q=<prefix>&limit=50`. Это UI-помощь, а не часть LLM reference: assistant context не получает weight blobs и не перечисляет весь model registry.
 
 ### `Llm::SystemEditor::DraftExtractor`
 Извлекает черновик торговой системы из новых сообщений чата после завершения запроса к LLM.

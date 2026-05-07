@@ -42,6 +42,8 @@ Out:
 16. 018 supports forward-compatible reads of older workspace/preset payloads. Rolling the application back after saving ML tabs or `ml_prediction` columns is not guaranteed to preserve those new payloads in older code and requires operational backup/restore rather than an app-level backward reader.
 17. CSV export includes `ml_prediction` columns using the user-visible column label as the header and `columnFieldKey(col)` only as the internal row key; missing/error values export as blank cells rather than leaking `ml_prediction:<column_id>` keys.
 18. Training progress subscription rejection or authorization failure is surfaced as a local training UI error and triggers an API-state refresh; the frontend must not spin in a tight resubscribe loop.
+19. Runtime code, API/UI error messages and executable spec names do not mention feature IDs or historical task labels such as `017`/`018`; those references stay in memory-bank/docs/review artifacts only.
+20. New input-ref, ML prediction and training code uses one canonical payload shape per boundary. Do not add helpers that accept symbol/string aliases, camel/snake aliases, multiple id names, blanket `to_h`/`to_s` coercion inside domain code, `finite?`/NaN/Infinity guards, or defensive type/capability checks unless the spec explicitly names an external boundary and tests each accepted shape.
 
 ## Acceptance Criteria
 
@@ -69,3 +71,5 @@ Out:
 - Preserve the final 017 plain `GET /api/ml/models` array response for model lists unless 017 API docs/request specs are intentionally updated in the same change; use the autocomplete collection endpoint for `{ models, meta }`.
 - Do not add tight custom ActionCable reconnect loops; rely on the shared consumer behavior or backoff retries.
 - Cross-symbol/cross-timeframe feature inputs are out of scope for 018; do not silently reinterpret such refs as current-series data.
+- Keep feature/task numbers out of runtime code, API/UI messages and executable spec names.
+- Normalize external payloads once at the controller/YAML/API boundary, then use canonical keys and fail fast; no fallback helpers for alternate key shapes or extreme numeric guards.

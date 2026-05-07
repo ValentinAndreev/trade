@@ -31,14 +31,27 @@ module Ml
 
     def resolved_feature_spec
       @resolved_feature_spec ||= begin
-        resolved = raw_feature_spec.each_with_index.map { |entry, index| resolve_entry(entry, index) }
+        resolved = []
+        raw_feature_spec.each_with_index { |entry, index| resolved << resolve_entry(entry, index, resolved) }
         ensure_unique_feature_names!(resolved)
         resolved
       end
     end
 
     def effective_window
-      resolved_feature_spec.map { |entry| [ entry.fetch('warmup'), entry.fetch('lookback') ].max }.max || 0
+      self.class.effective_window_for(resolved_feature_spec)
+    end
+
+    def self.effective_window_for(resolved_feature_spec)
+      windows_by_name = {}
+      resolved_feature_spec.map do |entry|
+        warmup = entry.fetch('warmup', 0).to_i
+        stored_lookback = entry.fetch('lookback', 0).to_i
+        dependency_lookback = dependency_window_for(entry.fetch('params', {}), windows_by_name)
+        effective_lookback = [ stored_lookback, warmup + dependency_lookback ].max
+        windows_by_name[entry.fetch('name')] = effective_lookback
+        effective_lookback
+      end.max || 0
     end
 
     def feature_names
@@ -49,9 +62,9 @@ module Ml
 
     attr_reader :raw_feature_spec
 
-    def resolve_entry(entry, index)
+    def resolve_entry(entry, index, resolved_entries)
       payload = entry.to_h.deep_stringify_keys
-      type = (payload['type'] || payload['key']).to_s
+      type = payload['type'].to_s
       raise Error.new('feature type is required', code: :missing_type, details: { index: }) if type.blank?
 
       definition = indicator_definition(type)
@@ -64,16 +77,18 @@ module Ml
       raise Error.new("feature module #{type} has positive lookahead", code: :positive_lookahead, details: { type: }) if lookahead.positive?
 
       warmup = IndicatorsConfig.warmup_for(type, concrete_params)
+      params = concrete_params.deep_stringify_keys
+      lookback = warmup + self.class.dependency_window_for(params, resolved_entries.to_h { |resolved| [ resolved.fetch('name'), resolved.fetch('lookback') ] })
       {
-        'name' => payload['name'] || payload['alias'] || type,
+        'name' => payload['name'].presence || type,
         'type' => type,
-        'params' => concrete_params.deep_stringify_keys,
+        'params' => params,
         'outputs' => outputs,
         'feature_names' => feature_names_for(payload, type, outputs),
         'module_version' => metadata.fetch('module_version'),
         'definition_checksum' => metadata.fetch('definition_checksum'),
         'warmup' => warmup,
-        'lookback' => warmup,
+        'lookback' => lookback,
         'lookahead' => lookahead,
         'output_fields' => metadata.fetch('output_fields'),
         'label' => definition.fetch(:label),
@@ -111,9 +126,10 @@ module Ml
     end
 
     def resolve_params(type, params_definition, raw_params)
-      raw = raw_params.to_h.deep_symbolize_keys
+      raw = raw_params
       params_definition.each_with_object({}) do |(key, param), result|
-        raw_value = raw.key?(key) ? raw[key] : param.default
+        raw_key = key.to_s
+        raw_value = raw.key?(raw_key) ? raw.fetch(raw_key) : param.default
         if raw_value.nil?
           raise Error.new("#{type}.#{key} is required", code: :missing_param, details: { type:, param: key }) if param.required
 
@@ -131,7 +147,7 @@ module Ml
       raise Error.new("#{type}.#{key} must be <= #{param.max}", code: :param_max, details: { type:, param: key }) if param.max && value.to_f > param.max.to_f
 
       allowed = param.values
-      return unless allowed.is_a?(Array)
+      return if allowed.nil?
       return if allowed.map(&:to_s).include?(value.to_s)
 
       raise Error.new("#{type}.#{key} must be one of: #{allowed.join(', ')}", code: :param_enum, details: { type:, param: key })
@@ -166,7 +182,7 @@ module Ml
     end
 
     def feature_names_for(payload, type, outputs)
-      base_name = payload['name'] || payload['alias'] || type
+      base_name = payload['name'].presence || type
       outputs.index_with do |output|
         if outputs.one? && output == 'value'
           base_name
@@ -182,6 +198,14 @@ module Ml
       return if duplicates.empty?
 
       raise Error.new("duplicate feature names: #{duplicates.join(', ')}", code: :duplicate_feature_names, details: { duplicates: })
+    end
+
+    class << self
+      def dependency_window_for(params, windows_by_name)
+        [ params['input'], params['left'], params['right'] ].compact.map do |reference|
+          reference.fetch('kind') == 'module' ? windows_by_name.fetch(reference.fetch('module_ref')) : 0
+        end.max || 0
+      end
     end
   end
 end

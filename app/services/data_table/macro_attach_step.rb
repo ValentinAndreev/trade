@@ -41,7 +41,7 @@ class DataTable::MacroAttachStep
   def forward_fill_value(series, ts)
     first_after = series.bsearch_index { |(point_ts, _)| point_ts > ts }
     last_valid = first_after ? first_after - 1 : series.size - 1
-    return nil if last_valid < 0
+    return if last_valid < 0
 
     series[last_valid][1]
   end

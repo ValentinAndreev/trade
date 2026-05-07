@@ -72,19 +72,11 @@ module Ml
     attr_reader :candles, :leaf_hashes, :canonical_timestamps
 
     def self.candle_time(candle)
-      case candle
-      when Candle
-        candle.ts
-      else
-        time_value = candle.fetch(:ts, nil) || candle.fetch('ts', nil) || candle.fetch(:time, nil) || candle.fetch('time')
-        time_value.is_a?(Integer) ? Time.at(time_value).utc : time_value
-      end
+      Time.at(candle.fetch(:time)).utc
     end
 
     def self.candle_value(candle, field)
-      return candle.public_send(field) if candle.is_a?(Candle)
-
-      candle.fetch(field.to_sym, nil) || candle.fetch(field)
+      candle.fetch(field.to_sym)
     end
     private_class_method :candle_time, :candle_value
 

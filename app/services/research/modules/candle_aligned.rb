@@ -3,6 +3,8 @@
 module Research
   module Modules
     class CandleAligned
+      def self.depends_on_module_series? = false
+
       private attr_reader :candles
 
       def initialize(candles:, **)
@@ -16,8 +18,7 @@ module Research
       private
 
       def check_cancelled!(cancel_check)
-        wrapped = Research::CancellationCheck.wrap(cancel_check)
-        wrapped.check_cancelled! if wrapped
+        cancel_check.check_cancelled! if cancel_check
       end
     end
   end

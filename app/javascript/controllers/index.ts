@@ -33,3 +33,6 @@ application.register("system-editor", SystemEditorController)
 
 import AssistantController from "./assistant_controller"
 application.register("assistant", AssistantController)
+
+import MlModelsController from "./ml_models_controller"
+application.register("ml-models", MlModelsController)

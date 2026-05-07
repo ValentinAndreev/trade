@@ -126,7 +126,7 @@ module Research
         return to_f_or_nil(params[reference.delete_prefix('params.').to_sym]) if reference.start_with?('params.')
 
         module_name, attribute = reference.split('.', 2)
-        return nil unless attribute == 'value'
+        return unless attribute == 'value'
 
         to_f_or_nil(resolve_row_value(row, row_offset, :result, module_name.to_sym, :value))
       end
@@ -182,9 +182,7 @@ module Research
       def humanize_token(value) = value.to_s.tr('_', ' ').split.map(&:capitalize).join(' ')
 
       def to_f_or_nil(value)
-        numeric = Float(value)
-        numeric.finite? ? numeric : nil
-      rescue ArgumentError, TypeError
+        Float(value, exception: false)
       end
 
       def resolve_row_value(row, row_offset, *path)

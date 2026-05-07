@@ -54,7 +54,7 @@ module Research
         run_started_at = progress_session.current_time
         run = backtest.run(
           params: request.runtime_params,
-          cancel_check: -> { cancelled?(request.progress_run_id) }
+          cancel_check: Research::CancellationCheck.from_proc(-> { cancelled?(request.progress_run_id) })
         )
         progress_session.run_completed(total_runs: 1, completed_runs: 1, run_started_at:)
         progress_session.finished(total_runs: 1)

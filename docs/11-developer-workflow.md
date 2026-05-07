@@ -100,6 +100,8 @@ Plan описывает реализацию через атомарные slice
 
 Review только читает artifact/code и пишет note по inline format из `.prompts/review-code.md`. Fix review исправляет только замечания из active note; после fix нужен повторный review той же стадии.
 
+Type/null guards проверяются как изменение контракта, а не как безобидный defensive code. Перед добавлением `typeof`, `Array.isArray`, `is_a?`, optional/null fallback, broad `to_s`/`to_h`/`to_f` coercion или rescue-based shape handling нужно назвать boundary, принимаемые формы, canonical shape после normalization и focused test. Для server-owned JSON и внутренних typed contracts предпочитать protocol checks и typed decode; malformed shape должен падать явно, а не скрываться fallback-значениями.
+
 ## Backfilled Summary
 
 `summary.md` описывает уже существующую функциональность и не является обещанием будущей работы. Требование считается contract только если подтверждено кодом, тестом или документацией.

@@ -49,7 +49,7 @@ RSpec.describe Research::Runs::Execute do
 
       allow(Research::RunRequest).to receive(:new).with(raw_params).and_return(request)
       allow(Research::Backtest).to receive(:new).and_return(backtest)
-      allow(backtest).to receive(:run).with(params: { ema_period: 5 }, cancel_check: kind_of(Proc)).and_return(run)
+      allow(backtest).to receive(:run).with(params: { ema_period: 5 }, cancel_check: kind_of(Research::CancellationCheck::Callable)).and_return(run)
       allow(request).to receive(:response_payload).with(runs: [ run ]).and_return({ 'runs' => [ run ] })
 
       result = described_class.new(raw_params).call
@@ -90,7 +90,7 @@ RSpec.describe Research::Runs::Execute do
       allow(backtest).to receive(:run) do |params:, cancel_check:|
         expect(params).to eq(ema_period: 5)
         Research::CancellationRegistry.cancel('run-123')
-        expect(cancel_check.call).to eq(true)
+        expect { cancel_check.check_cancelled! }.to raise_error(Research::Cancelled)
         raise Research::Backtest::Cancelled
       end
       allow(request).to receive(:response_payload).with(runs: []).and_return({ 'runs' => [] })

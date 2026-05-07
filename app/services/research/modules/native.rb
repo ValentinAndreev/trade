@@ -10,9 +10,8 @@ module Research
         def min_data_size = IndicatorsConfig.warmup_for(module_key) + 1
 
         def coerce_params(raw_params)
-          symbolized_params = raw_params.to_h.transform_keys(&:to_sym)
           params_definition.each_with_object({}) do |(key, param), result|
-            raw_value = symbolized_params.key?(key) ? symbolized_params[key] : param.default
+            raw_value = raw_params.key?(key) ? raw_params.fetch(key) : param.default
             next if raw_value.nil?
 
             value = param.coerce!(raw_value, key:)
@@ -31,34 +30,37 @@ module Research
           raise ArgumentError, "#{key} must be <= #{param.max}" if param.max && value.to_f > param.max.to_f
 
           allowed = param.values
-          return unless allowed.is_a?(Array)
+          return if allowed.nil?
           return if allowed.map(&:to_s).include?(value.to_s)
 
           raise ArgumentError, "#{key} must be one of: #{allowed.join(', ')}"
         end
       end
 
-      def call(cancel_check: nil, **params)
-        points_for(self.class.coerce_params(params), cancel_check:)
+      def call(cancel_check: nil, module_series: {}, **params)
+        points_for(self.class.coerce_params(params), cancel_check:, module_series:)
       end
 
-      def call_resolved(cancel_check: nil, **params)
-        points_for(params, cancel_check:)
+      def call_resolved(cancel_check: nil, module_series: {}, **params)
+        points_for(params, cancel_check:, module_series:)
       end
 
-      def call_from_feature_matrix(cancel_check: nil, **params)
-        call_resolved(**params, cancel_check:)
+      def call_from_feature_matrix(cancel_check: nil, module_series: {}, **params)
+        call_resolved(**params, cancel_check:, module_series:)
       end
 
       private
 
-      def points_for(options, cancel_check: nil)
+      def points_for(options, cancel_check: nil, module_series: {})
+        prepared_options = prepare_options(options, cancel_check:, module_series:)
         candles.each_with_index.map do |candle, index|
           check_cancelled!(cancel_check) if (index % 512).zero?
 
-          { time: candle.fetch(:time), result: { value: finite_or_nil(value_at(index, **options)) } }
+          { time: candle.fetch(:time), result: { value: value_at(index, **prepared_options) } }
         end
       end
+
+      def prepare_options(options, cancel_check: nil, module_series: {}) = options
 
       def value_at(_index, **)
         raise NotImplementedError
@@ -110,14 +112,54 @@ module Research
         Math.sqrt(values.sum { |value| (value - avg)**2 } / values.length)
       end
 
+      def population_variance(values)
+        return if values.empty?
+
+        avg = mean(values)
+        values.sum { |value| (value - avg)**2 } / values.length
+      end
+
       def mean(values) = values.sum / values.length.to_f
+
+      def median(values)
+        return if values.empty?
+
+        sorted = values.sort
+        mid = sorted.length / 2
+        sorted.length.odd? ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0
+      end
+
+      def quantile(values, probability)
+        return if values.empty?
+
+        sorted = values.sort
+        position = probability.to_f.clamp(0.0, 1.0) * (sorted.length - 1)
+        lower = position.floor
+        upper = position.ceil
+        return sorted[lower] if lower == upper
+
+        sorted[lower] + ((sorted[upper] - sorted[lower]) * (position - lower))
+      end
+
+      def input_values(reference, cancel_check: nil, module_series:)
+        Research::Modules::InputResolver.new(
+          candles:,
+          module_series:,
+          cancel_check:
+        ).values(reference)
+      end
+
+      def input_window(values, index, period)
+        return if index < period - 1
+
+        window = values[(index - period + 1)..index]
+        return if window.nil? || window.length != period || window.any?(&:nil?)
+
+        window
+      end
 
       def clamp(value, min, max)
         [ [ value, min ].max, max ].min
-      end
-
-      def finite_or_nil(value)
-        value&.finite? ? value : nil
       end
     end
 
@@ -223,6 +265,228 @@ module Research
         return if value.nil? || volatility.nil?
 
         value / [ volatility, epsilon ].max
+      end
+    end
+
+    class InputTransform < Native
+      def self.depends_on_module_series? = true
+
+      private
+
+      def prepare_options(options, cancel_check: nil, module_series: {})
+        options.except(:input).merge(input_values: input_values(options.fetch(:input), cancel_check:, module_series:))
+      end
+    end
+
+    class Lag < InputTransform
+      private
+
+      def value_at(index, input_values:, period:)
+        return if index < period
+
+        input_values[index - period]
+      end
+    end
+
+    class Delta < InputTransform
+      private
+
+      def value_at(index, input_values:, period:)
+        return if index < period
+
+        current = input_values[index]
+        previous = input_values[index - period]
+        return if current.nil? || previous.nil?
+
+        current - previous
+      end
+    end
+
+    class RollingMean < InputTransform
+      private
+
+      def value_at(index, input_values:, period:)
+        values = input_window(input_values, index, period)
+        mean(values) if values
+      end
+    end
+
+    class RollingStd < InputTransform
+      private
+
+      def value_at(index, input_values:, period:)
+        values = input_window(input_values, index, period)
+        population_stddev(values) if values
+      end
+    end
+
+    class EmaSmoother < InputTransform
+      private
+
+      def value_at(index, input_values:, period:)
+        values = input_window(input_values, index, period)
+        return unless values
+
+        alpha = 2.0 / (period + 1.0)
+        values.drop(1).reduce(values.first) { |ema, value| (value * alpha) + (ema * (1.0 - alpha)) }
+      end
+    end
+
+    class Clip < InputTransform
+      private
+
+      def value_at(index, input_values:, min_value: nil, max_value: nil)
+        value = input_values[index]
+        return if value.nil?
+
+        lower = min_value.nil? ? value : [ value, min_value ].max
+        max_value.nil? ? lower : [ lower, max_value ].min
+      end
+    end
+
+    class Winsorize < InputTransform
+      private
+
+      def value_at(index, input_values:, period:, lower_quantile:, upper_quantile:)
+        values = input_window(input_values, index, period)
+        current = input_values[index]
+        return unless values && current
+
+        lower = quantile(values, lower_quantile)
+        upper = quantile(values, upper_quantile)
+        clamp(current, lower, upper)
+      end
+    end
+
+    class Zscore < InputTransform
+      private
+
+      def value_at(index, input_values:, period:)
+        values = input_window(input_values, index, period)
+        current = input_values[index]
+        return unless values && current
+
+        standard_deviation = population_stddev(values)
+        return if standard_deviation.to_f.zero?
+
+        (current - mean(values)) / standard_deviation
+      end
+    end
+
+    class RobustZscore < InputTransform
+      private
+
+      def value_at(index, input_values:, period:, epsilon: 0.00000001)
+        values = input_window(input_values, index, period)
+        current = input_values[index]
+        return unless values && current
+
+        center = median(values)
+        deviations = values.map { |value| (value - center).abs }
+        scale = [ 1.4826 * median(deviations), epsilon ].max
+        (current - center) / scale
+      end
+    end
+
+    class MinmaxPosition < InputTransform
+      private
+
+      def value_at(index, input_values:, period:)
+        values = input_window(input_values, index, period)
+        current = input_values[index]
+        return unless values && current
+
+        min = values.min
+        range = values.max - min
+        return if range.zero?
+
+        clamp((current - min) / range, 0.0, 1.0)
+      end
+    end
+
+    class PairTransform < Native
+      def self.depends_on_module_series? = true
+
+      private
+
+      def prepare_options(options, cancel_check: nil, module_series: {})
+        options.except(:left, :right).merge(
+          left_values: input_values(options.fetch(:left), cancel_check:, module_series:),
+          right_values: input_values(options.fetch(:right), cancel_check:, module_series:)
+        )
+      end
+    end
+
+    class Spread < PairTransform
+      private
+
+      def value_at(index, left_values:, right_values:)
+        left = left_values[index]
+        right = right_values[index]
+        return if left.nil? || right.nil?
+
+        left - right
+      end
+    end
+
+    class Ratio < PairTransform
+      private
+
+      def value_at(index, left_values:, right_values:, epsilon: 0.00000001)
+        left = left_values[index]
+        right = right_values[index]
+        return if left.nil? || right.nil? || right.abs <= epsilon
+
+        left / right
+      end
+    end
+
+    class RollingCorr < PairTransform
+      private
+
+      def value_at(index, left_values:, right_values:, period:)
+        left_window = input_window(left_values, index, period)
+        right_window = input_window(right_values, index, period)
+        return unless left_window && right_window
+
+        left_std = population_stddev(left_window)
+        right_std = population_stddev(right_window)
+        return if left_std.to_f.zero? || right_std.to_f.zero?
+
+        left_mean = mean(left_window)
+        right_mean = mean(right_window)
+        covariance = left_window.zip(right_window).sum { |left, right| (left - left_mean) * (right - right_mean) } / period.to_f
+        covariance / (left_std * right_std)
+      end
+    end
+
+    class StationarityProxy < InputTransform
+      private
+
+      def value_at(index, input_values:, period:, epsilon: 0.00000001)
+        current_window = input_window(input_values, index, period)
+        previous_window = input_window(input_values, index - period, period)
+        return unless current_window && previous_window
+
+        combined = previous_window + current_window
+        drift = (mean(current_window) - mean(previous_window)).abs / (population_stddev(combined) + epsilon)
+        1.0 - clamp(drift, 0.0, 1.0)
+      end
+    end
+
+    class HeteroskedasticityProxy < InputTransform
+      private
+
+      def value_at(index, input_values:, period:, epsilon: 0.00000001)
+        current_window = input_window(input_values, index, period)
+        previous_window = input_window(input_values, index - period, period)
+        return unless current_window && previous_window
+
+        combined_variance = population_variance(previous_window + current_window)
+        return if combined_variance.nil?
+
+        variance_change = (population_variance(current_window) - population_variance(previous_window)).abs
+        clamp(variance_change / (combined_variance + epsilon), 0.0, 1.0)
       end
     end
   end

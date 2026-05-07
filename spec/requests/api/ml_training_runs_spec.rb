@@ -30,6 +30,11 @@ RSpec.describe 'Api::Ml::TrainingRuns' do
       get '/api/ml/training_runs'
 
       expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body.fetch('error')).to include(
+        'code' => 'unauthorized',
+        'message' => 'Unauthorized',
+        'details' => {}
+      )
     end
 
     it 'lists recent training runs and supports model_key filtering' do

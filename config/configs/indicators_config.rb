@@ -30,6 +30,7 @@ class IndicatorsConfig
     description formula heuristic ml_feature_eligible
   ].freeze
   private_constant :NATIVE_METADATA_KEYS
+  DEFAULT_CLOSE_INPUT_REF = { 'kind' => 'ohlcv', 'field' => 'close' }.freeze
 
   def self.integer(label:, min: nil, max: nil, required: false, default: nil)
     Param.new(type: :integer, label:, min:, max:, required:, values: nil, default:)
@@ -43,12 +44,20 @@ class IndicatorsConfig
     Param.new(type: :enum, label:, min: nil, max: nil, required:, values:, default:)
   end
 
+  def self.input_ref(label:, required: false, default: nil)
+    Param.new(type: :input_ref, label:, min: nil, max: nil, required:, values: nil, default:)
+  end
+
   def self.param_warmup(param, default:)
     { kind: :param, param:, default: }
   end
 
   def self.param_warmup_minus_one(param, default:)
     { kind: :param_minus_one, param:, default: }
+  end
+
+  def self.twice_param_warmup_minus_one(param, default:)
+    { kind: :twice_param_minus_one, param:, default: }
   end
 
   def self.max_param_warmup(*rules)
@@ -135,6 +144,8 @@ class IndicatorsConfig
         params.fetch(rule.fetch(:param).to_sym, rule.fetch(:default)).to_i
       when 'param_minus_one'
         [ params.fetch(rule.fetch(:param).to_sym, rule.fetch(:default)).to_i - 1, 0 ].max
+      when 'twice_param_minus_one'
+        [ (params.fetch(rule.fetch(:param).to_sym, rule.fetch(:default)).to_i * 2) - 1, 0 ].max
       when 'max_params'
         rule.fetch(:rules).map { |param_rule| resolve_warmup(param_rule, params) }.max.to_i
       else
@@ -262,6 +273,179 @@ class IndicatorsConfig
       description: 'Selected candle field divided by trailing realized volatility with an epsilon floor.',
       formula: 'field[t] / max(rolling_volatility(period)[t], epsilon)',
       heuristic: 'Normalizes magnitude-like inputs by current realized volatility.'
+    ),
+    lag: native_indicator(
+      label: 'Lag',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 1, default: 1)
+      },
+      warmup: param_warmup(:period, default: 1),
+      description: 'Value of an input series from N candles back.',
+      formula: 'input[t - period]',
+      heuristic: 'Creates no-lookahead delayed features from current-series inputs.'
+    ),
+    delta: native_indicator(
+      label: 'Delta',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 1, default: 1)
+      },
+      warmup: param_warmup(:period, default: 1),
+      description: 'Difference between the current input value and its lagged value.',
+      formula: 'input[t] - input[t - period]',
+      heuristic: 'Measures local change without using future candles.'
+    ),
+    rolling_mean: native_indicator(
+      label: 'Rolling Mean',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 1, default: 20)
+      },
+      warmup: param_warmup_minus_one(:period, default: 20),
+      description: 'Arithmetic mean of a trailing input window.',
+      formula: 'mean(input[t - period + 1..t])',
+      heuristic: 'Smooths same-series values using only past and current observations.'
+    ),
+    rolling_std: native_indicator(
+      label: 'Rolling Std',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 2, default: 20)
+      },
+      warmup: param_warmup_minus_one(:period, default: 20),
+      description: 'Population standard deviation of a trailing input window.',
+      formula: 'stddev_pop(input[t - period + 1..t])',
+      heuristic: 'Measures local dispersion for state/risk features.'
+    ),
+    ema_smoother: native_indicator(
+      label: 'EMA Smoother',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 1, default: 20)
+      },
+      warmup: param_warmup_minus_one(:period, default: 20),
+      description: 'Exponential moving average of a trailing input window.',
+      formula: 'ema(input[t - period + 1..t], alpha = 2 / (period + 1))',
+      heuristic: 'Smooths noisy values with more weight on recent candles.'
+    ),
+    clip: native_indicator(
+      label: 'Clip',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        min_value: number(label: 'Minimum Value', required: false),
+        max_value: number(label: 'Maximum Value', required: false)
+      },
+      warmup: 0,
+      description: 'Clamps an input value to optional numeric bounds.',
+      formula: 'min(max(input[t], min_value), max_value)',
+      heuristic: 'Bounds extreme values with explicit fixed limits.'
+    ),
+    winsorize: native_indicator(
+      label: 'Winsorize',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 2, default: 20),
+        lower_quantile: number(label: 'Lower Quantile', min: 0.0, max: 1.0, default: 0.05),
+        upper_quantile: number(label: 'Upper Quantile', min: 0.0, max: 1.0, default: 0.95)
+      },
+      warmup: param_warmup_minus_one(:period, default: 20),
+      description: 'Clamps current input to trailing lower and upper quantile bounds.',
+      formula: 'clamp(input[t], quantile(window, lower_quantile), quantile(window, upper_quantile))',
+      heuristic: 'Reduces outlier impact using only the trailing input window.'
+    ),
+    zscore: native_indicator(
+      label: 'Z-Score',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 2, default: 20)
+      },
+      warmup: param_warmup_minus_one(:period, default: 20),
+      description: 'Input z-score against a trailing input window.',
+      formula: '(input[t] - mean(window)) / stddev_pop(window)',
+      heuristic: 'Normalizes local displacement in standard-deviation units.'
+    ),
+    robust_zscore: native_indicator(
+      label: 'Robust Z-Score',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 2, default: 20),
+        epsilon: number(label: 'Epsilon', min: 0, default: 0.00000001)
+      },
+      warmup: param_warmup_minus_one(:period, default: 20),
+      description: 'Median/MAD-based z-score against a trailing input window.',
+      formula: '(input[t] - median(window)) / max(1.4826 * median(abs(x - median(window))), epsilon)',
+      heuristic: 'Normalizes displacement while reducing sensitivity to outliers.'
+    ),
+    minmax_position: native_indicator(
+      label: 'Min-Max Position',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 2, default: 20)
+      },
+      warmup: param_warmup_minus_one(:period, default: 20),
+      description: 'Current input position inside the trailing min/max range.',
+      formula: '(input[t] - min(window)) / (max(window) - min(window))',
+      heuristic: 'Compresses current value location to a bounded 0..1 range.'
+    ),
+    spread: native_indicator(
+      label: 'Spread',
+      params: {
+        left: input_ref(label: 'Left Input', required: true),
+        right: input_ref(label: 'Right Input', required: true)
+      },
+      warmup: 0,
+      description: 'Difference between two same-series aligned inputs.',
+      formula: 'left[t] - right[t]',
+      heuristic: 'Measures absolute divergence between aligned current-series inputs.'
+    ),
+    ratio: native_indicator(
+      label: 'Ratio',
+      params: {
+        left: input_ref(label: 'Left Input', required: true),
+        right: input_ref(label: 'Right Input', required: true),
+        epsilon: number(label: 'Epsilon', min: 0, default: 0.00000001)
+      },
+      warmup: 0,
+      description: 'Ratio between two same-series aligned inputs with a denominator guard.',
+      formula: 'left[t] / right[t] when abs(right[t]) > epsilon',
+      heuristic: 'Measures relative divergence while avoiding unstable near-zero denominators.'
+    ),
+    rolling_corr: native_indicator(
+      label: 'Rolling Correlation',
+      params: {
+        left: input_ref(label: 'Left Input', required: true),
+        right: input_ref(label: 'Right Input', required: true),
+        period: integer(label: 'Period', min: 2, default: 20)
+      },
+      warmup: param_warmup_minus_one(:period, default: 20),
+      description: 'Pearson correlation of two aligned inputs over a trailing window.',
+      formula: 'corr(left[t - period + 1..t], right[t - period + 1..t])',
+      heuristic: 'Tracks local co-movement between same-series or external aligned inputs.'
+    ),
+    stationarity_proxy: native_indicator(
+      label: 'Stationarity Proxy',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 2, default: 20),
+        epsilon: number(label: 'Epsilon', min: 0, default: 0.00000001)
+      },
+      warmup: twice_param_warmup_minus_one(:period, default: 20),
+      description: 'Bounded normalized drift heuristic between adjacent rolling means; not an ADF or KPSS statistical test.',
+      formula: '1 - clamp(abs(mean(current_window) - mean(previous_window)) / (stddev_pop(combined_window) + epsilon), 0, 1)',
+      heuristic: 'Lightweight drift heuristic where higher values mean adjacent windows have more similar means.'
+    ),
+    heteroskedasticity_proxy: native_indicator(
+      label: 'Heteroskedasticity Proxy',
+      params: {
+        input: input_ref(label: 'Input', default: DEFAULT_CLOSE_INPUT_REF),
+        period: integer(label: 'Period', min: 2, default: 20),
+        epsilon: number(label: 'Epsilon', min: 0, default: 0.00000001)
+      },
+      warmup: twice_param_warmup_minus_one(:period, default: 20),
+      description: 'Bounded normalized variance-change heuristic between adjacent rolling windows; not a Levene or Breusch-Pagan statistical test.',
+      formula: 'clamp(abs(var(current_window) - var(previous_window)) / (var(combined_window) + epsilon), 0, 1)',
+      heuristic: 'Lightweight variance-regime heuristic where higher values mean adjacent windows have more different variances.'
     ),
     sma:    { label: 'Simple Moving Average',           params: { period: integer(label: 'Period', min: 1) } },
     sr:     { label: 'Stochastic Oscillator',           params: { period:        integer(label: 'Period',        min: 1),

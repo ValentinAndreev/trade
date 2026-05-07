@@ -42,7 +42,7 @@ RSpec.describe 'native state/risk normalization modules' do
 
   it 'checks cooperative cancellation while computing native module rows' do
     expect do
-      Research::Modules::LogReturn.new(candles:).call(period: 2, cancel_check: -> { true })
+      Research::Modules::LogReturn.new(candles:).call(period: 2, cancel_check: Research::CancellationCheck.from_proc(-> { true }))
     end.to raise_error(Research::Cancelled)
   end
 

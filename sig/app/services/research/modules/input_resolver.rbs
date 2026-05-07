@@ -1,0 +1,25 @@
+module Research
+  module Modules
+    class InputResolver
+      OHLCV_FIELDS: Array[String]
+
+      def initialize: (candles: Array[ohlcv], ?module_series: Hash[Symbol, Array[Hash[Symbol, untyped]]], ?cancel_check: untyped) -> void
+      def values: (Hash[String, untyped] reference) -> Array[Float?]
+
+      private
+
+      attr_reader candles: Array[ohlcv]
+      attr_reader module_series: Hash[Symbol, Array[Hash[Symbol, untyped]]]
+      attr_reader cancel_check: untyped
+
+      def ohlcv_values: (String field) -> Array[Float?]
+      def module_values: (module_ref: String, output: String) -> Array[Float?]
+      def external_series_values: (key: String, output: String) -> Array[Float?]
+      def align_pairs: (Array[[Integer, Numeric]] pairs) -> Array[Float?]
+      def first_candle_time: () -> Time?
+      def last_candle_time: () -> Time?
+      def numeric: (untyped value) -> Float?
+      def check_cancelled!: (Integer index) -> void
+    end
+  end
+end

@@ -250,13 +250,15 @@
 
 ## ML-модели и обучение
 
-Требуют аутентификации через сессионную cookie. Реестр моделей в MVP глобальный внутри границы аутентифицированного приложения: модели не принадлежат отдельным пользователям, per-user ACL в фиче 017 не реализован.
+Требуют аутентификации через сессионную cookie. Реестр моделей в MVP глобальный внутри границы аутентифицированного приложения: модели не принадлежат отдельным пользователям, per-user ACL не реализован.
 
 > **Security warning:** этот контракт рассчитан на trusted/single-tenant deployment. Перед multi-user или shared-tenant использованием нужно добавить ownership/ACL для моделей, запусков обучения и ActionCable stream-ов, либо явно изолировать tenant-ы на уровне deployment/database.
 
 | Method | Path | Назначение | Auth |
 | --- | --- | --- | --- |
 | `GET` | `/api/ml/models` | Список ML-моделей | Да |
+| `GET` | `/api/ml/models/autocomplete` | Prefix autocomplete по model key | Да |
+| `POST` | `/api/ml/predictions` | Значения ML prediction columns для data grid | Да |
 | `GET` | `/api/ml/training_runs` | Список запусков обучения | Да |
 | `POST` | `/api/ml/training_runs` | Создать и поставить запуск обучения в очередь | Да |
 | `POST` | `/api/ml/training_runs/:id/cancel` | Запросить cooperative cancellation | Да |
@@ -283,6 +285,104 @@
 - `active_training_run`
 
 `serving_status`: `draft`, `training`, `trained`, `failed`, `disabled`.
+
+### `GET /api/ml/models/autocomplete`
+
+Параметры:
+
+- `q` — prefix поиска по `ml_models.key`, нормализуется к lower-case;
+- `limit` — максимум `50`; значения `<= 0` трактуются как `50`.
+
+Ответ:
+
+```json
+{
+  "models": [
+    {
+      "id": 1,
+      "key": "btc_direction_v1",
+      "display_name": "BTC Direction V1",
+      "architecture": "baseline_direction_classifier",
+      "prediction_target": "direction_classification",
+      "serving_status": "trained"
+    }
+  ],
+  "meta": {
+    "limit": 50,
+    "truncated": false,
+    "has_more": false,
+    "max_prediction_rows": 50000
+  }
+}
+```
+
+Autocomplete не возвращает `weights_payload` или weight blobs. Если `has_more=true`, UI предлагает уточнить prefix вместо того, чтобы молча скрывать остальные модели.
+
+### `POST /api/ml/predictions`
+
+Endpoint обслуживает `ml_prediction` колонки data grid. `exchange` можно не передавать; backend использует общий default свечного запроса (`bitfinex`) и возвращает resolved value в ответе.
+
+Тело запроса:
+
+```json
+{
+  "exchange": "bitfinex",
+  "symbol": "BTCUSD",
+  "timeframe": "1m",
+  "start_time": "2026-01-01T00:00:00Z",
+  "end_time": "2026-01-01T01:00:00Z",
+  "columns": [
+    {
+      "column_id": "col_123",
+      "model_key": "btc_direction_v1",
+      "model_output": "probability"
+    }
+  ]
+}
+```
+
+`columns` использует canonical snake_case shape. `model_output` поддерживает `probability`, `direction`, `confidence`.
+
+Ответ:
+
+```json
+{
+  "exchange": "bitfinex",
+  "symbol": "BTCUSD",
+  "timeframe": "1m",
+  "start_time": "2026-01-01T00:00:00Z",
+  "end_time": "2026-01-01T01:00:00Z",
+  "values": {
+    "col_123": {
+      "1767225600": 0.62
+    }
+  },
+  "errors": {},
+  "diagnostics": {
+    "candle_count": 61,
+    "preflight_candle_count": 61,
+    "requested_prediction_rows": 61,
+    "max_prediction_rows": 50000,
+    "distinct_requested_models": 1,
+    "requested_outputs_by_model": {
+      "btc_direction_v1": ["probability"]
+    },
+    "model_diagnostics": {},
+    "source_window_mismatches_by_column": {}
+  }
+}
+```
+
+Ошибки по невалидным или недоступным моделям возвращаются в `errors[column_id]` и не ломают остальные колонки. Missing timestamps остаются `null`/blank на уровне grid/CSV.
+
+MVP-лимит:
+
+```text
+prediction_rows = candle_count * distinct(model_key)
+max_prediction_rows = 50_000
+```
+
+Формула относится к одному `(exchange, symbol, timeframe)`. Несколько output-колонок и duplicate columns для одной модели не умножают лимит, потому что одна persisted prediction row хранит весь tuple `probability`, `direction`, `confidence`.
 
 ### `GET /api/ml/training_runs`
 
@@ -370,7 +470,7 @@
 
 ### Хранение и повторное использование предсказаний
 
-Фича 017 не добавляет HTTP endpoint для чтения prediction rows; data-grid endpoint остается зоной фичи 018. Research-модуль `ml_signal` вызывает backend inference service напрямую.
+Data grid читает prediction values через `POST /api/ml/predictions`. Research-модуль `ml_signal` вызывает backend inference service напрямую.
 
 Успешные prediction rows сохраняются в `ml_predictions`, TimescaleDB hypertable по `ts`, с уникальностью `(ml_model_id, exchange, symbol, timeframe, ts, weight_checksum)`. Это позволяет backtest-у, стартовавшему до retrain, читать свой captured snapshot даже если новый snapshot уже записал те же timestamps. Строка хранит все значения direction-classification tuple:
 
@@ -398,11 +498,11 @@ WHERE (
 
 Так старый serving snapshot не перезаписывает prediction rows от более нового успешного обучения для того же `weight_checksum`, а разные `weight_checksum` остаются отдельными rows для reproducible backtests.
 
-MVP-лимит:
+Общий лимит range inference:
 
 ```text
-prediction_cells = candle_count * distinct(model_key)
-max_prediction_cells = 50_000
+prediction_rows = candle_count * distinct(model_key)
+max_prediction_rows = 50_000
 ```
 
 Формула относится к одному `(exchange, symbol, timeframe)`. Если будущий endpoint примет несколько market tuples за один запрос, его контракт должен расширить формулу до реализации.

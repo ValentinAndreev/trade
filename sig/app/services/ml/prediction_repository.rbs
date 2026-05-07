@@ -18,5 +18,9 @@ module Ml
       weight_checksum: String
     ) -> Hash[Integer, MlPrediction]
     def value_for: (MlPrediction? prediction, String | Symbol output) -> untyped
+    def source_window_mismatches: (
+      rows: Array[Hash[Symbol, untyped]],
+      weight_checksum: String
+    ) -> Hash[String, Hash[Symbol, untyped]]
   end
 end

@@ -7,7 +7,8 @@ class MlPrediction < ApplicationRecord
   OUTPUTS = %w[probability direction confidence].freeze
   DIRECTIONS = %w[up down].freeze
 
-  # Prediction writes intentionally go through Ml::PredictionRepository raw SQL.
+  # Timescale hypertable without an AR primary key. Identity is enforced by the
+  # unique prediction index, and writes go through Ml::PredictionRepository SQL.
   # Keep value invariants in database NOT NULL/CHECK constraints, not AR validations.
 
   scope :for_identity, ->(ml_model_id:, exchange:, symbol:, timeframe:) do

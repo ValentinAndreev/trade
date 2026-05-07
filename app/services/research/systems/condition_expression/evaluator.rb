@@ -108,7 +108,7 @@ module Research
 
         def evaluate_unary(node, row:, params:, row_offset:)
           value = resolve_numeric(node[:expression], row:, params:, row_offset:)
-          return nil if value.nil?
+          return if value.nil?
 
           case node[:op]
           when '-'
@@ -119,7 +119,7 @@ module Research
         def evaluate_arithmetic(node, row:, params:, row_offset:)
           left = resolve_numeric(node[:left], row:, params:, row_offset:)
           right = resolve_numeric(node[:right], row:, params:, row_offset:)
-          return nil if left.nil? || right.nil?
+          return if left.nil? || right.nil?
 
           operation = ARITHMETIC_OPERATIONS[node[:op]]
           operation&.call(left, right)
@@ -127,7 +127,7 @@ module Research
 
         def evaluate_call(node, row:, params:, row_offset:)
           handler = CALL_EVALUATORS[node[:name]]
-          return nil unless handler
+          return unless handler
 
           resolve = ->(target_node, target_row_offset = row_offset) { resolve_numeric(target_node, row:, params:, row_offset: target_row_offset) }
           resolve_arguments = lambda { |nodes, target_row_offset = row_offset|

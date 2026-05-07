@@ -9,7 +9,7 @@ module Ml
     def initialize(candles:, resolved_feature_spec:, cancel_check: nil)
       @candles = candles
       @resolved_feature_spec = resolved_feature_spec
-      @cancel_check = Research::CancellationCheck.wrap(cancel_check)
+      @cancel_check = cancel_check
     end
 
     def call
@@ -44,10 +44,12 @@ module Ml
     attr_reader :candles, :resolved_feature_spec, :cancel_check
 
     def build_feature_series
+      module_series = {}
       resolved_feature_spec.each_with_object({}) do |feature, acc|
         check_cancelled!
 
-        module_points = module_points_for(feature)
+        module_points = module_points_for(feature, module_series:)
+        module_series[feature.fetch('name').to_sym] = module_points.map { |point| point.fetch(:result) }
         feature.fetch('outputs').each do |output|
           feature_name = feature.dig('feature_names', output)
           acc[feature_name] = candles.map.with_index do |candle, index|
@@ -58,10 +60,10 @@ module Ml
       end
     end
 
-    def module_points_for(feature)
+    def module_points_for(feature, module_series:)
       runner = Research::Modules.for(feature.fetch('type')).new(candles:)
-      params = feature.fetch('params').deep_symbolize_keys
-      runner.call_from_feature_matrix(**params, cancel_check:)
+      params = feature.fetch('params').transform_keys(&:to_sym)
+      runner.call_from_feature_matrix(**params, cancel_check:, module_series:)
     end
 
     def feature_names
@@ -69,7 +71,7 @@ module Ml
     end
 
     def effective_window
-      @effective_window ||= resolved_feature_spec.map { |entry| [ entry.fetch('warmup'), entry.fetch('lookback') ].max }.max || 0
+      @effective_window ||= FeatureWindow.effective_window_for(resolved_feature_spec)
     end
 
     def fitted_metadata

@@ -1,4 +1,4 @@
-export type TabType = "chart" | "data" | "system_stats" | "research" | "system_editor" | "assistant"
+export type TabType = "chart" | "data" | "system_stats" | "research" | "system_editor" | "assistant" | "ml_models"
 
 export type ResearchMetricKey =
   | "netProfit"
@@ -58,6 +58,10 @@ export interface SystemEditorConfig {
   searchQuery: string
 }
 
+export interface MlModelsConfig {
+  selectedModelKey: string | null
+}
+
 export type AssistantTarget =
   | null
   | {
@@ -104,6 +108,7 @@ export interface Tab {
   researchConfig?: ResearchConfig;
   researchResult?: ResearchResult;
   systemEditorConfig?: SystemEditorConfig;
+  mlModelsConfig?: MlModelsConfig;
   /** ID of the primary panel — stable regardless of panel reorder. Falls back to panels[0] if missing. */
   primaryPanelId?: string;
   /** For system_stats tabs: the system being analysed and the data tab it came from. */
@@ -124,23 +129,53 @@ export interface DataConfig {
   userConfiguredStart?: boolean;
 }
 
-export interface DataColumn {
+export type MlPredictionOutput = "probability" | "direction" | "confidence"
+
+interface BaseDataColumn {
   id: string;
-  type: "datetime" | "open" | "high" | "low" | "close" | "volume"
-      | "indicator" | "change" | "custom" | "formula" | "instrument" | "macro";
   label: string;
   width?: number;
   /** When false, column is hidden in the grid. Default true. */
   visible?: boolean;
-  indicatorType?: string;
-  indicatorParams?: Record<string, number | string>;
-  changePeriod?: string;
-  expression?: string;
-  instrumentSymbol?: string;
-  instrumentField?: string;
 }
 
+export type DataColumn =
+  | (BaseDataColumn & {
+      type: "datetime" | "open" | "high" | "low" | "close" | "volume" | "custom"
+    })
+  | (BaseDataColumn & {
+      type: "indicator";
+      indicatorType?: string;
+      indicatorParams?: Record<string, number | string>;
+    })
+  | (BaseDataColumn & {
+      type: "macro";
+      indicatorType?: string;
+      indicatorParams?: Record<string, number | string>;
+    })
+  | (BaseDataColumn & {
+      type: "change";
+      changePeriod?: string;
+    })
+  | (BaseDataColumn & {
+      type: "formula";
+      expression?: string;
+    })
+  | (BaseDataColumn & {
+      type: "instrument";
+      instrumentSymbol?: string;
+      instrumentField?: string;
+    })
+  | (BaseDataColumn & {
+      type: "ml_prediction";
+      modelKey: string;
+      modelOutput: MlPredictionOutput;
+    })
+
+export type DataColumnInput<T extends DataColumn = DataColumn> = T extends DataColumn ? Omit<T, "id"> : never
+
 export function columnFieldKey(col: DataColumn): string {
+  if (col.type === "ml_prediction") return `ml_prediction:${col.id}`
   if (col.type === "change") return `change_${col.changePeriod || "5m"}`
   if (col.type === "macro" && col.indicatorType) return col.indicatorType
   if (col.type === "indicator" && col.indicatorType) {
@@ -294,7 +329,7 @@ export type DataTableRow = {
   low: number
   close: number
   volume: number
-  [key: string]: number | null | undefined
+  [key: string]: number | string | null | undefined
 }
 
 export interface LabelMarkerInput {

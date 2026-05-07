@@ -10,6 +10,7 @@ import {
   changeParamsHTML,
   formulaParamsHTML,
   instrumentParamsHTML,
+  mlPredictionParamsHTML,
   columnListHTML,
   addColumnFormHTML,
   formulaEditHTML,
@@ -136,6 +137,10 @@ export default class DataSidebarRenderer {
     return instrumentParamsHTML(symbols)
   }
 
+  mlPredictionParamsHTML(): string {
+    return mlPredictionParamsHTML()
+  }
+
   // --- State ---
 
   get _editingCondition(): Condition | undefined {
@@ -221,7 +226,9 @@ export default class DataSidebarRenderer {
   }
 
   private _columnsSection(columns: DataColumn[]): string {
-    const editingCol = this.editingFormulaId ? columns.find(c => c.id === this.editingFormulaId) : null
+    const editingCol = this.editingFormulaId
+      ? columns.find((c): c is Extract<DataColumn, { type: "formula" }> => c.type === "formula" && c.id === this.editingFormulaId)
+      : null
     const editFormHTML = editingCol
       ? formulaEditHTML(this.ctrl, editingCol.id, editingCol.label, editingCol.expression || "")
       : ""

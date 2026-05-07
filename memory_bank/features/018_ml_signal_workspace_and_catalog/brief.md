@@ -21,9 +21,10 @@ Project owner / trader-researcher who wants to inspect ML predictions in the dat
 - Prediction grid requests enforce the same backend cap semantics as final 017: `candle_count * distinct(modelKey)` for one `(exchange, symbol, timeframe)` tuple. Requested outputs and duplicate columns do not multiply backend inference rows because one persisted prediction row stores the full direction-classification tuple.
 - Workspace UI lists models and training runs, shows deterministic loading/empty/succeeded/failed states, and lets the user create/cancel training runs.
 - Training progress UI subscribes to the existing ML training progress channel and falls back to API state on reconnect/reload.
-- System editor autocomplete can discover available model keys without loading weight blobs through an explicit capped autocomplete contract that preserves the plain 017 `GET /api/ml/models` array response. Autocomplete responses support prefix search and surface when more matches exist so the UI does not silently hide models after the first 50.
+- System editor autocomplete can discover available model keys without loading weight blobs through an explicit capped autocomplete contract. Plain `GET /api/ml/models` remains an array response, while capped prefix autocomplete uses `GET /api/ml/models/autocomplete` and returns `{ models, meta }`. Autocomplete responses support prefix search and surface when more matches exist so the UI does not silently hide models after the first 50.
 - Full normalized/state/risk module catalogue expansion is implemented as Research modules, not as a separate registry or ML-private helpers. The 018 set is `rolling_corr`, `spread`, `ratio`, `stationarity_proxy`, `heteroskedasticity_proxy`, `zscore`, `robust_zscore`, `minmax_position`, `lag`, `delta`, `rolling_mean`, `rolling_std`, `ema_smoother`, `clip` and `winsorize`. These modules operate on the current research/data-grid candle series or same-series module/external inputs; cross-symbol and cross-timeframe feature refs are a future feature.
 - LLM tools and docs expose the expanded module catalogue and ML UI/data-grid behavior.
+- Implementation uses canonical payloads and direct typed contracts: no generic alias fallback helpers, blanket coercion, defensive type/capability guards, extreme numeric guards or runtime/user-facing references to task numbers.
 
 ## Non-Scope
 

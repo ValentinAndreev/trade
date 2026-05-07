@@ -181,6 +181,7 @@ module Ml
 
       stale_run.update!(
         status: 'failed',
+        cancellation_requested_at: now,
         finished_at: now,
         error_metadata: {
           code: 'stale_worker',

@@ -110,10 +110,9 @@ module Ml
 
       def normalize_examples(examples)
         Array(examples).map do |example|
-          payload = example.to_h
           {
-            features: (payload[:features] || payload['features']).to_h.stringify_keys,
-            label: (payload[:label] || payload['label']).to_s
+            features: example.fetch(:features).stringify_keys,
+            label: example.fetch(:label).to_s
           }
         end
       end
@@ -242,9 +241,9 @@ module Ml
       end
 
       def feature_values_for(payload, feature_names)
-        features = payload.to_h
+        features = payload
         feature_names.map do |name|
-          value = features[name] || features[name.to_sym]
+          value = features.fetch(name)
           value.nil? ? nil : value.to_f
         end
       end

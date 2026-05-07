@@ -128,7 +128,7 @@ class DataTable::Builder
     return close_by_time[target_time] if close_by_time.key?(target_time)
 
     idx = times.bsearch_index { |t| t >= target_time }
-    return nil unless idx
+    return unless idx
 
     candidates = []
     candidates << times[idx] if times[idx]

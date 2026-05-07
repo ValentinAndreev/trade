@@ -1,6 +1,6 @@
 import {
   panelLegendHTML, controlButtonsHTML,
-  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML, systemStatsPanelHTML, researchPanelHTML, systemEditorPanelHTML, assistantPanelHTML,
+  emptyPanelHTML, chartPanelHTML, dataGridPanelHTML, systemStatsPanelHTML, researchPanelHTML, systemEditorPanelHTML, assistantPanelHTML, mlModelsPanelHTML,
 } from "../templates/panel_templates"
 import type { Tab, Panel } from "../types/store"
 
@@ -92,6 +92,20 @@ export default class PanelRenderer {
           }
         } else {
           wrapper.innerHTML = assistantPanelHTML(tab.id, stateJson, workspaceSnapshotJson, linkedTargetContextJson)
+        }
+        return
+      }
+
+      if (tab.type === "ml_models") {
+        if (!isActive) return
+        const configJson = JSON.stringify(tab.mlModelsConfig || { selectedModelKey: null })
+        const existingMlModels = wrapper.querySelector("[data-controller='ml-models']") as HTMLElement | null
+        if (existingMlModels) {
+          if (existingMlModels.dataset.mlModelsConfigValue !== configJson) {
+            existingMlModels.dataset.mlModelsConfigValue = configJson
+          }
+        } else {
+          wrapper.innerHTML = mlModelsPanelHTML(tab.id, configJson)
         }
         return
       }

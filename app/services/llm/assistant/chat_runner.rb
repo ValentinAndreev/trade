@@ -152,7 +152,7 @@ module Llm
         editor_context = normalized_context[:editor_context].to_h
         system_id = linked_target[:system_id].presence || editor_context[:system_id].presence
         source_path = linked_target[:source_path].presence || editor_context[:source_path].presence
-        return nil unless system_id || source_path
+        return unless system_id || source_path
 
         {
           type: 'system_editor',

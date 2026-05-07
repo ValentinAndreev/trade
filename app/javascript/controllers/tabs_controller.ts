@@ -274,6 +274,15 @@ export default class extends Controller {
     }
     coordinators.assistant.addAssistantTab()
   }
+  addMlModelsTab() {
+    if (!this.workspaceReady()) {
+      this.notifyWorkspaceNotReady()
+      return
+    }
+    this.store.addMlModelsTab()
+    this._forceRevealActiveTab = true
+    this.render()
+  }
   addChartTab() { this.addTab() }
   addDataTab() {
     if (!this.workspaceReady()) {

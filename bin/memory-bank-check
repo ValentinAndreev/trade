@@ -120,10 +120,10 @@ end
 
 
 def table_cells(line)
-  return nil unless line.start_with?("|")
+  return unless line.start_with?("|")
 
   cells = line.split("|", -1)[1...-1]
-  return nil unless cells
+  return unless cells
 
   cells.map(&:strip)
 end
@@ -206,10 +206,10 @@ end
 
 def review_status(relative_path)
   lines = read_lines(relative_path)
-  return nil unless lines
+  return unless lines
 
   status_line = lines.find { |line| line.start_with?("Статус:") || line.start_with?("Status:") }
-  return nil unless status_line
+  return unless status_line
 
   status_line.split(":", 2).last.to_s.strip
 end

@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require 'digest'
+require 'json'
+
 module Research
   class Backtest
     class Cancelled < Research::Cancelled; end
@@ -41,19 +44,22 @@ module Research
     def module_results_for(module_configs, cancel_check: nil)
       module_configs.each_with_object({}) do |(module_name, config), acc|
         cancelled!(cancel_check)
-        acc[module_name.to_sym] = cached_module_results(config[:type], config[:params], cancel_check:)
+        acc[module_name.to_sym] = cached_module_results(config[:type], config[:params], module_series: acc, cancel_check:)
       end
     end
 
-    def cached_module_results(module_type, params, cancel_check: nil)
+    def cached_module_results(module_type, params, module_series: {}, cancel_check: nil)
       cancelled!(cancel_check)
+
+      module_class = Research::Modules.for(module_type)
       cache_key = [ module_type.to_s, normalized_module_params(params) ]
-      @module_results_cache[cache_key] ||= build_module_results(module_type, params, cancel_check:)
+      cache_key << module_series_cache_key(module_series) if module_class.depends_on_module_series?
+      @module_results_cache[cache_key] ||= build_module_results(module_type, params, module_series:, cancel_check:)
     end
 
-    def build_module_results(module_type, params, cancel_check: nil)
+    def build_module_results(module_type, params, module_series: {}, cancel_check: nil)
       results = Array.new(candles.length)
-      module_call(module_type, params, cancel_check:).each_with_index do |point, point_index|
+      module_call(module_type, params, module_series:, cancel_check:).each_with_index do |point, point_index|
         cancelled!(cancel_check) if (point_index % 128).zero?
         candle_index = candle_index_by_time[point[:time]]
         results[candle_index] = point[:result] if candle_index
@@ -63,14 +69,20 @@ module Research
 
     def normalized_module_params(params) = params.to_h.sort_by { |key, _| key.to_s }
 
+    def module_series_cache_key(module_series)
+      Digest::SHA256.hexdigest(JSON.generate(module_series)) unless module_series.empty?
+    end
+
     def candle_index_by_time
       @candle_index_by_time ||= candles.each_with_index.to_h { |candle, index| [ candle[:time], index ] }
     end
 
-    def module_call(module_type, params, cancel_check: nil)
+    def module_call(module_type, params, module_series: {}, cancel_check: nil)
       call_params = (params || {}).symbolize_keys
       call_params[:cancel_check] = cancel_check if cancel_check
-      module_runner(module_type).call(**call_params)
+      call_params[:module_series] = module_series
+      runner = module_runner(module_type)
+      runner.call(**call_params)
     rescue Research::Cancelled
       raise Cancelled
     end
@@ -81,7 +93,7 @@ module Research
 
     def candles
       @candles ||= Candle::FindQuery.new(
-        symbol:, exchange:, timeframe:, start_time:, end_time:, limit: nil
+        symbol:, exchange:, timeframe:, start_time:, end_time:, limit: nil, preserve_decimals: true
       ).call
     end
 
@@ -182,8 +194,7 @@ module Research
     def r(value)   = value.round(4)
 
     def cancelled!(cancel_check)
-      wrapped = Research::CancellationCheck.wrap(cancel_check)
-      wrapped.check_cancelled! if wrapped
+      cancel_check.check_cancelled! if cancel_check
     rescue Research::Cancelled
       raise Cancelled
     end

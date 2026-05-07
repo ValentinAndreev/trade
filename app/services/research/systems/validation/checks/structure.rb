@@ -98,7 +98,119 @@ module Research
             when 'enum'
               allowed = Array(rule['values']).map(&:to_s)
               add_error(message: "Expected one of: #{allowed.join(', ')}", path:, code: 'scalar_enum') unless allowed.include?(value.to_s)
+            when 'input_ref'
+              validate_input_ref(value, path)
             end
+          end
+
+          def validate_input_ref(value, path)
+            unless value.is_a?(Hash)
+              add_error(message: 'Expected input reference mapping', path:, code: 'input_ref_type')
+              return
+            end
+
+            ref = value.deep_stringify_keys
+            %w[exchange symbol timeframe].each do |field|
+              next unless ref.key?(field)
+
+              add_error(message: "Input references cannot specify #{field}", path: path + [ field ], code: 'input_ref_cross_scope')
+            end
+
+            kind = ref.fetch('kind', 'ohlcv').to_s
+            case kind
+            when 'ohlcv'
+              validate_input_ref_keys(ref, path, %w[kind field])
+              validate_ohlcv_input_ref(ref, path)
+            when 'module'
+              validate_input_ref_keys(ref, path, %w[kind module_ref output])
+              validate_module_input_ref(ref, path)
+            when 'external_series'
+              validate_input_ref_keys(ref, path, %w[kind key output])
+              validate_external_series_input_ref(ref, path)
+            else
+              add_error(message: "Unsupported input reference kind: #{kind}", path: path + [ 'kind' ], code: 'input_ref_kind')
+            end
+          end
+
+          def validate_input_ref_keys(ref, path, allowed)
+            ref.keys.each do |key|
+              next if allowed.include?(key) || %w[exchange symbol timeframe].include?(key)
+
+              add_error(message: "Unknown input reference key: #{key}", path: path + [ key ], code: 'input_ref_unknown_key')
+            end
+          end
+
+          def validate_ohlcv_input_ref(ref, path)
+            field = ref.fetch('field', 'close').to_s
+            allowed = Research::Modules::InputResolver::OHLCV_FIELDS
+            return if allowed.include?(field)
+
+            add_error(message: "Expected OHLCV field one of: #{allowed.join(', ')}", path: path + [ 'field' ], code: 'input_ref_field')
+          end
+
+          def validate_module_input_ref(ref, path)
+            module_ref = ref['module_ref'].to_s
+            if module_ref.blank?
+              add_error(message: 'Input module reference is required', path: path + [ 'module_ref' ], code: 'input_ref_module_ref_required')
+              return
+            end
+
+            modules = @payload.fetch('modules', {})
+            module_names = modules.keys.map(&:to_s)
+            unless module_names.include?(module_ref)
+              add_error(message: "Unknown input module reference: #{module_ref}", path: path + [ 'module_ref' ], code: 'input_ref_unknown_module')
+              return
+            end
+
+            if path.first == 'modules' && path[1]
+              current_module = path[1].to_s
+              current_index = module_names.index(current_module)
+              referenced_index = module_names.index(module_ref)
+              if current_index && referenced_index && referenced_index >= current_index
+                add_error(message: "Input module reference must point to an earlier module: #{module_ref}", path: path + [ 'module_ref' ], code: 'input_ref_module_order')
+              end
+            end
+
+            module_type = modules.dig(module_ref, 'type').to_s
+            module_dict = @schema.dig('modules', 'types', module_type)
+            unless module_dict
+              add_error(message: "Unsupported input module type: #{module_type}", path: path + [ 'module_ref' ], code: 'input_ref_module_type')
+              return
+            end
+
+            missing = %w[output_fields warmup lookahead].reject { |key| module_dict.key?(key) }
+            if missing.any?
+              add_error(message: "Input module #{module_ref} is missing no-lookahead metadata: #{missing.join(', ')}", path: path + [ 'module_ref' ], code: 'input_ref_missing_metadata')
+              return
+            end
+
+            if module_dict.fetch('lookahead').to_i.positive?
+              add_error(message: "Input module #{module_ref} has positive lookahead", path: path + [ 'module_ref' ], code: 'input_ref_positive_lookahead')
+              return
+            end
+
+            output = ref.fetch('output', 'value').to_s
+            allowed_outputs = Array(module_dict.fetch('output_fields')).map(&:to_s)
+            return if allowed_outputs.include?(output)
+
+            add_error(message: "Input module #{module_ref} does not expose output: #{output}", path: path + [ 'output' ], code: 'input_ref_output')
+          end
+
+          def validate_external_series_input_ref(ref, path)
+            key = ref['key'].to_s
+            if key.blank?
+              add_error(message: 'External series input key is required', path: path + [ 'key' ], code: 'input_ref_external_key_required')
+              return
+            end
+
+            unless Macro::Catalog.find(key)
+              add_error(message: "Unknown external series key: #{key}", path: path + [ 'key' ], code: 'input_ref_external_key')
+            end
+
+            output = ref.fetch('output', 'value').to_s
+            return if output == 'value'
+
+            add_error(message: 'External series input only supports output=value', path: path + [ 'output' ], code: 'input_ref_output')
           end
         end
       end

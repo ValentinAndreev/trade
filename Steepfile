@@ -12,6 +12,7 @@ target :app do
   check "app/services/utils/"
   check "app/services/data_table/"
   check "app/services/llm/"
+  check "app/services/ml/"
   check "app/services/research/"
   check "config/configs/"
 

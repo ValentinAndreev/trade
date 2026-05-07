@@ -99,6 +99,25 @@ RSpec.describe Ml::FeatureMatrix do
       expect(resolved.first.fetch('params')).to eq('period' => 2)
       expect(resolved.first.fetch('warmup')).to eq(2)
     end
+
+    it 'includes upstream module lookback in input-ref transform windows' do
+      window = described_class.new(feature_spec: [
+        { type: 'log_return', name: 'returns', params: { period: 2 } },
+        {
+          type: 'lag',
+          name: 'lagged_returns',
+          params: {
+            input: { kind: 'module', module_ref: 'returns', output: 'value' },
+            period: 1
+          }
+        }
+      ])
+      lagged = window.resolved_feature_spec.fetch(1)
+
+      expect(lagged.fetch('warmup')).to eq(1)
+      expect(lagged.fetch('lookback')).to eq(3)
+      expect(window.effective_window).to eq(3)
+    end
   end
 
   describe '#call' do
@@ -133,11 +152,33 @@ RSpec.describe Ml::FeatureMatrix do
       expect(result.rows[1][:features].fetch('range_position')).to be_between(0.0, 1.0).inclusive
     end
 
+    it 'uses transitive input-ref lookback for completeness and source checksums' do
+      resolved = Ml::FeatureWindow.new(feature_spec: [
+        { type: 'log_return', name: 'returns', params: { period: 2 } },
+        {
+          type: 'lag',
+          name: 'lagged_returns',
+          params: {
+            input: { kind: 'module', module_ref: 'returns', output: 'value' },
+            period: 1
+          }
+        }
+      ]).resolved_feature_spec
+
+      result = described_class.new(candles:, resolved_feature_spec: resolved).call
+
+      expect(result.effective_window).to eq(3)
+      expect(result.rows[2]).to include(complete: false, source_window_checksum: nil)
+      expect(result.rows[3]).to include(complete: true)
+      expect(result.rows[3][:features].fetch('lagged_returns')).to be_within(0.000001).of(Math.log(103.0 / 100.0))
+      expect(result.rows[3][:source_window_checksum]).to match(/\A[0-9a-f]{64}\z/)
+    end
+
     it 'checks cooperative cancellation before building module rows' do
       resolved = Ml::FeatureWindow.new(feature_spec: [ { type: 'log_return' } ]).resolved_feature_spec
 
       expect do
-        described_class.new(candles:, resolved_feature_spec: resolved, cancel_check: -> { true }).call
+        described_class.new(candles:, resolved_feature_spec: resolved, cancel_check: Research::CancellationCheck.from_proc(-> { true })).call
       end.to raise_error(Research::Cancelled)
     end
   end

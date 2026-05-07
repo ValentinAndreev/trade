@@ -57,7 +57,7 @@ RSpec.describe Research::Systems::Validation::Validator do
       expect(result.diagnostics.map(&:message)).to include('Unsupported module type: wave')
     end
 
-    it 'requires type for every module alias' do
+    it 'requires type for every module key' do
       yaml = <<~YAML
         id: bad
         name: Broken
@@ -157,6 +157,126 @@ RSpec.describe Research::Systems::Validation::Validator do
       expect(result).to be_valid
     end
 
+    it 'accepts input refs to earlier no-lookahead modules' do
+      yaml = <<~YAML
+        id: input_ref_system
+        name: Input Ref System
+        modules:
+          smooth:
+            type: rolling_mean
+            period: 2
+          spread:
+            type: spread
+            left:
+              kind: ohlcv
+              field: close
+            right:
+              kind: module
+              module_ref: smooth
+              output: value
+        conditions:
+          long_entry: "spread.value > 0"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_valid
+    end
+
+    it 'rejects legacy module input-ref alias keys' do
+      yaml = <<~YAML
+        id: legacy_input_ref_alias
+        name: Legacy Input Ref Alias
+        modules:
+          smooth:
+            type: rolling_mean
+            period: 2
+          delta:
+            type: delta
+            input:
+              kind: module
+              alias: smooth
+        conditions:
+          long_entry: "delta.value > 0"
+      YAML
+
+      result = described_class.new(yaml).call
+      codes = result.diagnostics.map(&:code)
+
+      expect(result).to be_invalid
+      expect(codes).to include('input_ref_unknown_key', 'input_ref_module_ref_required')
+    end
+
+    it 'rejects input refs with cross-symbol or cross-timeframe scope' do
+      yaml = <<~YAML
+        id: cross_scope_input_ref
+        name: Cross Scope Input Ref
+        modules:
+          delta:
+            type: delta
+            input:
+              kind: ohlcv
+              field: close
+              symbol: ETHUSD
+        conditions:
+          long_entry: "delta.value > 0"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:to_h)).to include(hash_including(code: 'input_ref_cross_scope'))
+    end
+
+    it 'rejects input refs to later modules because runtime evaluation is ordered' do
+      yaml = <<~YAML
+        id: forward_input_ref
+        name: Forward Input Ref
+        modules:
+          spread:
+            type: spread
+            left:
+              kind: module
+              module_ref: smooth
+            right:
+              kind: ohlcv
+              field: close
+          smooth:
+            type: rolling_mean
+            period: 2
+        conditions:
+          long_entry: "spread.value > 0"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:to_h)).to include(hash_including(code: 'input_ref_module_order'))
+    end
+
+    it 'rejects input refs to modules without no-lookahead metadata' do
+      yaml = <<~YAML
+        id: ta_input_ref
+        name: TA Input Ref
+        modules:
+          smooth:
+            type: sma
+            period: 2
+          delta:
+            type: delta
+            input:
+              kind: module
+              module_ref: smooth
+        conditions:
+          long_entry: "delta.value > 0"
+      YAML
+
+      result = described_class.new(yaml).call
+
+      expect(result).to be_invalid
+      expect(result.diagnostics.map(&:to_h)).to include(hash_including(code: 'input_ref_missing_metadata'))
+    end
+
     it 'rejects bb standard_deviations below schema minimum' do
       yaml = <<~YAML
         id: bb_bad_stddev
@@ -236,7 +356,8 @@ RSpec.describe Research::Systems::Validation::Validator do
       result = described_class.new(ml_signal_yaml(model_key: 'btc_direction_v1', output: 'score'), dataset: ml_dataset).call
 
       expect(result).to be_invalid
-      expect(result.diagnostics.map(&:message)).to include('Unsupported numeric ML signal output: score')
+      expect(result.diagnostics.map(&:to_h)).to include(hash_including(code: 'scalar_enum', path: 'modules.signal.output'))
+      expect(result.diagnostics.map(&:message)).to include('Expected one of: probability, confidence')
     end
 
     it 'rejects direction ml_signal output because condition expressions are numeric' do
@@ -245,7 +366,8 @@ RSpec.describe Research::Systems::Validation::Validator do
       result = described_class.new(ml_signal_yaml(model_key: 'btc_direction_v1', output: 'direction'), dataset: ml_dataset).call
 
       expect(result).to be_invalid
-      expect(result.diagnostics.map(&:message)).to include('Unsupported numeric ML signal output: direction')
+      expect(result.diagnostics.map(&:to_h)).to include(hash_including(code: 'scalar_enum', path: 'modules.signal.output'))
+      expect(result.diagnostics.map(&:message)).to include('Expected one of: probability, confidence')
     end
 
     it 'rejects ml_signal models with missing feature metadata' do

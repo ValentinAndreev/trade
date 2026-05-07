@@ -125,7 +125,7 @@ export class LinkActions {
     if (!tab.dataConfig) return
     const existingIndicators = new Set(
       tab.dataConfig.columns
-        .filter(c => c.type === "indicator")
+        .filter((c): c is Extract<DataColumn, { type: "indicator" }> => c.type === "indicator")
         .map(c => `${c.indicatorType}:${JSON.stringify(c.indicatorParams || {})}`)
     )
     for (const panel of chart.panels) {

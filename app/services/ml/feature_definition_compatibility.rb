@@ -20,7 +20,7 @@ module Ml
     def mismatches
       resolved_feature_spec.each_with_index.filter_map do |entry, index|
         payload = entry.to_h.stringify_keys
-        type = payload['type'].presence || payload['key'].presence
+        type = payload['type'].presence
         next mismatch(index, :feature_type_missing, 'feature type is missing', payload:) if type.blank?
 
         metadata_mismatch(index, type, payload, current_metadata(type))

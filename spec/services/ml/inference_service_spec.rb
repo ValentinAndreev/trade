@@ -201,6 +201,53 @@ RSpec.describe Ml::InferenceService do
     expect(MlPrediction.distinct.pluck(:weight_checksum)).to contain_exactly(original_run.weight_checksum, model.reload.serving_weight_checksum)
   end
 
+  it 'diagnoses guarded-upsert source-window mismatches separately from unavailable predictions' do
+    model, original_run = create_serving_model
+    stale_seeded = false
+    adapter = adapter_returning([]) do
+      next if stale_seeded
+
+      target_row = inference_rows_for(original_run).reverse.find { |row| row.fetch(:complete) }
+      newer_run = create(
+        :ml_training_run,
+        :succeeded,
+        ml_model: model,
+        dataset_spec: original_run.dataset_spec,
+        resolved_feature_spec: original_run.resolved_feature_spec,
+        hyperparams: original_run.hyperparams,
+        weight_checksum: original_run.weight_checksum
+      )
+      create(
+        :ml_prediction,
+        ml_model: model,
+        ml_training_run: newer_run,
+        ts: Time.at(target_row.fetch(:time)).utc,
+        exchange: 'bitfinex',
+        symbol: 'BTCUSD',
+        timeframe: '1m',
+        weight_checksum: original_run.weight_checksum,
+        source_window_checksum: 'stale-source-window'
+      )
+      stale_seeded = true
+    end
+
+    result = described_class.new(
+      model_key:,
+      symbol: 'BTCUSD',
+      timeframe: '1m',
+      candles:,
+      adapter:
+    ).call
+
+    expect(result).to be_success
+    mismatch = result.diagnostics.fetch('source_window_mismatches').values.first
+    expect(mismatch).to include(
+      requested_source_window_checksum: be_present,
+      persisted_source_window_checksum: 'stale-source-window'
+    )
+    expect(result.series.last.fetch(:values)).to eq('probability' => nil)
+  end
+
   it 'rejects requests above the prediction row cap before loading the model snapshot or predicting' do
     oversized_candles = (0...50_001).map do |index|
       {

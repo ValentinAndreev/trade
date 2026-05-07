@@ -14,6 +14,11 @@ RSpec.describe 'Api::Ml::Models' do
       get '/api/ml/models'
 
       expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body.fetch('error')).to include(
+        'code' => 'unauthorized',
+        'message' => 'Unauthorized',
+        'details' => {}
+      )
     end
 
     it 'lists global models capped to 50 entries' do
@@ -63,8 +68,41 @@ RSpec.describe 'Api::Ml::Models' do
     end
   end
 
+  describe 'GET /api/ml/models/autocomplete' do
+    it 'returns capped prefix matches with metadata and no weight blobs' do
+      create(:ml_model, key: 'btc_direction_a')
+      create(:ml_model, key: 'btc_direction_b')
+      create(:ml_model, key: 'eth_direction_a')
+
+      get '/api/ml/models/autocomplete', params: { q: 'btc_', limit: 1 }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body.fetch('models').map { |model| model.fetch('key') }).to eq([ 'btc_direction_a' ])
+      expect(response.parsed_body.fetch('meta')).to include(
+        'limit' => 1,
+        'truncated' => true,
+        'has_more' => true,
+        'max_prediction_rows' => Ml::PredictionRepository::MAX_CELLS
+      )
+      expect(response.body).not_to include('weights_payload', 'weight_blob', 'ml_model_weight_blob')
+    end
+
+    it 'requires authentication' do
+      delete '/api/session'
+
+      get '/api/ml/models/autocomplete', params: { q: 'btc' }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body.fetch('error')).to include(
+        'code' => 'unauthorized',
+        'message' => 'Unauthorized',
+        'details' => {}
+      )
+    end
+  end
+
   describe 'DELETE /api/ml/models/:id' do
-    it 'does not expose destructive deletion in 017' do
+    it 'does not expose destructive deletion for ML models' do
       model = create(:ml_model)
 
       delete "/api/ml/models/#{model.id}"

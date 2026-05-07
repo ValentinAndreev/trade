@@ -2,6 +2,7 @@ class Candle
   class FindQuery
     CONTINUOUS_AGGREGATES: Hash[String, String]
     DEFAULT_LIMIT: Integer
+    DEFAULT_EXCHANGE: String
 
     attr_reader symbol: String
     attr_reader exchange: String

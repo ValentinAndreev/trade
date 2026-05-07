@@ -213,6 +213,119 @@ vol_adjust:
     period: Volatility lookback period.
     field: Candle field to normalize.
     epsilon: Minimum volatility denominator.
+lag:
+  label: Lag
+  description: Value of an input series from N candles back.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Number of candles to lag.
+delta:
+  label: Delta
+  description: Difference between current input value and its lagged value.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Lookback period for the difference.
+rolling_mean:
+  label: Rolling Mean
+  description: Arithmetic mean of a trailing input window.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Lookback period.
+rolling_std:
+  label: Rolling Std
+  description: Population standard deviation of a trailing input window.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Lookback period.
+ema_smoother:
+  label: EMA Smoother
+  description: Exponential moving average of a trailing input window.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Lookback period.
+clip:
+  label: Clip
+  description: Clamp an input value to optional fixed numeric bounds.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    min_value: Optional lower bound.
+    max_value: Optional upper bound.
+winsorize:
+  label: Winsorize
+  description: Clamp current input to trailing quantile bounds.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Lookback period.
+    lower_quantile: Lower quantile between 0 and 1.
+    upper_quantile: Upper quantile between 0 and 1.
+zscore:
+  label: Z-Score
+  description: Input z-score against a trailing input window.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Lookback period.
+robust_zscore:
+  label: Robust Z-Score
+  description: Median/MAD-based z-score against a trailing input window.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Lookback period.
+    epsilon: Minimum scale denominator.
+minmax_position:
+  label: Min-Max Position
+  description: Current input position inside the trailing min/max range.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Lookback period.
+spread:
+  label: Spread
+  description: Difference between two same-series aligned inputs.
+  output: value
+  params:
+    left: Left input reference.
+    right: Right input reference.
+ratio:
+  label: Ratio
+  description: Ratio between two same-series aligned inputs with a denominator guard.
+  output: value
+  params:
+    left: Left input reference.
+    right: Right input reference.
+    epsilon: Minimum denominator magnitude.
+rolling_corr:
+  label: Rolling Correlation
+  description: Pearson correlation of two aligned inputs over a trailing window.
+  output: value
+  params:
+    left: Left input reference.
+    right: Right input reference.
+    period: Lookback period.
+stationarity_proxy:
+  label: Stationarity Proxy
+  description: Bounded normalized drift heuristic between adjacent rolling means; not an ADF or KPSS statistical test.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Adjacent window length.
+    epsilon: Minimum denominator.
+heteroskedasticity_proxy:
+  label: Heteroskedasticity Proxy
+  description: Bounded normalized variance-change heuristic between adjacent rolling windows; not a Levene or Breusch-Pagan statistical test.
+  output: value
+  params:
+    input: Input reference, defaulting to current close.
+    period: Adjacent window length.
+    epsilon: Minimum denominator.
 sma:
   label: SMA
   description: Simple Moving Average over close prices.

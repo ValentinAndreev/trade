@@ -1,7 +1,13 @@
 import { validateFormulaReferences, evaluateFormulaExpression } from "../../data_grid/condition_engine"
 import { columnFieldKey } from "../../types/store"
-import type { DataColumn, DataConfig } from "../../types/store"
+import type { DataColumn, DataConfig, MlPredictionOutput } from "../../types/store"
 import type { DataTabContext } from "./types"
+
+const ML_PREDICTION_OUTPUTS: readonly MlPredictionOutput[] = ["probability", "direction", "confidence"]
+
+function isMlPredictionOutput(value: string): value is MlPredictionOutput {
+  return (ML_PREDICTION_OUTPUTS as readonly string[]).includes(value)
+}
 
 export class ColumnActions {
   constructor(private ctx: DataTabContext) {}
@@ -20,7 +26,7 @@ export class ColumnActions {
 
   onNewColumnTypeChange(e: Event) {
     const type = (e.currentTarget as HTMLSelectElement).value
-    const paramsEl = this.sidebar.querySelector("[data-column-params]")
+    const paramsEl = this.sidebar.querySelector<HTMLElement>("[data-column-params]")
     if (!paramsEl) return
 
     if (type === "change") {
@@ -31,6 +37,8 @@ export class ColumnActions {
       paramsEl.innerHTML = this.renderer.dataSidebar.instrumentParamsHTML(this.ctx.deps.config.symbols)
     } else if (type === "macro") {
       paramsEl.innerHTML = this.renderer.dataSidebar.macroParamsHTML()
+    } else if (type === "ml_prediction") {
+      paramsEl.innerHTML = this.renderer.dataSidebar.mlPredictionParamsHTML()
     } else {
       paramsEl.innerHTML = this.renderer.dataSidebar.indicatorParamsHTML()
     }
@@ -39,12 +47,13 @@ export class ColumnActions {
   addColumn() {
     const tab = this.store.activeTab
     if (!tab || tab.type !== "data") return
-    const typeEl = this.sidebar.querySelector("[data-field='newColumnType']") as HTMLSelectElement | null
-    const colType = typeEl?.value || "indicator"
+    const typeEl = this.sidebar.querySelector<HTMLSelectElement>("[data-field='newColumnType']")
+    if (!typeEl) return
+    const colType = typeEl.value
     const added = this._buildAndAddColumn(tab, colType)
     if (!added) return
     this.ctx.render()
-    if (["indicator", "macro", "change", "instrument"].includes(colType)) {
+    if (["indicator", "macro", "change", "instrument", "ml_prediction"].includes(colType)) {
       requestAnimationFrame(() => this.ctx.deps.renderFn())
     }
   }
@@ -170,6 +179,7 @@ export class ColumnActions {
     if (colType === "macro")      return this._addMacroColumn(tab)
     if (colType === "formula")    return this._addFormulaColumn(tab)
     if (colType === "instrument") return this._addInstrumentColumn(tab)
+    if (colType === "ml_prediction") return this._addMlPredictionColumn(tab)
     return this._addIndicatorColumn(tab)
   }
 
@@ -212,6 +222,22 @@ export class ColumnActions {
       type: "macro",
       label: this._uniqueLabel(tab, macroType),
       indicatorType: macroType,
+    })
+    return true
+  }
+
+  private _addMlPredictionColumn(tab: { id: string; dataConfig?: DataConfig }): boolean {
+    const modelKeyEl = this.sidebar.querySelector<HTMLInputElement>("[data-field='mlModelKey']")
+    const modelOutputEl = this.sidebar.querySelector<HTMLSelectElement>("[data-field='mlModelOutput']")
+    if (!modelKeyEl || !modelOutputEl) return false
+    const modelKey = modelKeyEl.value.trim()
+    const modelOutput = modelOutputEl.value
+    if (!modelKey || !isMlPredictionOutput(modelOutput)) return false
+    this.store.addDataColumn(tab.id, {
+      type: "ml_prediction",
+      label: this._uniqueLabel(tab, `ml_${modelKey}_${modelOutput}`),
+      modelKey,
+      modelOutput,
     })
     return true
   }

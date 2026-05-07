@@ -44,7 +44,16 @@ Rails.application.routes.draw do
     post 'research/run', to: 'research/runs#create'
     post 'research/cancel', to: 'research/runs#cancel'
     namespace :ml do
-      resources :models, only: :index
+      resources :models, only: :index do
+        collection do
+          get :autocomplete
+        end
+      end
+      resources :predictions, only: :create do
+        collection do
+          get :limits
+        end
+      end
       resources :training_runs, only: %i[index create] do
         member do
           post :cancel

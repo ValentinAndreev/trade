@@ -122,10 +122,9 @@ module Research
           end
 
           def ml_modules
-            modules_payload = @payload['modules']
-            return [] unless modules_payload.is_a?(Hash)
+            return [] if @diagnostics.any?
 
-            modules_payload.select { |_name, module_payload| module_payload.is_a?(Hash) && module_payload['type'].to_s == 'ml_signal' }
+            @payload.fetch('modules').select { |_name, module_payload| module_payload.fetch('type').to_s == 'ml_signal' }
           end
 
           def ml_models_by_key

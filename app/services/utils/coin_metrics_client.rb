@@ -177,9 +177,7 @@ class Utils::CoinMetricsClient
   def self.numeric_value(value)
     return if value.nil?
 
-    number = Float(value)
-    number.finite? ? number : nil
-  rescue ArgumentError, TypeError
+    Float(value, exception: false)
   end
 
   delegate :divide_values, :numeric_value, to: :class

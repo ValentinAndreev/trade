@@ -12,12 +12,6 @@ module Research
       end
     end
 
-    def self.wrap(cancel_check)
-      case cancel_check
-      when nil then nil
-      when Proc then Callable.new(cancel_check)
-      else cancel_check
-      end
-    end
+    def self.from_proc(callable) = Callable.new(callable)
   end
 end

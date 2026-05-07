@@ -189,10 +189,21 @@ export function quickLaunchButtonsHTML(ctrl: string): string {
   return `
     <div class="flex items-center gap-1.5 shrink-0">
       ${btn("addAssistantTab", "&#9993;", "text-fuchsia-400", "Assistant", "border-fuchsia-500/40 hover:border-fuchsia-400/70")}
+      ${btn("addMlModelsTab", "ML", "text-emerald-400", "ML models", "border-emerald-500/40 hover:border-emerald-400/70")}
       ${btn("addChartTab", "&#9636;", "text-blue-400", "Chart", "border-blue-500/40 hover:border-blue-400/70")}
       ${btn("addDataTab", "&#9638;", "text-green-400", "Data", "border-green-500/40 hover:border-green-400/70")}
       ${btn("addResearchTab", "&#9673;", "text-amber-400", "Test", "border-amber-500/40 hover:border-amber-400/70")}
       ${btn("addSystemEditorTab", "&#9998;", "text-cyan-400", "System editor", "border-cyan-500/40 hover:border-cyan-400/70")}
+    </div>
+  `
+}
+
+export function mlModelsPanelHTML(tabId: string, configJson: string): string {
+  return `
+    <div class="relative flex-1 min-h-0 overflow-hidden"
+         data-controller="ml-models"
+         data-ml-models-tab-id-value="${tabId}"
+         data-ml-models-config-value='${configJson.replace(/'/g, "&#39;")}'>
     </div>
   `
 }

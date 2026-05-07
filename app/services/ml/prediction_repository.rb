@@ -79,8 +79,28 @@ module Ml
       normalized_output = output.to_s
       return unless MlPrediction::OUTPUTS.include?(normalized_output)
 
-      value = prediction.public_send(normalized_output)
-      value.is_a?(BigDecimal) ? value.to_f : value
+      prediction_output_value(prediction, normalized_output)
+    end
+
+    def source_window_mismatches(rows:, weight_checksum:)
+      row_by_time = complete_rows_by_time(rows)
+      return {} if row_by_time.empty?
+
+      MlPrediction
+        .for_identity(ml_model_id: model.id, exchange:, symbol:, timeframe:)
+        .where(ts: row_by_time.keys.map { |time| timestamp_for_time(time) }, weight_checksum:)
+        .ordered
+        .each_with_object({}) do |prediction, mismatches|
+          row = row_by_time.fetch(prediction.ts.to_i)
+          expected_checksum = row.fetch(:source_window_checksum)
+          next if prediction.source_window_checksum == expected_checksum
+
+          mismatches[row.fetch(:time).to_i.to_s] = {
+            requested_source_window_checksum: expected_checksum,
+            persisted_source_window_checksum: prediction.source_window_checksum,
+            ml_training_run_id: prediction.ml_training_run_id
+          }
+        end
     end
 
     private
@@ -116,9 +136,7 @@ module Ml
     end
 
     def prediction_value(prediction, key)
-      return prediction.fetch(key) if prediction.key?(key)
-
-      prediction.fetch(key.to_s)
+      prediction.fetch(key)
     end
 
     def guarded_upsert(records)
@@ -164,8 +182,14 @@ module Ml
       records.map { |record| record.merge(created_at: record[:created_at] || now, updated_at: now) }
     end
 
-    def timestamp_for_time(value)
-      value.is_a?(Time) ? value.utc : Time.at(value.to_i).utc
+    def timestamp_for_time(value) = Time.at(value.to_i).utc
+
+    def prediction_output_value(prediction, output)
+      case output
+      when 'probability' then prediction.probability&.to_f
+      when 'confidence' then prediction.confidence&.to_f
+      when 'direction' then prediction.direction
+      end
     end
 
     def predictions_by_time(result)

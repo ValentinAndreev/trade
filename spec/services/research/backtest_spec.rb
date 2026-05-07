@@ -231,10 +231,11 @@ RSpec.describe Research::Backtest do
         start_time: start_time.iso8601,
         end_time: end_time.iso8601
       ).and_return(runner)
-      allow(runner).to receive(:call) do |model_key:, output: 'probability', cancel_check: nil|
+      allow(runner).to receive(:call) do |model_key:, output: 'probability', cancel_check: nil, module_series: {}|
         expect(model_key).to eq('btc_direction_backtest')
         expect(output).to eq('probability')
         expect(cancel_check).to be_nil
+        expect(module_series).to eq({})
         close_values.each_index.map do |index|
           { time: (start_time + index.minutes).to_i, result: { value: signal_values[index] } }
         end
@@ -262,7 +263,7 @@ RSpec.describe Research::Backtest do
           long_entry: "signal.value > 0.6"
       YAML
       runner = instance_double(Research::Modules::MlSignal)
-      cancel_check = -> { false }
+      cancel_check = Research::CancellationCheck.from_proc(-> { false })
       allow(Research::Modules::MlSignal).to receive(:new).and_return(runner)
       allow(runner).to receive(:call).and_return([])
 
@@ -277,14 +278,14 @@ RSpec.describe Research::Backtest do
     it 'reuses unchanged module results across runs' do
       ema_runner = instance_double(Research::Modules::Ema)
       rsi_runner = instance_double(Research::Modules::Rsi)
-      candle_times = Candle.order(:ts).pluck(:ts)
+      candle_times = Candle.order(:ts).pluck(:ts).map(&:to_i)
 
       allow(Research::Modules::Ema).to receive(:new).and_return(ema_runner)
       allow(Research::Modules::Rsi).to receive(:new).and_return(rsi_runner)
-      allow(ema_runner).to receive(:call) do |period:|
+      allow(ema_runner).to receive(:call) do |period:, module_series: {}, cancel_check: nil|
         candle_times.map { |time| { time:, result: { value: period.to_f } } }
       end
-      allow(rsi_runner).to receive(:call) do |period:|
+      allow(rsi_runner).to receive(:call) do |period:, module_series: {}, cancel_check: nil|
         candle_times.map { |time| { time:, result: { value: period.to_f } } }
       end
 
@@ -298,6 +299,48 @@ RSpec.describe Research::Backtest do
 
       expect(ema_runner).to have_received(:call).twice
       expect(rsi_runner).to have_received(:call).once
+    end
+
+    it 'recomputes module-series transforms when upstream module output changes' do
+      system = instance_double(Research::Systems::Definition)
+      ema_runner = instance_double(Research::Modules::Ema)
+      candle_times = Candle.order(:ts).pluck(:ts).map(&:to_i)
+      observed_lag_values = []
+
+      allow(Research::Modules::Ema).to receive(:new).and_return(ema_runner)
+      allow(ema_runner).to receive(:call) do |period:, module_series: {}, cancel_check: nil|
+        candle_times.map { |time| { time:, result: { value: period.to_f } } }
+      end
+      allow(system).to receive(:module_runtime_configs) do |params|
+        {
+          base: { type: 'ema', params: { period: params.fetch(:base_period) } },
+          lagged: {
+            type: 'lag',
+            params: {
+              input: { 'kind' => 'module', 'module_ref' => 'base', 'output' => 'value' },
+              period: 1
+            }
+          }
+        }
+      end
+      allow(system).to receive(:run_params) { |params| params }
+      allow(system).to receive(:signal_for) do |name, prev_row:, row:, params:|
+        observed_lag_values << row.dig(:result, :lagged, :value) if name == :long_entry
+        false
+      end
+
+      backtest = described_class.new(
+        system:, symbol: 'BTCUSD', timeframe: '1m',
+        start_time: start_time.iso8601, end_time: end_time.iso8601
+      )
+
+      backtest.run(params: { base_period: 5, position_mode: 'long_short' })
+      first_run_values = observed_lag_values.compact.uniq
+      observed_lag_values.clear
+      backtest.run(params: { base_period: 8, position_mode: 'long_short' })
+
+      expect(first_run_values).to eq([ 5.0 ])
+      expect(observed_lag_values.compact.uniq).to eq([ 8.0 ])
     end
 
     it 'evaluates only the signals needed for the current position state' do
@@ -338,10 +381,10 @@ RSpec.describe Research::Backtest do
       expect do
         backtest.run(
           params: { position_mode: 'long_short' },
-          cancel_check: -> do
+          cancel_check: Research::CancellationCheck.from_proc(-> do
             checks += 1
             checks > 3
-          end
+          end)
         )
       end.to raise_error(Research::Backtest::Cancelled)
     end

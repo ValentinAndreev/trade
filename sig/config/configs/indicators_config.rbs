@@ -16,8 +16,10 @@ class IndicatorsConfig
   def self.integer: (label: String, ?min: untyped, ?max: untyped, ?required: bool, ?default: untyped) -> Param
   def self.number: (label: String, ?min: untyped, ?max: untyped, ?required: bool, ?default: untyped) -> Param
   def self.enum: (label: String, values: untyped, ?required: bool, ?default: untyped) -> Param
+  def self.input_ref: (label: String, ?required: bool, ?default: untyped) -> Param
   def self.param_warmup: (Symbol param, default: Integer) -> Hash[Symbol, untyped]
   def self.param_warmup_minus_one: (Symbol param, default: Integer) -> Hash[Symbol, untyped]
+  def self.twice_param_warmup_minus_one: (Symbol param, default: Integer) -> Hash[Symbol, untyped]
   def self.max_param_warmup: (*Hash[Symbol, untyped] rules) -> Hash[Symbol, untyped]
   def self.native_indicator: (
     label: String,

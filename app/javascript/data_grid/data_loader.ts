@@ -3,10 +3,21 @@ import { type DataConfig, type DataColumn, type DataTableRow, columnFieldKey } f
 import candleCache from "../data/candle_cache"
 import indicatorCache from "../data/indicator_cache"
 import { INDICATOR_META } from "../config/indicators"
+import { loadMlPredictions, mlPredictionColumns, mlPredictionColumnStatuses } from "./ml_predictions"
+import type { MlPredictionColumnStatus, MlPredictionGridResponse } from "./ml_predictions"
 
 export type { DataTableRow }
 
+export interface DataTableLoadResult {
+  rows: DataTableRow[]
+  mlPredictionColumnStatuses: Record<string, MlPredictionColumnStatus>
+  mlPredictionDiagnostics: MlPredictionGridResponse["diagnostics"] | null
+}
+
 const OHLCV_TYPES = ["open", "high", "low", "close", "volume"] as const
+type InstrumentColumn = Extract<DataColumn, { type: "instrument" }>
+type ServerIndicatorColumn = Extract<DataColumn, { type: "indicator" | "macro" }>
+type ChangeColumn = Extract<DataColumn, { type: "change" }>
 
 function mapOhlcvToColumnKeys(rows: DataTableRow[], columns: DataColumn[]): void {
   const ohlcvCols = columns.filter(c => OHLCV_TYPES.includes(c.type as typeof OHLCV_TYPES[number]))
@@ -23,14 +34,15 @@ function mapOhlcvToColumnKeys(rows: DataTableRow[], columns: DataColumn[]): void
 /** True when we need API (change, extra instruments, or server-only indicators). */
 function needsServerData(config: DataConfig): boolean {
   if (getInstrumentColumns(config).length > 0) return true
+  if (mlPredictionColumns(config).length > 0) return true
   if (config.columns.some(c => c.type === "change" && c.changePeriod)) return true
   if (config.columns.some(c => c.type === "macro" && c.indicatorType)) return true
   if (config.columns.some(c => c.type === "indicator" && c.indicatorType && !INDICATOR_META[c.indicatorType]?.lib)) return true
   return false
 }
 
-function getInstrumentColumns(config: DataConfig): DataColumn[] {
-  return config.columns.filter(c => c.type === "instrument" && c.instrumentSymbol && c.instrumentField)
+function getInstrumentColumns(config: DataConfig): InstrumentColumn[] {
+  return config.columns.filter((c): c is InstrumentColumn => c.type === "instrument" && !!c.instrumentSymbol && !!c.instrumentField)
 }
 
 export function loadFromCache(config: DataConfig): DataTableRow[] | null {
@@ -55,7 +67,7 @@ export function loadFromCache(config: DataConfig): DataTableRow[] | null {
  */
 function fillInstrumentsFromCache(
   rows: DataTableRow[],
-  instrumentCols: DataColumn[],
+  instrumentCols: InstrumentColumn[],
   timeframe: string,
   overwrite = true,
 ): void {
@@ -109,6 +121,7 @@ async function fetchInstrumentData(
   timeframe: string,
   startTime?: number,
   endTime?: number,
+  signal?: AbortSignal,
 ): Promise<Map<number, Record<string, number>>> {
   const url = new URL("/api/data_table", window.location.origin)
   url.searchParams.set("symbol", symbol)
@@ -117,7 +130,7 @@ async function fetchInstrumentData(
   if (endTime) url.searchParams.set("end_time", new Date(endTime * 1000).toISOString())
 
   try {
-    const response = await apiFetch(url)
+    const response = await apiFetch(url, { signal })
     if (!response?.ok) return new Map()
     const rows: Array<Record<string, number>> = await response.json()
     const byTime = new Map<number, Record<string, number>>()
@@ -130,7 +143,7 @@ async function fetchInstrumentData(
 
 function mergeInstrumentData(
   rows: DataTableRow[],
-  instrumentCols: DataColumn[],
+  instrumentCols: InstrumentColumn[],
   instrumentData: Map<string, Map<number, Record<string, number>>>,
 ): void {
   for (const row of rows) {
@@ -246,13 +259,13 @@ function buildApiUrl(config: DataConfig): URL {
   if (config.endTime && !config.sourceTabId) url.searchParams.set("end_time", new Date(config.endTime * 1000).toISOString())
 
   const indicatorSpecs = config.columns
-    .filter(c => (c.type === "indicator" || c.type === "macro") && c.indicatorType)
+    .filter((c): c is ServerIndicatorColumn => (c.type === "indicator" || c.type === "macro") && !!c.indicatorType)
     .map(c => ({ type: c.indicatorType, params: c.indicatorParams || {} }))
   if (indicatorSpecs.length) url.searchParams.set("indicators", JSON.stringify(indicatorSpecs))
 
   config.columns
-    .filter(c => c.type === "change" && c.changePeriod)
-    .forEach(c => { if (c.changePeriod) url.searchParams.append("changes[]", c.changePeriod) })
+    .filter((c): c is ChangeColumn => c.type === "change" && !!c.changePeriod)
+    .forEach(c => { url.searchParams.append("changes[]", c.changePeriod!) })
 
   return url
 }
@@ -260,19 +273,42 @@ function buildApiUrl(config: DataConfig): URL {
 async function fetchAndMergeInstruments(
   data: DataTableRow[],
   config: DataConfig,
+  signal?: AbortSignal,
 ): Promise<void> {
   const instrumentCols = getInstrumentColumns(config)
   if (!instrumentCols.length) return
   const uniqueSymbols = [...new Set(instrumentCols.map(c => c.instrumentSymbol!))]
   const instrumentData = new Map<string, Map<number, Record<string, number>>>()
   await Promise.all(uniqueSymbols.map(async (sym) => {
-    instrumentData.set(sym, await fetchInstrumentData(sym, config.timeframe, config.startTime, config.endTime))
+    instrumentData.set(sym, await fetchInstrumentData(sym, config.timeframe, config.startTime, config.endTime, signal))
   }))
   mergeInstrumentData(data, instrumentCols, instrumentData)
 }
 
-export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]> {
-  if (!config.symbols.length) return []
+async function fetchAndMergeMlPredictions(
+  data: DataTableRow[],
+  config: DataConfig,
+  signal?: AbortSignal,
+  requestScope?: string,
+): Promise<Pick<DataTableLoadResult, "mlPredictionColumnStatuses" | "mlPredictionDiagnostics">> {
+  const columns = mlPredictionColumns(config)
+  const result = await loadMlPredictions(config, data, { signal, requestScope })
+  return {
+    mlPredictionColumnStatuses: mlPredictionColumnStatuses(columns, result.errors, result.diagnostics),
+    mlPredictionDiagnostics: result.diagnostics,
+  }
+}
+
+function loadResult(
+  rows: DataTableRow[],
+  mlPredictionColumnStatuses: Record<string, MlPredictionColumnStatus> = {},
+  mlPredictionDiagnostics: MlPredictionGridResponse["diagnostics"] | null = null,
+): DataTableLoadResult {
+  return { rows, mlPredictionColumnStatuses, mlPredictionDiagnostics }
+}
+
+export async function loadDataTable(config: DataConfig, signal?: AbortSignal, requestScope?: string): Promise<DataTableLoadResult> {
+  if (!config.symbols.length) return loadResult([])
 
   // Hydrate in-memory cache from IndexedDB on cold start (no-op if already warm).
   await hydrateFromIdb(config)
@@ -283,24 +319,25 @@ export async function loadDataTable(config: DataConfig): Promise<DataTableRow[]>
 
   if (useCacheOnly) {
     const cached = await getRowsFromCache(config)
-    if (cached?.length) return cached
+    if (cached?.length) return loadResult(cached)
   }
 
-  const cacheFallback = async (): Promise<DataTableRow[]> => (await getRowsFromCache(config)) ?? []
+  const cacheFallback = async (): Promise<DataTableLoadResult> => loadResult((await getRowsFromCache(config)) ?? [])
 
   try {
-    const response = await apiFetch(buildApiUrl(config))
+    const response = await apiFetch(buildApiUrl(config), { signal })
     if (!response || !response.ok) {
       if (response && !response.ok) console.error("[DataGrid] API error:", response.status, response.statusText)
       return cacheFallback()
     }
     const data: DataTableRow[] = await response.json()
-    await fetchAndMergeInstruments(data, config)
+    await fetchAndMergeInstruments(data, config, signal)
     // If API had no data for an instrument symbol (not in DB), fall back to candleCache.
     // overwrite=false: only fills rows where API returned null, preserving real DB values.
     fillInstrumentsFromCache(data, getInstrumentColumns(config), config.timeframe, false)
     mapOhlcvToColumnKeys(data, config.columns)
-    return data
+    const mlPredictionResult = await fetchAndMergeMlPredictions(data, config, signal, requestScope)
+    return loadResult(data, mlPredictionResult.mlPredictionColumnStatuses, mlPredictionResult.mlPredictionDiagnostics)
   } catch (err) {
     console.error("[DataGrid] Failed to load data:", err)
     return cacheFallback()

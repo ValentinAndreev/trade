@@ -10,10 +10,11 @@ class Candle::FindQuery
   }.freeze
 
   DEFAULT_LIMIT = 1500
+  DEFAULT_EXCHANGE = 'bitfinex'
 
   private attr_reader :symbol, :exchange, :timeframe, :start_time, :end_time, :limit, :connection, :preserve_decimals
 
-  def initialize(symbol:, timeframe: '1m', exchange: 'bitfinex', start_time: nil, end_time: nil, limit: nil, preserve_decimals: false)
+  def initialize(symbol:, timeframe: '1m', exchange: DEFAULT_EXCHANGE, start_time: nil, end_time: nil, limit: nil, preserve_decimals: false)
     @symbol = symbol
     @exchange = exchange
     @timeframe = timeframe
@@ -128,7 +129,7 @@ class Candle::FindQuery
   end
 
   def parse_time(value)
-    return nil if value.blank?
+    return if value.blank?
     value.is_a?(String) ? Time.zone.parse(value) : value.to_time.utc
   end
 end

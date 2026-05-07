@@ -113,6 +113,10 @@ export default class TabRenderer {
         assistantWorkspaceSnapshotJson: opts.assistantWorkspaceSnapshotJson,
         assistantLinkedTargetContextJson: opts.assistantLinkedTargetContextJson,
       })
+    } else if (activeTab?.type === "ml_models") {
+      this.sidebarEl.hidden = true
+      this.sidebarEl.innerHTML = ""
+      this.panels.renderDataTab(tabs, activeTabId)
     } else if (activeTab?.type === "system_stats") {
       this.sidebarEl.hidden = true
       this.sidebarEl.innerHTML = ""

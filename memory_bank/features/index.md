@@ -23,12 +23,12 @@ Feature package хранит forward-артефакты `brief.md`, `spec.md`, `
 | 015 | [Workspace frontend refactor](015_workspace_frontend_refactor/) | done | cross-cutting | workspace TypeScript modules, frontend tests, recent git history |
 | 016 | [Memory bank process](016_memory_bank_process/) | done | process | `memory_bank/`, `.prompts/`, `CLAUDE.md` |
 | 017 | [ML signal modules](017_ml_signal_modules/) | done | cross-cutting | ML models/runs/predictions, Research modules, `ml_signal` YAML integration |
+| 018 | [ML signal workspace and catalogue](018_ml_signal_workspace_and_catalog/) | done | cross-cutting | ML workspace tab, data-grid prediction columns, expanded Research modules |
 
 ## Готовы к реализации
 
 | ID | Feature | Stage | PRD Area | Main sources |
 |---|---|---|---|---|
-| 018 | [ML signal workspace and catalogue](018_ml_signal_workspace_and_catalog/) | plan | cross-cutting | `memory_bank/features/017_ml_signal_modules/spec.md`, `memory_bank/features/005_data_grid_mvp/summary.md`, `memory_bank/features/011_system_editor/summary.md`, `memory_bank/features/013_llm_assistant_core/summary.md` |
 
 Active task cursor lives in `memory_bank/process/current-focus.md`.
 

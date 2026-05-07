@@ -6,20 +6,20 @@
 
 ## Активная задача
 
-**Фича:** 018_ml_signal_workspace_and_catalog
-**Started:** 2026-05-06
-**Текущий этап:** plan
-**Review notes:** `memory_bank/features/018_ml_signal_workspace_and_catalog/reviews/plan.md`
-**Следующий шаг:** `impl: 018`
+**Фича:** —
+**Started:** —
+**Текущий этап:** —
+**Review notes:** `memory_bank/features/018_ml_signal_workspace_and_catalog/reviews/impl.md`
+**Следующий шаг:** choose next feature package
 
 ## Контекст последней сессии
 
-- Сделано: deferred checks для 017 прошли; 017 отмечена `done`, npm audit advisories закрыты обновлением `package-lock.json`.
-- Осталось: начать `impl: 018` по согласованному плану.
+- Сделано: 018 impl review fixed/verified; package moved to done with advisory follow-ups recorded.
+- Осталось: choose next feature package.
 
 ## Следующие в очереди
 
-- `impl: 018` после `done: 017`
+- —
 
 ## Открытые вопросы
 

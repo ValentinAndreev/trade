@@ -3,7 +3,7 @@
 module Research
   module Modules
     class Base < CandleAligned
-      def call(cancel_check: nil, **params)
+      def call(cancel_check: nil, module_series: {}, **params)
         check_cancelled!(cancel_check)
         ta_params = ta_class.valid_options.include?(:price_key) ? params.merge(price_key: :close) : params
         result = ta_class.calculate(input_data, **ta_params)

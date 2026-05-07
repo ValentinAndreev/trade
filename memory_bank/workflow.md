@@ -199,6 +199,7 @@ Canonical review note format:
 - Шаги называют конкретные файлы и relevant checks.
 - Для нового Ruby public class/method есть RBS step.
 - Каждый `ac-*` из spec упомянут в plan.
+- Если план предполагает type/null guard (`typeof`, `Array.isArray`, `is_a?`, `nil`/optional fallback, rescue-dispatch), он называет boundary, canonical shape после normalization и тест, который закрепляет каждую принимаемую форму. Без такого объяснения guard не добавляется.
 - Если `reviews/plan.md` blocking, сначала `fix review: <id> plan`.
 
 ### Impl -> Done
@@ -206,6 +207,7 @@ Canonical review note format:
 - Forward package имеет `spec.md` и `plan.md`.
 - `reviews/impl.md` существует и не `blocking`.
 - Acceptance criteria закрыты кодом/тестами или явно перенесены в Known Gaps.
+- Review/fix проверяет новые type/null guards как отдельный риск: для server-owned/internal contracts они считаются finding, если не оформлены как boundary normalization или явно documented exception.
 - Релевантные проверки пройдены.
 
 ## Малые задачи

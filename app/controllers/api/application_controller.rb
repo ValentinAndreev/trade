@@ -19,10 +19,20 @@ class Api::ApplicationController < ActionController::API
   end
 
   def require_auth
-    render json: { error: 'Unauthorized' }, status: :unauthorized unless current_user
+    render_api_error(:unauthorized, 'Unauthorized', status: :unauthorized) unless current_user
   end
 
-  def bad_request(error) = render json: { error: error.message }, status: :bad_request
+  def bad_request(error) = render_api_error(:bad_request, error.message, status: :bad_request)
 
-  def not_found(error) = render json: { error: error.message }, status: :not_found
+  def not_found(error) = render_api_error(:not_found, error.message, status: :not_found)
+
+  def render_api_error(code, message, status:, details: {})
+    render json: {
+      error: {
+        code: code.to_s,
+        message:,
+        details:
+      }
+    }, status:
+  end
 end

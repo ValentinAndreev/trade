@@ -9,6 +9,7 @@ const COLUMN_TYPES: Array<{ value: string; label: string }> = [
   { value: "change", label: "Change %" },
   { value: "formula", label: "Formula" },
   { value: "instrument", label: "Instrument" },
+  { value: "ml_prediction", label: "ML Prediction" },
 ]
 
 const CHANGE_PERIODS = ["1m", "5m", "15m", "1h", "4h", "1d"]
@@ -266,6 +267,18 @@ export function instrumentParamsHTML(symbols: string[]): string {
   `
 }
 
+export function mlPredictionParamsHTML(): string {
+  return `
+    <input type="text" data-field="mlModelKey" placeholder="model_key"
+           class="${INPUT_CLS}">
+    <select data-field="mlModelOutput" class="${INPUT_CLS}">
+      <option value="probability">Probability</option>
+      <option value="direction">Direction</option>
+      <option value="confidence">Confidence</option>
+    </select>
+  `
+}
+
 export function columnListHTML(ctrl: string, columns: DataColumn[]): string {
   return columns.map(col => {
     const isEditable = col.type === "formula"
@@ -279,11 +292,12 @@ export function columnListHTML(ctrl: string, columns: DataColumn[]): string {
     const visible = col.visible !== false
     const visibilityClass = visible ? "bg-emerald-400" : "bg-gray-600"
     const visibilityTitle = visible ? "Visible" : "Hidden"
+    const typeLabel = col.type === 'macro' ? '⬡ data' : col.type === 'ml_prediction' ? 'ml' : escapeHTML(col.type)
     return `
     <div class="flex items-center justify-between gap-2 py-1.5 px-2 rounded hover:bg-[#2a2a3e] group" data-column-id="${col.id}">
       <span class="text-sm text-gray-300 truncate min-w-0 flex-1"${exprHint}>${escapeHTML(col.label)}</span>
       <span class="flex items-center gap-0 shrink-0">
-        <span class="text-xs shrink-0 ${col.type === 'macro' ? 'text-teal-400' : 'text-gray-500'}">${col.type === 'macro' ? '⬡ data' : col.type}</span>
+        <span class="text-xs shrink-0 ${col.type === 'macro' ? 'text-teal-400' : col.type === 'ml_prediction' ? 'text-sky-400' : 'text-gray-500'}">${typeLabel}</span>
         <button type="button"
                 data-action="click->${ctrl}#toggleColumnVisibility"
                 data-column-id="${col.id}"

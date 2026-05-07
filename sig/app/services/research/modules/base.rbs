@@ -4,7 +4,7 @@ module Research
       @input_data: Array[research_input_point]
       @time_lookup: Hash[String, Integer]
 
-      def call: (?cancel_check: untyped, **untyped params) -> Array[research_module_point]
+      def call: (?cancel_check: untyped, ?module_series: research_module_series, **untyped params) -> Array[research_module_point]
 
       private
 

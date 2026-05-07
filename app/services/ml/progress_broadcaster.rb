@@ -11,7 +11,7 @@ module Ml
     def self.stream_name(training_run_id) = "ml_training:#{training_run_id}"
 
     def self.safely_broadcast_terminal(event, training_run:, broadcaster: new(training_run:))
-      broadcaster.public_send(event, training_run:)
+      broadcast_terminal_event(event.to_s, broadcaster:, training_run:)
     rescue StandardError => e
       Rails.logger.warn(
         "ML progress broadcast failed event=#{event} training_run_id=#{training_run&.id} " \
@@ -19,6 +19,16 @@ module Ml
       )
       nil
     end
+
+    def self.broadcast_terminal_event(event, broadcaster:, training_run:)
+      case event
+      when 'succeeded' then broadcaster.succeeded(training_run:)
+      when 'failed' then broadcaster.failed(training_run:)
+      when 'cancelled' then broadcaster.cancelled(training_run:)
+      else raise ArgumentError, "Unsupported ML terminal progress event: #{event}"
+      end
+    end
+    private_class_method :broadcast_terminal_event
 
     def initialize(training_run: nil, training_run_id: nil, clock: -> { Time.current }, broadcast_adapter: ActionCable.server)
       @training_run = training_run
@@ -71,7 +81,7 @@ module Ml
       run = training_run || self.training_run
       return unless TERMINAL_STATUSES.include?(run&.status)
 
-      public_send(run.status, training_run: run)
+      emit_terminal_status(run.status, training_run: run)
     end
 
     private
@@ -81,6 +91,15 @@ module Ml
 
     def emit_run(event:, training_run:, payload: {})
       broadcast(base_payload(event:, training_run:).merge(normalized_progress_payload(payload)))
+    end
+
+    def emit_terminal_status(status, training_run:)
+      case status
+      when 'succeeded' then succeeded(training_run:)
+      when 'failed' then failed(training_run:)
+      when 'cancelled' then cancelled(training_run:)
+      else raise ArgumentError, "Unsupported ML terminal progress status: #{status}"
+      end
     end
 
     def base_payload(event:, training_run:)

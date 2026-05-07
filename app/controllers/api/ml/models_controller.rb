@@ -15,6 +15,25 @@ module Api
         render json: models.map { |model| serialize_model(model, active_training_run: active_runs_by_model_id[model.id]) }
       end
 
+      def autocomplete
+        limit = requested_limit
+        rows = ::MlModel.by_key
+          .where('ml_models.key LIKE ?', "#{::MlModel.sanitize_sql_like(params[:q].to_s.strip.downcase)}%")
+          .limit(limit + 1)
+          .to_a
+        models = rows.first(limit)
+
+        render json: {
+          models: models.map { |model| serialize_autocomplete_model(model) },
+          meta: {
+            limit:,
+            truncated: rows.length > limit,
+            has_more: rows.length > limit,
+            max_prediction_rows: ::Ml::PredictionRepository::MAX_CELLS
+          }
+        }
+      end
+
       private
 
       def requested_limit
@@ -48,6 +67,17 @@ module Api
           latest_successful_training_run: serialize_run_summary(model.latest_successful_training_run),
           latest_failed_training_run: serialize_run_summary(model.latest_failed_training_run),
           active_training_run: serialize_run_summary(active_training_run)
+        }
+      end
+
+      def serialize_autocomplete_model(model)
+        {
+          id: model.id,
+          key: model.key,
+          display_name: model.display_name,
+          architecture: model.architecture,
+          prediction_target: model.prediction_target,
+          serving_status: model.serving_status
         }
       end
 
