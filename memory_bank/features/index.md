@@ -29,6 +29,7 @@ Feature package хранит forward-артефакты `brief.md`, `spec.md`, `
 
 | ID | Feature | Stage | PRD Area | Main sources |
 |---|---|---|---|---|
+| 019 | [ML signal infrastructure and adapter extensibility](019_ml_signal_infrastructure_and_adapter_extensibility/) | plan | cross-cutting | `memory_bank/features/017_ml_signal_modules/`, `memory_bank/features/018_ml_signal_workspace_and_catalog/`, ML service/model code |
 
 Active task cursor lives in `memory_bank/process/current-focus.md`.
 

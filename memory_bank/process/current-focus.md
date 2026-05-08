@@ -6,16 +6,16 @@
 
 ## Активная задача
 
-**Фича:** —
-**Started:** —
-**Текущий этап:** —
-**Review notes:** `memory_bank/features/018_ml_signal_workspace_and_catalog/reviews/impl.md`
-**Следующий шаг:** choose next feature package
+**Фича:** 019_ml_signal_infrastructure_and_adapter_extensibility
+**Started:** 2026-05-08
+**Текущий этап:** plan
+**Review notes:** `memory_bank/features/019_ml_signal_infrastructure_and_adapter_extensibility/reviews/plan.md`
+**Следующий шаг:** impl: 019
 
 ## Контекст последней сессии
 
-- Сделано: 018 impl review fixed/verified; package moved to done with advisory follow-ups recorded.
-- Осталось: choose next feature package.
+- Сделано: reviewed 019 plan; advisory notes recorded.
+- Осталось: impl: 019.
 
 ## Следующие в очереди
 
